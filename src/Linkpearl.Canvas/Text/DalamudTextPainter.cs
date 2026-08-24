@@ -91,7 +91,10 @@ public sealed class DalamudTextPainter : ITextPainter
 
     private static Vector2 AlignedOrigin(Vector2 anchor, Vector2 size, TextAlign align, float left) => align switch
     {
-        TextAlign.Center => new Vector2(anchor.X - size.X * 0.5f, anchor.Y),
+        // Center is the only alignment anything currently draws at a bare point rather than
+        // into a Rect (badges, glyph labels) — for that usage "centered at this point" means
+        // both axes, not just horizontal.
+        TextAlign.Center => anchor - size * 0.5f,
         TextAlign.Right => new Vector2(anchor.X - size.X, anchor.Y),
         _ => anchor,
     };

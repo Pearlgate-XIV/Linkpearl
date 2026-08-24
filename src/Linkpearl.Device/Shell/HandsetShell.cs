@@ -16,7 +16,13 @@ namespace Linkpearl.Device.Shell;
 // drill-down navigation (e.g. Explore opening a venue detail).
 public sealed class HandsetShell
 {
-    private static readonly QuickBarItem[] DemoQuickItems = { new("⚔", "Duty Ready") };
+    // Kept short deliberately: the design brief is explicit that this bar is contextual, not a
+    // permanent dock of every notification category, so a couple of items is more representative
+    // demo content than lining up all four the reference happens to show at once.
+    private static readonly QuickBarItem[] DemoQuickItems =
+    {
+        new("⚔", "Duty Ready"), new("🗡", "Party Invite", Badge: 1),
+    };
 
     private readonly Dictionary<DestinationTab, IDestinationScreen> destinationsByTab;
     private readonly IReadOnlyList<IDestinationScreen> destinationsInOrder;

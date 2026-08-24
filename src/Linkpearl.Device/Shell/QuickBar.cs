@@ -1,3 +1,4 @@
+using System.Globalization;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
 using Linkpearl.Theming;
@@ -29,14 +30,31 @@ public static class QuickBar
             var item = items[index];
             var label = $"{item.Glyph} {item.Label}";
             var textWidth = text.Measure(label, FontRole.Caption).X;
-            var chipWidth = textWidth + 20f * scale;
+            var badgeReserve = item.Badge > 0 ? 14f * scale : 0f;
+            var chipWidth = textWidth + 20f * scale + badgeReserve;
             var chip = new Rect(new Vector2(cursorX, area.Min.Y), new Vector2(cursorX + chipWidth, area.Max.Y));
 
             paint.Fill(chip, theme.Palette.SurfaceOverlay, chipHeight * 0.5f);
             paint.Stroke(chip, theme.Palette.Separator, theme.Metrics.Hairline, chipHeight * 0.5f);
-            text.DrawIn(chip, label, new TextStyle(FontRole.Caption, theme.Palette.Ink, TextAlign.Center));
+            text.DrawIn(chip.Inset(new Edges(0f, 0f, badgeReserve, 0f)), label,
+                new TextStyle(FontRole.Caption, theme.Palette.Ink, TextAlign.Center));
+
+            if (item.Badge > 0)
+            {
+                DrawBadge(paint, text, theme, chip, item.Badge, scale);
+            }
 
             cursorX += chipWidth + gap;
         }
+    }
+
+    private static void DrawBadge(IPaintSurface paint, ITextPainter text, ITheme theme, Rect chip, int count,
+        float scale)
+    {
+        var radius = 8f * scale;
+        var center = new Vector2(chip.Max.X - radius - 3f * scale, chip.Center.Y);
+        paint.FillCircle(center, radius, theme.Palette.Negative);
+        var label = count > 9 ? "9+" : count.ToString(CultureInfo.InvariantCulture);
+        text.Draw(center, label, new TextStyle(FontRole.Caption, theme.Palette.AccentInk, TextAlign.Center));
     }
 }

@@ -83,10 +83,13 @@ Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist y
   a line without its allocated height growing to match will silently overflow past its own
   background into whatever is next, since nothing clips or auto-sizes a card to its content yet.
   Verified numerically at every size step for the current content, not verified visually in-game.
-- The Quick Bar's "collapses when empty" behavior is coded but never actually exercised: its one
-  demo item is a fixed array, so it always renders and the empty state has never been seen.
-- Universal Search has no keyboard-driven result navigation (arrow keys, Enter to open) and
-  results aren't clickable yet — typing filters the list, nothing else.
+- The Quick Bar now shows two demo items (with a badge) instead of one, but its "collapses when
+  empty" behavior is still never actually exercised — the array is fixed, not driven by anything
+  real, so the empty state has never been seen.
+- Universal Search results are now tappable (hover highlight, click closes the overlay — see
+  `UniversalSearchOverlay.Draw`) but there's still no keyboard-driven navigation (arrow keys,
+  Enter). Selecting a result can't open anything real yet since no destination content exists for
+  a player/venue/activity screen, so it only closes the overlay rather than faking a navigation.
 - Resize-drag works within a session but doesn't persist; `HandsetWindow.SetForm` (Pocket/Slate)
   still has no caller — only the six size steps are reachable, not the form switch.
 - Chassis renders one finish (Crystal); the Etched art-panel finish is defined in

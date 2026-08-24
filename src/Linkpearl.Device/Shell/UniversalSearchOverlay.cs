@@ -59,20 +59,38 @@ public sealed class UniversalSearchOverlay
         var listArea = new Rect(new Vector2(inset.Min.X, fieldArea.Max.Y + scale * 12f), inset.Max);
         var results = query.Length > 0 ? UniversalSearch.Search(query) : UniversalSearch.RecentSearches;
         var kicker = query.Length > 0 ? "RESULTS" : "RECENT SEARCHES";
-        DrawResults(text, listArea, scale, theme, kicker, results);
+        if (DrawResults(paint, text, input, listArea, scale, theme, kicker, results))
+        {
+            // Selecting a result only closes the overlay for now: there is no real screen yet
+            // for a player profile, venue, or activity to open into, and pretending to navigate
+            // somewhere that doesn't exist would be exactly the fake backend behavior this
+            // overlay is documented as avoiding.
+            Close();
+        }
     }
 
-    private static void DrawResults(ITextPainter text, Rect area, float scale, ITheme theme, string kicker,
-        IReadOnlyList<SearchResult> results)
+    private static bool DrawResults(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area,
+        float scale, ITheme theme, string kicker, IReadOnlyList<SearchResult> results)
     {
         text.DrawIn(area.TopSlice(scale * 16f), kicker,
             new TextStyle(FontRole.CaptionStrong, theme.Palette.InkMuted));
 
         var rowHeight = scale * 32f;
+        var selected = false;
         for (var index = 0; index < results.Count; index++)
         {
             var row = new Rect(new Vector2(area.Min.X, area.Min.Y + scale * 20f + index * rowHeight),
                 new Vector2(area.Max.X, area.Min.Y + scale * 20f + (index + 1) * rowHeight - scale * 4f));
+
+            if (input.IsHovering(row))
+            {
+                paint.Fill(row, theme.Palette.SurfaceRaised, scale * 8f);
+            }
+
+            if (input.ConsumeClick(row))
+            {
+                selected = true;
+            }
 
             var entry = results[index];
             text.DrawIn(row.TopSlice(scale * 18f), entry.Title, new TextStyle(FontRole.Body, theme.Palette.Ink));
@@ -82,5 +100,7 @@ public sealed class UniversalSearchOverlay
                     new TextStyle(FontRole.Caption, theme.Palette.InkFaint));
             }
         }
+
+        return selected;
     }
 }
