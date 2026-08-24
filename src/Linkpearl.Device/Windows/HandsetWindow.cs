@@ -21,6 +21,7 @@ public sealed class HandsetWindow : Window
     private readonly HandsetFontService fonts;
     private readonly ITheme theme;
     private readonly RouteStack router;
+    private readonly ResizeGrip resizeGrip = new();
     private HandsetForm form = HandsetForm.Pocket;
     private float scaleStep = HandsetSizeCatalog.DefaultStep;
 
@@ -81,5 +82,35 @@ public sealed class HandsetWindow : Window
         var frame = new AppletFrame(chassis.Screen, paint, text, input, theme, router, scale, ImGui.GetIO().DeltaTime);
         shell.Draw(frame, chassis.Screen);
         paint.PopClip();
+
+        var hoveredCorner = resizeGrip.Update(windowRect, input, scale, ref scaleStep);
+        if (hoveredCorner != ResizeCorner.None)
+        {
+            ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hoveredCorner)
+                ? ImGuiMouseCursor.ResizeNwse
+                : ImGuiMouseCursor.ResizeNesw);
+            DrawResizeHint(paint, windowRect, hoveredCorner, scale);
+        }
+    }
+
+    private static void DrawResizeHint(DalamudPaintSurface paint, Rect window, ResizeCorner corner, float scale)
+    {
+        const float reachUnits = 7f;
+        const float insetUnits = 2f;
+        var reach = reachUnits * scale;
+        var inset = insetUnits * scale;
+        var thickness = MathF.Max(1.4f * scale, 1f);
+        var ink = new Vector4(1f, 1f, 1f, 0.55f);
+
+        var (origin, signX, signY) = corner switch
+        {
+            ResizeCorner.TopLeft => (window.Min + new Vector2(inset, inset), 1f, 1f),
+            ResizeCorner.TopRight => (new Vector2(window.Max.X - inset, window.Min.Y + inset), -1f, 1f),
+            ResizeCorner.BottomLeft => (new Vector2(window.Min.X + inset, window.Max.Y - inset), 1f, -1f),
+            _ => (window.Max - new Vector2(inset, inset), -1f, -1f),
+        };
+
+        paint.Line(origin, origin + new Vector2(reach * signX, 0f), ink, thickness);
+        paint.Line(origin, origin + new Vector2(0f, reach * signY), ink, thickness);
     }
 }

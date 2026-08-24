@@ -18,7 +18,9 @@ with a working home screen, one real applet, and soft-key navigation:
   the default palette/theme, and two real layout primitives (Stack, TileGrid).
 - **Linkpearl.Device** — the chassis (rail/frame/glass/screen geometry, square screen corners,
   two forms x six size steps), the shell (status strip, soft-key Recents/Home/Back bar, circular-
-  tile home grid, route stack with back-stack semantics), and the Dalamud Window that hosts it.
+  tile home grid, route stack with back-stack semantics), corner-grip drag-to-resize (`ResizeGrip`
+  — distance-ratio scaling, snaps to the nearest size step on release, cursor + grip-hint feedback
+  while hovering or dragging), and the Dalamud Window that hosts it.
 - **Linkpearl.Platform.Ffxiv** — `FfxivGameSession`, the first platform adapter, proving applets
   can depend on `IGameSession` without ever touching `Dalamud.*` types.
 - **Linkpearl.Applets.Life** — `ClockApplet` + its module, proving the applet pipeline end to end:
@@ -44,7 +46,8 @@ there are enough modules for reflection-based discovery to earn its cost.
 ## Known gaps to close before this is more than a proof
 
 - Home screen is single-page (no paging/folders yet).
-- No resize-drag interaction; `HandsetWindow.SetForm`/`SetScaleStep` exist but nothing calls them.
+- Resize-drag works within a session but doesn't persist; `HandsetWindow.SetForm` (Pocket/Slate)
+  still has no caller — only the six size steps are reachable, not the form switch.
 - Chassis renders one finish (Crystal); the Etched art-panel finish is defined in
   `ChassisMetrics` but nothing selects it yet.
 - No settings persistence at all: window size/form reset every launch.
