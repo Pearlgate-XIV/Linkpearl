@@ -8,14 +8,17 @@ actually landed against that plan.
 ## What's built (Phase 0-1, partial Phase 2-3)
 
 A compiling, layered solution that loads as a real Dalamud plugin and renders a themed handset
-with a working home screen, one real applet, and soft-key navigation:
+with a working home screen, three real applets, and soft-key navigation:
 
 - **Linkpearl.Abstractions** — every contract: geometry, painting, text, input, theming, modules,
-  applets, routing, persistence, platform (game session, chat, world services). Zero Dalamud
-  dependency, zero mutable statics.
-- **Linkpearl.Canvas** — the ImGui-backed implementation of those contracts: paint surface, font
-  service (own size ladder, Inter faces as a placeholder type system), text painter, input probe,
-  the default palette/theme, and two real layout primitives (Stack, TileGrid).
+  applets, routing, persistence, platform (game session, chat, world services), plus `DisplayPreferences`
+  (in-memory shared settings, no persistence layer yet) and the `Layout` primitives (`Stack`,
+  `TileGrid`) — moved here from Canvas since they're pure `Rect` math with zero Dalamud
+  dependency, so any applet can lay out a grid without pulling in ImGui. Zero Dalamud dependency,
+  zero mutable statics.
+- **Linkpearl.Canvas** — the ImGui-backed implementation of the painting/text/input/theming
+  contracts: paint surface, font service (own size ladder, Inter faces as a placeholder type
+  system), text painter, input probe, the default palette/theme.
 - **Linkpearl.Device** — the chassis (rail/frame/glass/screen geometry, square screen corners,
   two forms x six size steps), the shell (status strip, soft-key Recents/Home/Back bar, circular-
   tile home grid, route stack with back-stack semantics), corner-grip drag-to-resize (`ResizeGrip`
@@ -23,9 +26,14 @@ with a working home screen, one real applet, and soft-key navigation:
   while hovering or dragging), and the Dalamud Window that hosts it.
 - **Linkpearl.Platform.Ffxiv** — `FfxivGameSession`, the first platform adapter, proving applets
   can depend on `IGameSession` without ever touching `Dalamud.*` types.
-- **Linkpearl.Applets.Life** — `ClockApplet` + its module, proving the applet pipeline end to end:
-  a module registers into DI, the host discovers it, the router opens it, it draws through the
-  same `AppletFrame` contract every future applet will use.
+- **Linkpearl.Applets.Core** — `SettingsApplet`: a real 24-hour clock toggle wired to
+  `DisplayPreferences` (which the shell's status-strip clock actually reads), plus a version/build
+  info panel reading `HostEnvironment`. Pinned to the home screen (`RemovableFromHome = false`).
+- **Linkpearl.Applets.Life** — `ClockApplet` and `CalculatorApplet` (a complete four-function
+  calculator: `CalculatorState` is a standalone left-to-right operation state machine, no
+  expression parser, with sign toggle and percent). Between the three applets, the pipeline is
+  now proven with more than one shape of app: a passive display, a settings surface with a
+  stateful control, and an interactive input grid.
 - **Linkpearl.Host** — the composition root (`HandsetHost`) and `Plugin.cs`. This is the only
   project that knows every concrete type; everything below it only sees interfaces.
 

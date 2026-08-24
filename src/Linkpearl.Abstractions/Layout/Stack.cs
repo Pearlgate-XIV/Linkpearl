@@ -1,6 +1,6 @@
 using Linkpearl.Geometry;
 
-namespace Linkpearl.Canvas.Layout;
+namespace Linkpearl.Layout;
 
 public enum StackAxis : byte
 {

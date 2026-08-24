@@ -1,3 +1,4 @@
+using Linkpearl.Applets.Core;
 using Linkpearl.Applets.Life;
 using Linkpearl.Modules;
 
@@ -10,6 +11,8 @@ public static class ModuleDiscovery
 {
     public static IReadOnlyList<ILinkpearlModule> Discover() => new ILinkpearlModule[]
     {
+        new SettingsModule(),
         new ClockModule(),
+        new CalculatorModule(),
     };
 }

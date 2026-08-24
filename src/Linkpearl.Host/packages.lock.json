@@ -34,6 +34,13 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.0, )"
         }
       },
+      "linkpearl.applets.core": {
+        "type": "Project",
+        "dependencies": {
+          "Linkpearl.Abstractions": "[0.1.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.0, )"
+        }
+      },
       "linkpearl.applets.life": {
         "type": "Project",
         "dependencies": {

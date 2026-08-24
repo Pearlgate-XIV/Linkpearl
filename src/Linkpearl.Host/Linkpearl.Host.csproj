@@ -29,6 +29,7 @@
     <ProjectReference Include="..\Linkpearl.Canvas\Linkpearl.Canvas.csproj" />
     <ProjectReference Include="..\Linkpearl.Device\Linkpearl.Device.csproj" />
     <ProjectReference Include="..\Linkpearl.Platform.Ffxiv\Linkpearl.Platform.Ffxiv.csproj" />
+    <ProjectReference Include="..\Linkpearl.Applets.Core\Linkpearl.Applets.Core.csproj" />
     <ProjectReference Include="..\Linkpearl.Applets.Life\Linkpearl.Applets.Life.csproj" />
   </ItemGroup>
 

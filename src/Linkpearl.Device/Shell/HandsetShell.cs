@@ -1,6 +1,7 @@
 using Linkpearl.Applets;
 using Linkpearl.Device.Time;
 using Linkpearl.Geometry;
+using Linkpearl.Preferences;
 using Linkpearl.Time;
 
 namespace Linkpearl.Device.Shell;
@@ -13,21 +14,21 @@ public sealed class HandsetShell
     private readonly RouteStack router;
     private readonly HomeSurface home;
     private readonly IClock clock;
+    private readonly DisplayPreferences preferences;
 
-    public HandsetShell(RouteStack router, HomeSurface home, IClock clock)
+    public HandsetShell(RouteStack router, HomeSurface home, IClock clock, DisplayPreferences preferences)
     {
         this.router = router;
         this.home = home;
         this.clock = clock;
+        this.preferences = preferences;
     }
-
-    public bool Use24HourClock { get; set; }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
         router.Advance(outerFrame.DeltaSeconds, 0.28f);
 
-        StatusStrip.Draw(outerFrame, screen, HandsetClockText.Format(clock, Use24HourClock));
+        StatusStrip.Draw(outerFrame, screen, HandsetClockText.Format(clock, preferences.Use24HourClock));
         var content = screen.Inset(new Edges(0f, StatusStrip.Height(outerFrame.Scale), 0f,
             SoftKeyBar.Height(outerFrame.Scale)));
 

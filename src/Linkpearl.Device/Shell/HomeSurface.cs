@@ -1,7 +1,7 @@
 using System.Globalization;
 using Linkpearl.Applets;
-using Linkpearl.Canvas.Layout;
 using Linkpearl.Geometry;
+using Linkpearl.Layout;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Device.Shell;

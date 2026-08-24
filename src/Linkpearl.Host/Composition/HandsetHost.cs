@@ -12,6 +12,7 @@ using Linkpearl.Host.Time;
 using Linkpearl.Modules;
 using Linkpearl.Platform;
 using Linkpearl.Platform.Ffxiv;
+using Linkpearl.Preferences;
 using Linkpearl.Theming;
 using Linkpearl.Time;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,9 @@ public sealed class HandsetHost : IDisposable
         session = new FfxivGameSession(clientState, objectTable, condition, dutyState);
         services.AddSingleton<IGameSession>(session);
 
+        var preferences = new DisplayPreferences();
+        services.AddSingleton(preferences);
+
         foreach (var module in ModuleDiscovery.Discover())
         {
             module.Configure(services, context);
@@ -68,7 +72,7 @@ public sealed class HandsetHost : IDisposable
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
         var router = new RouteStack(appletById);
         var home = new HomeSurface(apps);
-        var shell = new HandsetShell(router, home, clock);
+        var shell = new HandsetShell(router, home, clock, preferences);
 
         window = new HandsetWindow(shell, fonts, theme, router);
         windowSystem.AddWindow(window);
