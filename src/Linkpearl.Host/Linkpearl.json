@@ -1,0 +1,15 @@
+{
+  "Author": "Alpha Channel",
+  "Name": "Linkpearl",
+  "InternalName": "Linkpearl",
+  "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
+  "Punchline": "A pearl in your pocket.",
+  "RepoUrl": "https://github.com/Pearlgate-XIV/Linkpearl",
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 15,
+  "LoadRequiredState": 0,
+  "LoadSync": false,
+  "CanUnloadAsync": false,
+  "LoadPriority": 0,
+  "AcceptsFeedback": true
+}

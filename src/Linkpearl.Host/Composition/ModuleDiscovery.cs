@@ -1,0 +1,15 @@
+using Linkpearl.Applets.Life;
+using Linkpearl.Modules;
+
+namespace Linkpearl.Host.Composition;
+
+// Curated for the foundation phase: one entry per applet family as each family lands. A
+// reflection-based catalog (scan loaded assemblies for ILinkpearlModule) is follow-up work once
+// there are enough modules that a hand-written list becomes the wrong kind of friction.
+public static class ModuleDiscovery
+{
+    public static IReadOnlyList<ILinkpearlModule> Discover() => new ILinkpearlModule[]
+    {
+        new ClockModule(),
+    };
+}

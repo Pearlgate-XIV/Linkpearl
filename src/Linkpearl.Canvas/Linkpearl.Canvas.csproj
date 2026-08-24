@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <PropertyGroup>
+    <RootNamespace>Linkpearl.Canvas</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Fonts\*.ttf;Fonts\Inter-OFL.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Linkpearl.Abstractions\Linkpearl.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

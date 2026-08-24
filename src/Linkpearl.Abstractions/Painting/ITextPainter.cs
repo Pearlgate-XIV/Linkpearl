@@ -1,0 +1,59 @@
+using Linkpearl.Geometry;
+
+namespace Linkpearl.Painting;
+
+public enum FontRole : byte
+{
+    Body = 0,
+    BodyStrong = 1,
+    Caption = 2,
+    CaptionStrong = 3,
+    Title = 4,
+    Display = 5,
+    Numeric = 6,
+    Monospace = 7,
+}
+
+public enum TextAlign : byte
+{
+    Left = 0,
+    Center = 1,
+    Right = 2,
+}
+
+public readonly struct TextStyle
+{
+    public readonly FontRole Role;
+    public readonly Vector4 Color;
+    public readonly TextAlign Align;
+    public readonly float LineSpacing;
+
+    public TextStyle(FontRole role, Vector4 color, TextAlign align = TextAlign.Left, float lineSpacing = 1f)
+    {
+        Role = role;
+        Color = color;
+        Align = align;
+        LineSpacing = lineSpacing;
+    }
+
+    public TextStyle With(Vector4 color) => new(Role, color, Align, LineSpacing);
+
+    public TextStyle With(TextAlign align) => new(Role, Color, align, LineSpacing);
+}
+
+public interface ITextPainter
+{
+    Vector2 Measure(ReadOnlySpan<char> text, FontRole role);
+
+    Vector2 MeasureWrapped(ReadOnlySpan<char> text, FontRole role, float wrapWidth);
+
+    float LineHeight(FontRole role);
+
+    void Draw(Vector2 origin, ReadOnlySpan<char> text, in TextStyle style);
+
+    void DrawIn(Rect area, ReadOnlySpan<char> text, in TextStyle style);
+
+    void DrawWrapped(Rect area, ReadOnlySpan<char> text, in TextStyle style);
+
+    void DrawEllipsized(Rect area, ReadOnlySpan<char> text, in TextStyle style);
+}

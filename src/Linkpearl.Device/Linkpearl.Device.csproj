@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <PropertyGroup>
+    <RootNamespace>Linkpearl.Device</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Linkpearl.Abstractions\Linkpearl.Abstractions.csproj" />
+    <ProjectReference Include="..\Linkpearl.Canvas\Linkpearl.Canvas.csproj" />
+  </ItemGroup>
+
+</Project>

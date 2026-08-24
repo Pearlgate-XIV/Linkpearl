@@ -1,0 +1,52 @@
+<Project>
+
+  <PropertyGroup Label="Identity">
+    <Version>0.1.0.0</Version>
+    <Authors>Alpha Channel</Authors>
+    <Company>Alpha Channel</Company>
+    <Product>Linkpearl</Product>
+    <Copyright>Copyright (c) Alpha Channel</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Pearlgate-XIV/Linkpearl</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language">
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Restore">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Determinism" Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'">
+    <DalamudLibPath>$(DALAMUD_HOME)/</DalamudLibPath>
+  </PropertyGroup>
+
+  <!-- Only Linkpearl.Host is an actual Dalamud plugin; every other project that pulls in
+       Dalamud.NET.Sdk does so only for ImGui/game bindings and must not run the packager. -->
+  <PropertyGroup>
+    <Use_DalamudPackager Condition="'$(MSBuildProjectName)' != 'Linkpearl.Host'">false</Use_DalamudPackager>
+  </PropertyGroup>
+
+  <ItemGroup Label="Shared usings">
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Numerics" />
+  </ItemGroup>
+
+</Project>
