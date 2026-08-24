@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Linkpearl.Abstractions\Linkpearl.Abstractions.csproj" />
     <ProjectReference Include="..\Linkpearl.Canvas\Linkpearl.Canvas.csproj" />
+    <ProjectReference Include="..\Linkpearl.Destinations\Linkpearl.Destinations.csproj" />
   </ItemGroup>
 
 </Project>

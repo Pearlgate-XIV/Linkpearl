@@ -54,11 +54,18 @@
           "Linkpearl.Abstractions": "[0.1.0, )"
         }
       },
+      "linkpearl.destinations": {
+        "type": "Project",
+        "dependencies": {
+          "Linkpearl.Abstractions": "[0.1.0, )"
+        }
+      },
       "linkpearl.device": {
         "type": "Project",
         "dependencies": {
           "Linkpearl.Abstractions": "[0.1.0, )",
-          "Linkpearl.Canvas": "[0.1.0, )"
+          "Linkpearl.Canvas": "[0.1.0, )",
+          "Linkpearl.Destinations": "[0.1.0, )"
         }
       },
       "linkpearl.platform.ffxiv": {

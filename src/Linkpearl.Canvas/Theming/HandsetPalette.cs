@@ -17,6 +17,7 @@ public static class HandsetPalette
         InkFaint = new Vector4(0.965f, 0.969f, 0.984f, 0.34f),
         Accent = new Vector4(0.514f, 0.400f, 0.973f, 1.00f),
         AccentInk = new Vector4(1.00f, 1.00f, 1.00f, 1.00f),
+        WarmAccent = new Vector4(0.851f, 0.737f, 0.518f, 1.00f),
         Separator = new Vector4(1.00f, 1.00f, 1.00f, 0.08f),
         Positive = new Vector4(0.298f, 0.784f, 0.529f, 1.00f),
         Caution = new Vector4(0.945f, 0.706f, 0.259f, 1.00f),

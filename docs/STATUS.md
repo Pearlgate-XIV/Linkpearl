@@ -5,38 +5,58 @@ work for the full functional inventory (everything Aetherphone provides, everyth
 Linkpearl provides, dependencies, and the target architecture). This file tracks what has
 actually landed against that plan.
 
-## What's built (Phase 0-1, partial Phase 2-3)
+## Product direction pivot (superseding the icon-launcher model below)
+
+The original phase plan (and the "Home = icon grid of installable apps" section further down)
+assumed a many-small-apps model, matching both Aetherphone and the old Linkpearl. That model has
+been explicitly superseded by a UI concept reference: **four fixed destinations — Home, Social,
+Explore, You — plus a central Linkpearl/crystal for Universal Search**, under the philosophy
+"fewer places to look, more things connected together." Clock/Calculator/Settings still exist as
+`IApplet` modules and still compile, but nothing in the primary UI opens them any more; they're
+inert until something (most likely "You" or search) is built to reach them. `HomeSurface` (icon
+grid) and `SoftKeyBar` (Android-style Recents/Home/Back) are no longer wired into `HandsetShell`
+for the same reason — the destination-based nav directly replaces both. Neither class was
+deleted: `RouteStack`/`IApplet`/`HomeSurface`/`SoftKeyBar` remain compiled and available for a
+destination's own future drill-down navigation (e.g. Explore pushing a venue-detail screen).
+
+## What's built
 
 A compiling, layered solution that loads as a real Dalamud plugin and renders a themed handset
-with a working home screen, three real applets, and soft-key navigation:
+with the new four-destination UI, a working Home dashboard, a functional Universal Search
+overlay, and a placeholder shell each for Social/Explore/You:
 
-- **Linkpearl.Abstractions** — every contract: geometry, painting, text, input, theming, modules,
-  applets, routing, persistence, platform (game session, chat, world services), plus `DisplayPreferences`
-  (in-memory shared settings, no persistence layer yet) and the `Layout` primitives (`Stack`,
-  `TileGrid`) — moved here from Canvas since they're pure `Rect` math with zero Dalamud
-  dependency, so any applet can lay out a grid without pulling in ImGui. Zero Dalamud dependency,
-  zero mutable statics.
-- **Linkpearl.Canvas** — the ImGui-backed implementation of the painting/text/input/theming
-  contracts: paint surface, font service (own size ladder, Inter faces as a placeholder type
-  system), text painter, input probe, the default palette/theme.
-- **Linkpearl.Device** — the chassis (rail/frame/glass/screen geometry, square screen corners,
-  two forms x six size steps), the shell (status strip, soft-key Recents/Home/Back bar, circular-
-  tile home grid, route stack with back-stack semantics), corner-grip drag-to-resize (`ResizeGrip`
-  — distance-ratio scaling, snaps to the nearest size step on release, cursor + grip-hint feedback
-  while hovering or dragging), a top-center notch cutout (`NotchDetail`, painted overlay rather
-  than true clipping since ImGui clip regions are rect-only), a functional right-edge side button
-  (`SideButton` — power/lock, closes the handset when clicked) sized and positioned from a design
-  reference, and the Dalamud Window that hosts it.
+- **Linkpearl.Abstractions** — every contract: geometry, painting, text, input (including the
+  new `ITextField` for real keyboard text entry — the one widget needing OS-level focus/IME
+  rather than custom hit-testing over draw-list paint), theming (`Palette` gained `WarmAccent`
+  for the restrained gold/ivory detail the new visual direction calls for), modules, applets,
+  destinations (`IDestinationScreen`, `DestinationTab`), routing, persistence, platform, plus
+  `DisplayPreferences` and the `Layout`/`Cards` primitives (`Stack`, `TileGrid`, `CardChrome` —
+  the shared "smoked aetherglass" card background + hairline border every destination draws on).
+  All pure `Rect`/data math, zero Dalamud dependency, zero mutable statics.
+- **Linkpearl.Canvas** — the ImGui-backed implementation: paint surface, font service, text
+  painter, input probe, `DalamudTextField` (the new real text-entry widget, via
+  `ImGui.InputTextWithHint`), the default palette/theme.
+- **Linkpearl.Destinations** (new project, framework-agnostic) — the four fixed destinations:
+  `HomeDestination` (the modular dashboard: header, Up Next hero card, Messages/Party/Retainer/
+  Friends/Market/Event cards, all realistic placeholder data), `SocialDestination` (a demo feed
+  of posts), `ExploreDestination` (a demo feed of venue/activity/event cards), `YouDestination`
+  (profile + stat rows) — the latter three deliberately minimal per the design brief. Also
+  `DemoData` (internal placeholder content) and `UniversalSearch` (the public, stable search
+  facade other layers call — swapping in a live backend later only touches this one file).
+- **Linkpearl.Device** — the chassis (unchanged: rail/frame/glass/screen geometry, square screen
+  corners, six size steps, corner-grip resize, notch, power/lock side button); the **new**
+  primary shell pieces: `DestinationBar` (the permanent four-tab bottom nav plus the central
+  glowing crystal, replacing the old icon grid and Android-style soft keys), `QuickBar`
+  (contextual strip for urgent items, occupies zero height when empty), `UniversalSearchOverlay`
+  (the crystal's tap target: a real search box over `UniversalSearch`, recent searches shown
+  when empty, tap-outside-panel or the × to close); `HandsetShell` rewritten to orchestrate all
+  of this. The old `HomeSurface`/`SoftKeyBar`/`RouteStack` still compile, just aren't called from
+  here any more (see the pivot note above).
 - **Linkpearl.Platform.Ffxiv** — `FfxivGameSession`, the first platform adapter, proving applets
   can depend on `IGameSession` without ever touching `Dalamud.*` types.
-- **Linkpearl.Applets.Core** — `SettingsApplet`: a real 24-hour clock toggle wired to
-  `DisplayPreferences` (which the shell's status-strip clock actually reads), plus a version/build
-  info panel reading `HostEnvironment`. Pinned to the home screen (`RemovableFromHome = false`).
-- **Linkpearl.Applets.Life** — `ClockApplet` and `CalculatorApplet` (a complete four-function
-  calculator: `CalculatorState` is a standalone left-to-right operation state machine, no
-  expression parser, with sign toggle and percent). Between the three applets, the pipeline is
-  now proven with more than one shape of app: a passive display, a settings surface with a
-  stateful control, and an interactive input grid.
+- **Linkpearl.Applets.Core** / **Linkpearl.Applets.Life** — `SettingsApplet`, `ClockApplet`,
+  `CalculatorApplet` still exist and still compile (proving the applet pipeline works), but are
+  currently unreachable from the UI — see the pivot note.
 - **Linkpearl.Host** — the composition root (`HandsetHost`) and `Plugin.cs`. This is the only
   project that knows every concrete type; everything below it only sees interfaces.
 
@@ -47,21 +67,33 @@ FFXIV (no game client available in this environment) — that check is still owe
 
 ## What's deliberately not built yet
 
-Everything else in the analysis report's phase list: `Linkpearl.Data` (sectioned settings +
-migrations), `Linkpearl.Net` (Pearlgate client, realtime, crypto), `Linkpearl.Audio`,
-`Linkpearl.Cinema`, the remaining applet families (System, World, Media, Social, Arcade), the
+Real functionality behind Social/Explore/You (feeds, messaging, venues, profiles — everything
+the design brief describes eventually living there), a live search backend (Universal Search
+runs entirely against `DemoData`), `Linkpearl.Data` (sectioned settings + migrations),
+`Linkpearl.Net` (Pearlgate client, realtime, crypto), `Linkpearl.Audio`, `Linkpearl.Cinema`, the
 four apps to regain from Aetherphone (Casino, Coin, Housing, Hunts), localization catalogs, and
 the platform-fake for headless testing. `ModuleDiscovery` is a hand-written list by design until
-there are enough modules for reflection-based discovery to earn its cost.
+there are enough modules for reflection-based discovery to earn its cost. A path back to
+Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist yet either.
 
 ## Known gaps to close before this is more than a proof
 
-- Home screen is single-page (no paging/folders yet).
+- Home dashboard cards are hand-placed with fixed heights sized to their exact line count (see
+  the comment in `HomeDestination.Compose`) — this is fragile by construction: a card that grows
+  a line without its allocated height growing to match will silently overflow past its own
+  background into whatever is next, since nothing clips or auto-sizes a card to its content yet.
+  Verified numerically at every size step for the current content, not verified visually in-game.
+- The Quick Bar's "collapses when empty" behavior is coded but never actually exercised: its one
+  demo item is a fixed array, so it always renders and the empty state has never been seen.
+- Universal Search has no keyboard-driven result navigation (arrow keys, Enter to open) and
+  results aren't clickable yet — typing filters the list, nothing else.
 - Resize-drag works within a session but doesn't persist; `HandsetWindow.SetForm` (Pocket/Slate)
   still has no caller — only the six size steps are reachable, not the form switch.
 - Chassis renders one finish (Crystal); the Etched art-panel finish is defined in
   `ChassisMetrics` but nothing selects it yet.
-- No settings persistence at all: window size/form reset every launch.
+- No settings persistence at all: window size/form/search-query reset every launch.
+- No wallpaper/character-art system exists — Home's header sits on the flat theme background,
+  not the illustrated backdrop the design reference shows behind the dashboard.
 - `PhoneGlow`, minimized device faces, recents overlay, and control center are not yet designed
   into the new architecture — the analysis report names them as Linkpearl-original systems to
   preserve, but no Device.* module implements them yet.

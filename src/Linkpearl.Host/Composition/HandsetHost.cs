@@ -3,8 +3,14 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Linkpearl.Applets;
+using Linkpearl.Canvas.Input;
 using Linkpearl.Canvas.Text;
 using Linkpearl.Canvas.Theming;
+using Linkpearl.Destinations;
+using Linkpearl.Destinations.Explore;
+using Linkpearl.Destinations.Home;
+using Linkpearl.Destinations.Social;
+using Linkpearl.Destinations.You;
 using Linkpearl.Device.Shell;
 using Linkpearl.Device.Windows;
 using Linkpearl.Diagnostics;
@@ -68,11 +74,22 @@ public sealed class HandsetHost : IDisposable
 
         fonts = new HandsetFontService(pluginInterface);
         var theme = new HandsetTheme(1f);
+
+        // Clock/Calculator/Settings still exist as IApplet modules, but nothing routes to them
+        // through the new destination-based UI yet (see docs/STATUS.md) — Settings-equivalent
+        // functionality belongs inside "You" per the design spec, not as a home-screen icon.
+        // RouteStack stays wired so that plumbing is exercised and ready for a destination's own
+        // future drill-down navigation, not because anything opens these apps today.
         var apps = provider.GetServices<IApplet>().ToList();
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
         var router = new RouteStack(appletById);
-        var home = new HomeSurface(apps);
-        var shell = new HandsetShell(router, home, clock, preferences);
+
+        IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
+        {
+            new HomeDestination(clock), new SocialDestination(), new ExploreDestination(), new YouDestination(),
+        };
+        var textField = new DalamudTextField();
+        var shell = new HandsetShell(destinations, clock, preferences, textField);
 
         window = new HandsetWindow(shell, fonts, theme, router);
         windowSystem.AddWindow(window);

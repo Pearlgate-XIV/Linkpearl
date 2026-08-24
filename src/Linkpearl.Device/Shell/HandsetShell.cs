@@ -1,59 +1,89 @@
 using Linkpearl.Applets;
+using Linkpearl.Destinations;
 using Linkpearl.Device.Time;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Preferences;
 using Linkpearl.Time;
 
 namespace Linkpearl.Device.Shell;
 
-// Composes the pieces that make a Linkpearl handset recognisable: status strip, home grid or
-// the current applet, and soft-key nav. Chassis geometry is drawn by the window host; this type
-// only fills the screen rect it is handed.
+// Composes the pieces that make a Linkpearl handset recognisable: status strip, an optional
+// quick bar, the current destination, and the destination bar with its central crystal.
+// Chassis geometry is drawn by the window host; this type only fills the screen rect it is
+// handed. RouteStack/HomeSurface/SoftKeyBar from the earlier icon-launcher model are not wired
+// in here any more (see docs/STATUS.md) but remain available for a destination's own future
+// drill-down navigation (e.g. Explore opening a venue detail).
 public sealed class HandsetShell
 {
-    private readonly RouteStack router;
-    private readonly HomeSurface home;
+    private static readonly QuickBarItem[] DemoQuickItems = { new("⚔", "Duty Ready") };
+
+    private readonly Dictionary<DestinationTab, IDestinationScreen> destinationsByTab;
+    private readonly IReadOnlyList<IDestinationScreen> destinationsInOrder;
     private readonly IClock clock;
     private readonly DisplayPreferences preferences;
+    private readonly ITextField textField;
+    private readonly UniversalSearchOverlay search = new();
+    private DestinationTab currentTab = DestinationTab.Home;
 
-    public HandsetShell(RouteStack router, HomeSurface home, IClock clock, DisplayPreferences preferences)
+    public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, DisplayPreferences preferences,
+        ITextField textField)
     {
-        this.router = router;
-        this.home = home;
+        destinationsInOrder = destinations;
         this.clock = clock;
         this.preferences = preferences;
+        this.textField = textField;
+
+        var byTab = new Dictionary<DestinationTab, IDestinationScreen>();
+        foreach (var destination in destinations)
+        {
+            byTab[destination.Tab] = destination;
+        }
+
+        destinationsByTab = byTab;
     }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
-        router.Advance(outerFrame.DeltaSeconds, 0.28f);
-
+        var scale = outerFrame.Scale;
+        var statusHeight = StatusStrip.Height(scale);
         StatusStrip.Draw(outerFrame, screen, HandsetClockText.Format(clock, preferences.Use24HourClock));
-        var content = screen.Inset(new Edges(0f, StatusStrip.Height(outerFrame.Scale), 0f,
-            SoftKeyBar.Height(outerFrame.Scale)));
 
+        var quickBarHeight = QuickBar.Height(scale, DemoQuickItems.Length);
+        if (quickBarHeight > 0f)
+        {
+            var quickBarArea = new Rect(new Vector2(screen.Min.X, screen.Min.Y + statusHeight),
+                new Vector2(screen.Max.X, screen.Min.Y + statusHeight + quickBarHeight))
+                .Inset(new Edges(outerFrame.Units(12f), outerFrame.Units(4f)));
+            QuickBar.Draw(outerFrame.Paint, outerFrame.Text, outerFrame.Theme, quickBarArea, scale, DemoQuickItems);
+        }
+
+        var content = screen.Inset(new Edges(0f, statusHeight + quickBarHeight, 0f, DestinationBar.Height(scale)));
         var frame = outerFrame.WithContent(content);
-        if (router.Current is { } current)
+        if (destinationsByTab.TryGetValue(currentTab, out var current))
         {
             current.Compose(frame);
         }
-        else
+
+        var barResult = DestinationBar.Draw(outerFrame.Paint, outerFrame.Text, outerFrame.Input, outerFrame.Theme,
+            screen, scale, destinationsInOrder, currentTab);
+
+        // The overlay's scrim only covers the bar visually; its clicks still land underneath
+        // unless explicitly ignored here, so a tap that closes the overlay can't also switch
+        // tabs or reopen it in the same frame.
+        if (!search.IsOpen)
         {
-            home.Draw(frame, content);
+            if (barResult.Selected is { } selected)
+            {
+                currentTab = selected;
+            }
+
+            if (barResult.CrystalTapped)
+            {
+                search.Open();
+            }
         }
 
-        var key = SoftKeyBar.Draw(outerFrame, screen, router.CurrentAppletId is not null);
-        switch (key)
-        {
-            case SoftKey.Home:
-                router.Home();
-                break;
-            case SoftKey.Back:
-                router.Back();
-                break;
-            case SoftKey.Recents:
-                router.Recents();
-                break;
-        }
+        search.Draw(outerFrame.Paint, outerFrame.Text, textField, outerFrame.Input, outerFrame.Theme, screen, scale);
     }
 }

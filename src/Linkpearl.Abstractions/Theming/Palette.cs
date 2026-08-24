@@ -20,6 +20,11 @@ public readonly struct Palette
 
     public required Vector4 AccentInk { get; init; }
 
+    // A restrained warm gold/ivory used sparingly for small details (the Linkpearl crystal,
+    // rare highlights) — never the dominant palette. See the hardware/software design split in
+    // docs/STATUS.md: the case can be ornate gold, the software stays calm aetherglass.
+    public required Vector4 WarmAccent { get; init; }
+
     public required Vector4 Separator { get; init; }
 
     public required Vector4 Positive { get; init; }
