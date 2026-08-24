@@ -22,6 +22,7 @@ public sealed class HandsetWindow : Window
     private readonly ITheme theme;
     private readonly RouteStack router;
     private readonly ResizeGrip resizeGrip = new();
+    private readonly SideButton powerButton = new(SideEdge.Right);
     private HandsetForm form = HandsetForm.Pocket;
     private float scaleStep = HandsetSizeCatalog.DefaultStep;
 
@@ -82,6 +83,16 @@ public sealed class HandsetWindow : Window
         var frame = new AppletFrame(chassis.Screen, paint, text, input, theme, router, scale, ImGui.GetIO().DeltaTime);
         shell.Draw(frame, chassis.Screen);
         paint.PopClip();
+
+        var frameColor = new Vector4(0f, 0f, 0f, 1f);
+        NotchDetail.Draw(paint, chassis.Screen, scale, frameColor, theme.Palette.SurfaceSunken);
+
+        var railDepth = MathF.Max(windowRect.Max.X - chassis.Glass.Max.X, 1f);
+        powerButton.Draw(paint, windowRect, railDepth, scale, theme.Palette.InkFaint);
+        if (powerButton.Update(windowRect, railDepth, scale, input))
+        {
+            IsOpen = false;
+        }
 
         var hoveredCorner = resizeGrip.Update(windowRect, input, scale, ref scaleStep);
         if (hoveredCorner != ResizeCorner.None)

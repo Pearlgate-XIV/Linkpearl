@@ -23,7 +23,10 @@ with a working home screen, three real applets, and soft-key navigation:
   two forms x six size steps), the shell (status strip, soft-key Recents/Home/Back bar, circular-
   tile home grid, route stack with back-stack semantics), corner-grip drag-to-resize (`ResizeGrip`
   — distance-ratio scaling, snaps to the nearest size step on release, cursor + grip-hint feedback
-  while hovering or dragging), and the Dalamud Window that hosts it.
+  while hovering or dragging), a top-center notch cutout (`NotchDetail`, painted overlay rather
+  than true clipping since ImGui clip regions are rect-only), a functional right-edge side button
+  (`SideButton` — power/lock, closes the handset when clicked) sized and positioned from a design
+  reference, and the Dalamud Window that hosts it.
 - **Linkpearl.Platform.Ffxiv** — `FfxivGameSession`, the first platform adapter, proving applets
   can depend on `IGameSession` without ever touching `Dalamud.*` types.
 - **Linkpearl.Applets.Core** — `SettingsApplet`: a real 24-hour clock toggle wired to
@@ -62,3 +65,9 @@ there are enough modules for reflection-based discovery to earn its cost.
 - `PhoneGlow`, minimized device faces, recents overlay, and control center are not yet designed
   into the new architecture — the analysis report names them as Linkpearl-original systems to
   preserve, but no Device.* module implements them yet.
+- Chassis materials are still flat AQUOS-style color, not the ornate gold/engraved look from the
+  latest hardware design reference — by explicit direction, only shape/proportions (notch, one
+  side button) were taken from that reference for now; matching the actual finish needs real
+  texture assets (a front bezel image + back-plate image), not hand-drawn vector shapes.
+- Only one side button exists (right edge, power/lock). The reference shows more chassis detail
+  (corner rivets, a back-plate design) not yet represented at all.

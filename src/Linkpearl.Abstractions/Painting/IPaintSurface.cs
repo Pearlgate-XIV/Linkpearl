@@ -11,6 +11,8 @@ public enum Corner : byte
     BottomRight = 8,
     Top = TopLeft | TopRight,
     Bottom = BottomLeft | BottomRight,
+    Left = TopLeft | BottomLeft,
+    Right = TopRight | BottomRight,
     All = TopLeft | TopRight | BottomLeft | BottomRight,
 }
 
