@@ -8,11 +8,14 @@ namespace Linkpearl.Destinations.Explore;
 
 // "What can I do?" — one feed instead of separate Venue/Activity/Event apps. The kind label on
 // each card (VENUE/ACTIVITY/EVENT) is what tells the player what they're looking at, not which
-// app they're in. Section tabs (For You/Places/Activities/Events/Groups) are placeholder labels;
-// only the combined "For You" feed is populated in this pass.
+// app they're in. Section tabs genuinely switch; only "For You" has real content behind it, the
+// rest show an honest "not built yet" placeholder rather than a tab that looks clickable and does
+// nothing (see the design brief's own "impossible widgets" warning).
 public sealed class ExploreDestination : IDestinationScreen
 {
     private static readonly string[] SectionTabs = { "For You", "Places", "Activities", "Events", "Groups" };
+
+    private int selectedSection;
 
     public DestinationTab Tab => DestinationTab.Explore;
 
@@ -28,6 +31,12 @@ public sealed class ExploreDestination : IDestinationScreen
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore", new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
         DrawSectionTabs(frame, stack.Take(frame.Units(28f)));
 
+        if (selectedSection != 0)
+        {
+            DrawUnbuiltSection(frame, stack.TakeRemaining(), SectionTabs[selectedSection]);
+            return;
+        }
+
         var feed = DemoData.ExploreFeed;
         for (var index = 0; index < feed.Count; index++)
         {
@@ -37,17 +46,28 @@ public sealed class ExploreDestination : IDestinationScreen
         }
     }
 
-    private static void DrawSectionTabs(in AppletFrame frame, Rect row)
+    private void DrawSectionTabs(in AppletFrame frame, Rect row)
     {
         var cellWidth = row.Width / SectionTabs.Length;
         for (var index = 0; index < SectionTabs.Length; index++)
         {
             var cell = row.Translate(new Vector2(index * cellWidth, 0f)).WithWidth(cellWidth);
-            var isActive = index == 0;
+            var isActive = index == selectedSection;
             frame.Text.DrawEllipsized(cell, SectionTabs[index],
                 new TextStyle(FontRole.Caption, isActive ? frame.Theme.Palette.Accent : frame.Theme.Palette.InkFaint,
                     TextAlign.Center));
+
+            if (frame.Input.ConsumeClick(cell))
+            {
+                selectedSection = index;
+            }
         }
+    }
+
+    private static void DrawUnbuiltSection(in AppletFrame frame, Rect area, string sectionName)
+    {
+        frame.Text.DrawIn(area.TopSlice(frame.Units(60f)), $"{sectionName} isn't built yet",
+            new TextStyle(FontRole.Body, frame.Theme.Palette.InkMuted, TextAlign.Center));
     }
 
     private static void DrawCard(in AppletFrame frame, Rect inset, DemoData.ExploreCard card)

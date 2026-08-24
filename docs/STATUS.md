@@ -38,11 +38,13 @@ overlay, and a placeholder shell each for Social/Explore/You:
   `ImGui.InputTextWithHint`), the default palette/theme.
 - **Linkpearl.Destinations** (new project, framework-agnostic) — the four fixed destinations:
   `HomeDestination` (the modular dashboard: header, Up Next hero card, Messages/Party/Retainer/
-  Friends/Market/Event cards, all realistic placeholder data), `SocialDestination` (a demo feed
-  of posts), `ExploreDestination` (a demo feed of venue/activity/event cards), `YouDestination`
-  (profile + stat rows) — the latter three deliberately minimal per the design brief. Also
-  `DemoData` (internal placeholder content) and `UniversalSearch` (the public, stable search
-  facade other layers call — swapping in a live backend later only touches this one file).
+  Friends/Market/Event cards, all realistic placeholder data), `SocialDestination` and
+  `ExploreDestination` (each a demo feed under a genuinely clickable section-tab row — tapping a
+  tab switches to it; only the first tab in each has real content, the rest show an honest "not
+  built yet" placeholder rather than a tab that looks interactive and silently does nothing),
+  `YouDestination` (profile + stat rows) — the latter three deliberately minimal per the design
+  brief. Also `DemoData` (internal placeholder content) and `UniversalSearch` (the public, stable
+  search facade other layers call — swapping in a live backend later only touches this one file).
 - **Linkpearl.Device** — the chassis (unchanged: rail/frame/glass/screen geometry, square screen
   corners, six size steps, corner-grip resize, notch, power/lock side button); the **new**
   primary shell pieces: `DestinationBar` (the permanent four-tab bottom nav plus the central
@@ -83,6 +85,12 @@ Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist y
   a line without its allocated height growing to match will silently overflow past its own
   background into whatever is next, since nothing clips or auto-sizes a card to its content yet.
   Verified numerically at every size step for the current content, not verified visually in-game.
+- No destination scrolls. Content currently fits within the visible screen at every size step
+  (verified by hand), but there is no scroll fallback for when it doesn't — Social/Explore's
+  feeds will hit this first as more demo cards get added. Deliberately not built yet rather than
+  guessed at: a correct version needs each destination to report how tall its content actually
+  is (an interface change beyond `IDestinationScreen.Compose`'s current shape), not a fixed
+  scroll budget layered on top of what's here now.
 - The Quick Bar now shows two demo items (with a badge) instead of one, but its "collapses when
   empty" behavior is still never actually exercised — the array is fixed, not driven by anything
   real, so the empty state has never been seen.
