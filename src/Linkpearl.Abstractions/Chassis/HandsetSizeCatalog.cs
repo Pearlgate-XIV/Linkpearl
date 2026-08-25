@@ -1,6 +1,5 @@
-using Linkpearl.Device.Chassis;
 
-namespace Linkpearl.Device.Chassis;
+namespace Linkpearl.Chassis;
 
 // Base unit is a 450x800 slate: portrait, close to a real communicator's proportions rather
 // than a tall modern phone. Six snap steps carry every layout unit through the same ratio.

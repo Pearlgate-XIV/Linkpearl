@@ -5,10 +5,12 @@ using Linkpearl.Applets;
 using Linkpearl.Canvas.Input;
 using Linkpearl.Canvas.Painting;
 using Linkpearl.Canvas.Text;
+using Linkpearl.Chassis;
 using Linkpearl.Device.Chassis;
 using Linkpearl.Device.Shell;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Windows;
@@ -21,12 +23,13 @@ public sealed class HandsetWindow : Window
     private readonly HandsetFontService fonts;
     private readonly ITheme theme;
     private readonly RouteStack router;
+    private readonly HandsetSizePreference sizePreference;
     private readonly ResizeGrip resizeGrip = new();
     private readonly SideButton powerButton = new(SideEdge.Right);
     private HandsetForm form = HandsetForm.Pocket;
-    private float scaleStep = HandsetSizeCatalog.DefaultStep;
 
-    public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router)
+    public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
+        HandsetSizePreference sizePreference)
         : base("##LinkpearlHandset",
             ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse |
             ImGuiWindowFlags.NoCollapse)
@@ -35,16 +38,15 @@ public sealed class HandsetWindow : Window
         this.fonts = fonts;
         this.theme = theme;
         this.router = router;
+        this.sizePreference = sizePreference;
         RespectCloseHotkey = false;
     }
 
     public void SetForm(HandsetForm nextForm) => form = nextForm;
 
-    public void SetScaleStep(float nextStep) => scaleStep = HandsetSizeCatalog.SnapToStep(nextStep);
-
     public override void PreDraw()
     {
-        var size = HandsetSizeCatalog.SizeFor(form, scaleStep) * ImGuiHelpers.GlobalScale;
+        var size = HandsetSizeCatalog.SizeFor(form, sizePreference.ScaleStep) * ImGuiHelpers.GlobalScale;
         SizeCondition = ImGuiCond.Always;
         Size = size;
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -65,7 +67,7 @@ public sealed class HandsetWindow : Window
             return;
         }
 
-        var scale = ImGuiHelpers.GlobalScale * scaleStep;
+        var scale = ImGuiHelpers.GlobalScale * sizePreference.ScaleStep;
         var windowRect = new Rect(ImGui.GetWindowPos(), ImGui.GetWindowPos() + ImGui.GetWindowSize());
         var chassisMetrics = ChassisMetrics.ForOuterWidth(HandsetFinish.Crystal, windowRect.Width);
         var chassis = ChassisGeometry.Outer(windowRect, chassisMetrics.RailWidth, chassisMetrics);
@@ -94,7 +96,9 @@ public sealed class HandsetWindow : Window
             IsOpen = false;
         }
 
-        var hoveredCorner = resizeGrip.Update(windowRect, input, scale, ref scaleStep);
+        var step = sizePreference.ScaleStep;
+        var hoveredCorner = resizeGrip.Update(windowRect, input, scale, ref step);
+        sizePreference.ScaleStep = step;
         if (hoveredCorner != ResizeCorner.None)
         {
             ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hoveredCorner)

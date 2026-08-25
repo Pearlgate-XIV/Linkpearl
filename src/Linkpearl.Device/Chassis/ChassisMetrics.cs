@@ -1,3 +1,4 @@
+using Linkpearl.Chassis;
 using Linkpearl.Geometry;
 
 namespace Linkpearl.Device.Chassis;

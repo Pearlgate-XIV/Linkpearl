@@ -1,17 +1,27 @@
 using Linkpearl.Applets;
 using Linkpearl.Cards;
+using Linkpearl.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 
 namespace Linkpearl.Destinations.You;
 
-// The player's personal space: profile identity plus a couple of stat rows. Everything the
-// spec lists (glamours, collections, favorites, phone settings) belongs here eventually, as
-// entries in this list rather than as separate destinations — only a small placeholder slice
-// is built in this pass.
+// The player's personal space: profile identity, a couple of stat rows, and phone display
+// settings — the one piece of "phone customization" the design brief lists for You that has
+// anywhere real to live yet. Everything else the spec lists (glamours, collections, favorites)
+// belongs here eventually, as entries in this list rather than as separate destinations — only a
+// small placeholder slice is built in this pass.
 public sealed class YouDestination : IDestinationScreen
 {
+    private readonly HandsetSizePreference sizePreference;
+
+    public YouDestination(HandsetSizePreference sizePreference)
+    {
+        this.sizePreference = sizePreference;
+    }
+
     public DestinationTab Tab => DestinationTab.You;
 
     public string Glyph => "🧑";
@@ -36,6 +46,12 @@ public sealed class YouDestination : IDestinationScreen
             DrawStat(frame, statRow.Inset(new Edges(frame.Units(12f), 0f)), stats[index]);
         }
 
+        stack.Take(frame.Units(10f));
+        CardChrome.DrawKicker(frame, stack.Take(frame.Units(16f)), "PHONE");
+        var sizeRow = stack.Take(frame.Units(44f));
+        CardChrome.Draw(frame, sizeRow);
+        DrawSizeStepper(frame, sizeRow.Inset(new Edges(frame.Units(12f), 0f)));
+
         return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
@@ -54,5 +70,34 @@ public sealed class YouDestination : IDestinationScreen
             new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
         frame.Text.DrawIn(row.RightSlice(frame.Units(140f)), stat.Value,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Right));
+    }
+
+    private void DrawSizeStepper(in AppletFrame frame, Rect row)
+    {
+        var index = HandsetSizeCatalog.StepIndex(sizePreference.ScaleStep);
+        frame.Text.DrawIn(row.LeftSlice(row.Width - frame.Units(110f)), "Phone size",
+            new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
+
+        var controls = row.RightSlice(frame.Units(110f));
+        var minus = controls.LeftSlice(frame.Units(28f));
+        var label = new Rect(new Vector2(minus.Max.X, controls.Min.Y),
+            new Vector2(controls.Max.X - frame.Units(28f), controls.Max.Y));
+        var plus = controls.RightSlice(frame.Units(28f));
+
+        DrawStepButton(frame, minus, "−", index - 1);
+        frame.Text.DrawIn(label, HandsetSizeCatalog.StepLabels[index],
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
+        DrawStepButton(frame, plus, "+", index + 1);
+    }
+
+    private void DrawStepButton(in AppletFrame frame, Rect area, string glyph, int targetIndex)
+    {
+        var enabled = targetIndex >= 0 && targetIndex < HandsetSizeCatalog.ScaleSteps.Count;
+        var ink = enabled ? frame.Theme.Palette.Ink : frame.Theme.Palette.InkFaint;
+        frame.Text.DrawIn(area, glyph, new TextStyle(FontRole.BodyStrong, ink, TextAlign.Center));
+        if (enabled && frame.Input.ConsumeClick(area))
+        {
+            sizePreference.ScaleStep = HandsetSizeCatalog.ScaleSteps[targetIndex];
+        }
     }
 }

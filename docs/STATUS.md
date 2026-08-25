@@ -100,8 +100,15 @@ Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist y
   `UniversalSearchOverlay.Draw`) but there's still no keyboard-driven navigation (arrow keys,
   Enter). Selecting a result can't open anything real yet since no destination content exists for
   a player/venue/activity screen, so it only closes the overlay rather than faking a navigation.
-- Resize-drag works within a session but doesn't persist; `HandsetWindow.SetForm` (Pocket/Slate)
-  still has no caller — only the six size steps are reachable, not the form switch.
+- **Done:** phone size now has two ways to change it that agree with each other. Corner-grip
+  drag (existing) and a new "Phone size" stepper in You's Display section both read/write the
+  same `HandsetSizePreference` (Abstractions), so dragging and the explicit control can never
+  disagree about the current size. Moved `HandsetSizeCatalog`/`HandsetForm` down from
+  `Linkpearl.Device` to `Linkpearl.Abstractions` (`Linkpearl.Chassis` namespace) to make this
+  possible — same "pure data, zero Dalamud dependency, shouldn't require the Device layer" reason
+  `Stack`/`TileGrid` moved earlier. Resize still doesn't persist across launches (no settings
+  layer exists yet), and `HandsetWindow.SetForm` (Pocket/Slate) still has no caller — only the six
+  size steps are reachable, not the form switch.
 - Chassis renders one finish (Crystal); the Etched art-panel finish is defined in
   `ChassisMetrics` but nothing selects it yet.
 - No settings persistence at all: window size/form/search-query reset every launch.

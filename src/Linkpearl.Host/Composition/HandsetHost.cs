@@ -6,6 +6,7 @@ using Linkpearl.Applets;
 using Linkpearl.Canvas.Input;
 using Linkpearl.Canvas.Text;
 using Linkpearl.Canvas.Theming;
+using Linkpearl.Chassis;
 using Linkpearl.Destinations;
 using Linkpearl.Destinations.Explore;
 using Linkpearl.Destinations.Home;
@@ -84,14 +85,16 @@ public sealed class HandsetHost : IDisposable
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
         var router = new RouteStack(appletById);
 
+        var sizePreference = new HandsetSizePreference(HandsetSizeCatalog.DefaultStep);
         IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
         {
-            new HomeDestination(clock), new SocialDestination(), new ExploreDestination(), new YouDestination(),
+            new HomeDestination(clock), new SocialDestination(), new ExploreDestination(),
+            new YouDestination(sizePreference),
         };
         var textField = new DalamudTextField();
         var shell = new HandsetShell(destinations, clock, preferences, textField);
 
-        window = new HandsetWindow(shell, fonts, theme, router);
+        window = new HandsetWindow(shell, fonts, theme, router, sizePreference);
         windowSystem.AddWindow(window);
 
         pluginInterface.UiBuilder.Draw += windowSystem.Draw;

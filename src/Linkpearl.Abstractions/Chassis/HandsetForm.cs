@@ -1,4 +1,4 @@
-namespace Linkpearl.Device.Chassis;
+namespace Linkpearl.Chassis;
 
 // A Linkpearl handset ships in two builds sharing one design language: Pocket is the everyday
 // 9:16 slate, Slate widens for two-column layouts while keeping the same vertical rhythm.

@@ -1,3 +1,4 @@
+using Linkpearl.Chassis;
 using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
