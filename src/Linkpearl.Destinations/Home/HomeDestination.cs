@@ -27,9 +27,10 @@ public sealed class HomeDestination : IDestinationScreen
 
     public string Label => "Home";
 
-    public void Compose(in AppletFrame frame)
+    public float Compose(in AppletFrame frame)
     {
-        var content = frame.Content.Inset(frame.Units(14f));
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
 
         // Row heights below are sized from RowAt's fixed 20-unit line pitch: an N-line card
@@ -60,6 +61,8 @@ public sealed class HomeDestination : IDestinationScreen
         DrawMarket(frame, marketCell.Inset(frame.Units(12f)));
         CardChrome.Draw(frame, eventCell);
         DrawEvent(frame, eventCell.Inset(frame.Units(12f)));
+
+        return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
     private static (Rect Left, Rect Right) SplitPair(Rect row, in AppletFrame frame)

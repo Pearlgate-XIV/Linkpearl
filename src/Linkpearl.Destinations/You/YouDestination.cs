@@ -18,9 +18,10 @@ public sealed class YouDestination : IDestinationScreen
 
     public string Label => "You";
 
-    public void Compose(in AppletFrame frame)
+    public float Compose(in AppletFrame frame)
     {
-        var content = frame.Content.Inset(frame.Units(14f));
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
 
         var profileRow = stack.Take(frame.Units(72f));
@@ -34,6 +35,8 @@ public sealed class YouDestination : IDestinationScreen
             CardChrome.Draw(frame, statRow);
             DrawStat(frame, statRow.Inset(new Edges(frame.Units(12f), 0f)), stats[index]);
         }
+
+        return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
     private static void DrawProfile(in AppletFrame frame, Rect inset)

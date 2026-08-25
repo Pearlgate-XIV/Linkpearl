@@ -23,9 +23,10 @@ public sealed class SocialDestination : IDestinationScreen
 
     public string Label => "Social";
 
-    public void Compose(in AppletFrame frame)
+    public float Compose(in AppletFrame frame)
     {
-        var content = frame.Content.Inset(frame.Units(14f));
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
 
         DrawSectionHeader(frame, stack.Take(frame.Units(30f)), "Social");
@@ -34,7 +35,7 @@ public sealed class SocialDestination : IDestinationScreen
         if (selectedSection != 0)
         {
             DrawUnbuiltSection(frame, stack.TakeRemaining(), SectionTabs[selectedSection]);
-            return;
+            return content.Height + inset * 2f;
         }
 
         var feed = DemoData.Feed;
@@ -44,6 +45,8 @@ public sealed class SocialDestination : IDestinationScreen
             CardChrome.Draw(frame, postRow, feed[index].IsEventShare ? 2f : 1f);
             DrawPost(frame, postRow.Inset(frame.Units(12f)), feed[index]);
         }
+
+        return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
     private static void DrawSectionHeader(in AppletFrame frame, Rect row, string title) =>

@@ -22,5 +22,10 @@ public interface IDestinationScreen
 
     string Label { get; }
 
-    void Compose(in AppletFrame frame);
+    // Returns the total content height drawn, in the same (already display-scale-adjusted)
+    // units as frame.Content itself — not necessarily equal to frame.Content.Height, since a
+    // destination is free to draw more than fits and let the shell scroll to it. Every current
+    // implementation gets this for free from how far a Stack's Remaining shrank, not from any
+    // extra bookkeeping.
+    float Compose(in AppletFrame frame);
 }

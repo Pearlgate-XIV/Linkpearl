@@ -23,9 +23,10 @@ public sealed class ExploreDestination : IDestinationScreen
 
     public string Label => "Explore";
 
-    public void Compose(in AppletFrame frame)
+    public float Compose(in AppletFrame frame)
     {
-        var content = frame.Content.Inset(frame.Units(14f));
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
 
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore", new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
@@ -34,7 +35,7 @@ public sealed class ExploreDestination : IDestinationScreen
         if (selectedSection != 0)
         {
             DrawUnbuiltSection(frame, stack.TakeRemaining(), SectionTabs[selectedSection]);
-            return;
+            return content.Height + inset * 2f;
         }
 
         var feed = DemoData.ExploreFeed;
@@ -44,6 +45,8 @@ public sealed class ExploreDestination : IDestinationScreen
             CardChrome.Draw(frame, cardRow);
             DrawCard(frame, cardRow.Inset(frame.Units(12f)), feed[index]);
         }
+
+        return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
     private void DrawSectionTabs(in AppletFrame frame, Rect row)

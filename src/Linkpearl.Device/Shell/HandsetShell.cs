@@ -25,6 +25,7 @@ public sealed class HandsetShell
     };
 
     private readonly Dictionary<DestinationTab, IDestinationScreen> destinationsByTab;
+    private readonly Dictionary<DestinationTab, ScrollState> scrollByTab;
     private readonly IReadOnlyList<IDestinationScreen> destinationsInOrder;
     private readonly IClock clock;
     private readonly DisplayPreferences preferences;
@@ -41,12 +42,15 @@ public sealed class HandsetShell
         this.textField = textField;
 
         var byTab = new Dictionary<DestinationTab, IDestinationScreen>();
+        var scrollState = new Dictionary<DestinationTab, ScrollState>();
         foreach (var destination in destinations)
         {
             byTab[destination.Tab] = destination;
+            scrollState[destination.Tab] = new ScrollState();
         }
 
         destinationsByTab = byTab;
+        scrollByTab = scrollState;
     }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
@@ -65,10 +69,20 @@ public sealed class HandsetShell
         }
 
         var content = screen.Inset(new Edges(0f, statusHeight + quickBarHeight, 0f, DestinationBar.Height(scale)));
-        var frame = outerFrame.WithContent(content);
-        if (destinationsByTab.TryGetValue(currentTab, out var current))
+        if (destinationsByTab.TryGetValue(currentTab, out var current) &&
+            scrollByTab.TryGetValue(currentTab, out var scroll))
         {
-            current.Compose(frame);
+            var scrolledContent = content.Translate(new Vector2(0f, -scroll.Offset));
+            var scrolledFrame = outerFrame.WithContent(scrolledContent);
+
+            outerFrame.Paint.PushClip(content);
+            var contentHeight = current.Compose(scrolledFrame);
+            outerFrame.Paint.PopClip();
+
+            ScrollState.DrawIndicator(outerFrame.Paint, outerFrame.Theme, content, contentHeight, scroll.Offset, scale);
+
+            var wheelDelta = !search.IsOpen && outerFrame.Input.IsHovering(content) ? outerFrame.Input.ScrollDelta : 0f;
+            scroll.Update(contentHeight, content.Height, wheelDelta, scale);
         }
 
         var barResult = DestinationBar.Draw(outerFrame.Paint, outerFrame.Text, outerFrame.Input, outerFrame.Theme,

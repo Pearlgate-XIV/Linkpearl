@@ -85,12 +85,14 @@ Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist y
   a line without its allocated height growing to match will silently overflow past its own
   background into whatever is next, since nothing clips or auto-sizes a card to its content yet.
   Verified numerically at every size step for the current content, not verified visually in-game.
-- No destination scrolls. Content currently fits within the visible screen at every size step
-  (verified by hand), but there is no scroll fallback for when it doesn't — Social/Explore's
-  feeds will hit this first as more demo cards get added. Deliberately not built yet rather than
-  guessed at: a correct version needs each destination to report how tall its content actually
-  is (an interface change beyond `IDestinationScreen.Compose`'s current shape), not a fixed
-  scroll budget layered on top of what's here now.
+- **Done:** every destination now scrolls. `IDestinationScreen.Compose` returns the content
+  height it actually drew (every implementation gets this for free from how far its `Stack`'s
+  `Remaining` shrank — no extra bookkeeping needed); `HandsetShell` keeps one `ScrollState` per
+  destination (so switching tabs preserves each one's own scroll position), clips to the
+  viewport, shifts content by the current offset, and updates it from mouse-wheel input while
+  hovering. A thin indicator on the right edge appears only when content actually overflows.
+  Not yet verified in-game (no game client in this environment) — the wheel-direction convention
+  in particular (`ScrollState.Update`) is a judgment call, not something I could visually confirm.
 - The Quick Bar now shows two demo items (with a badge) instead of one, but its "collapses when
   empty" behavior is still never actually exercised — the array is fixed, not driven by anything
   real, so the empty state has never been seen.
