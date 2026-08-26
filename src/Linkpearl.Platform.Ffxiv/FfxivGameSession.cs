@@ -9,22 +9,26 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private readonly IObjectTable objectTable;
     private readonly ICondition condition;
     private readonly IDutyState dutyState;
+    private readonly IFramework framework;
     private CharacterIdentity character = CharacterIdentity.Unknown;
 
     public FfxivGameSession(IClientState clientState, IObjectTable objectTable, ICondition condition,
-        IDutyState dutyState)
+        IDutyState dutyState, IFramework framework)
     {
         this.clientState = clientState;
         this.objectTable = objectTable;
         this.condition = condition;
         this.dutyState = dutyState;
+        this.framework = framework;
         clientState.Login += HandleLogin;
         clientState.Logout += HandleLogout;
         clientState.TerritoryChanged += HandleTerritoryChanged;
-        if (clientState.IsLoggedIn)
-        {
-            character = ReadCharacter();
-        }
+
+        // Dalamud constructs plugins off the main thread, but IObjectTable.LocalPlayer (like
+        // most game-state reads) is only safe to touch from it. A player already logged in when
+        // the plugin loads has no Login event left to catch, so the initial read is deferred to
+        // the first framework tick — guaranteed main-thread — instead of done here.
+        framework.Update += HandleFirstUpdate;
     }
 
     public event Action? LoggedIn;
@@ -63,6 +67,16 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         clientState.Login -= HandleLogin;
         clientState.Logout -= HandleLogout;
         clientState.TerritoryChanged -= HandleTerritoryChanged;
+        framework.Update -= HandleFirstUpdate;
+    }
+
+    private void HandleFirstUpdate(IFramework runningFramework)
+    {
+        framework.Update -= HandleFirstUpdate;
+        if (clientState.IsLoggedIn)
+        {
+            character = ReadCharacter();
+        }
     }
 
     private void HandleLogin()

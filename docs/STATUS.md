@@ -64,8 +64,19 @@ overlay, and a placeholder shell each for Social/Explore/You:
 
 Verified by: `dotnet build Linkpearl.slnx -c Release` against `DALAMUD_HOME` pointed at a real
 Dalamud install (0 errors on a from-clean build). The packager produces an installable
-`Linkpearl/latest.zip` with manifest, icon, and fonts. Not yet verified: actually running inside
-FFXIV (no game client available in this environment) — that check is still owed.
+`Linkpearl/latest.zip` with manifest, icon, and fonts. This environment has no game client, so
+in-game verification happens on the user's own machine, loaded as a dev plugin — see the crash
+this actually caught below.
+
+**Found and fixed via a real in-game load attempt:** `FfxivGameSession`'s constructor read
+`IObjectTable.LocalPlayer` synchronously to catch up on a character already logged in when the
+plugin loads. Dalamud constructs plugins off the main thread; that read (like most game-state
+reads) is only safe on it, so the plugin threw `InvalidOperationException: Not on main thread!`
+on every load attempt and never actually displayed anything — confirmed from `dalamud.log`'s
+exception, not guessed at. Fixed by deferring the catch-up read to the first `Framework.Update`
+tick (guaranteed main-thread) instead of doing it in the constructor. Checked the rest of the
+Host/Platform.Ffxiv startup path for the same pattern — this was the only synchronous game-state
+read outside a Draw/Update callback.
 
 ## What's deliberately not built yet
 

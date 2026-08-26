@@ -60,7 +60,7 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IClock>(clock);
         services.AddSingleton<IFrameLoop>(clock);
 
-        session = new FfxivGameSession(clientState, objectTable, condition, dutyState);
+        session = new FfxivGameSession(clientState, objectTable, condition, dutyState, framework);
         services.AddSingleton<IGameSession>(session);
 
         var preferences = new DisplayPreferences();
