@@ -39,7 +39,7 @@ public readonly struct ChassisMetrics
         For(finish, outerWidth / (1f - 2f * RailFraction));
 
     public static ChassisMetrics Reference => For(HandsetFinish.Crystal,
-        HandsetSizeCatalog.SizeFor(HandsetForm.Pocket, HandsetSizeCatalog.DefaultStep).X);
+        HandsetSizeCatalog.SizeFor(HandsetForm.Phone, HandsetSizeCatalog.DefaultStep).X);
 
     private static (float Frame, float Glass) FrameWeight(HandsetFinish finish) => finish switch
     {

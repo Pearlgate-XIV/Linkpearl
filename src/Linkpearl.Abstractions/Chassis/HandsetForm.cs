@@ -1,11 +1,11 @@
 namespace Linkpearl.Chassis;
 
-// A Linkpearl handset ships in two builds sharing one design language: Pocket is the everyday
-// 9:16 slate, Slate widens for two-column layouts while keeping the same vertical rhythm.
+// A Linkpearl handset ships in two builds sharing one design language: Phone is the everyday
+// 9:16 shape, Tablet widens for two-column layouts while keeping the same vertical rhythm.
 public enum HandsetForm : byte
 {
-    Pocket = 0,
-    Slate = 1,
+    Phone = 0,
+    Tablet = 1,
 }
 
 public enum HandsetFinish : byte

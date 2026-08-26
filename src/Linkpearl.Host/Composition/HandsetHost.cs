@@ -85,16 +85,16 @@ public sealed class HandsetHost : IDisposable
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
         var router = new RouteStack(appletById);
 
-        var sizePreference = new HandsetSizePreference(HandsetSizeCatalog.DefaultStep);
+        var shapePreference = new HandsetShapePreference(HandsetSizeCatalog.DefaultStep, HandsetForm.Phone);
         IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
         {
             new HomeDestination(clock), new SocialDestination(), new ExploreDestination(),
-            new YouDestination(sizePreference),
+            new YouDestination(shapePreference),
         };
         var textField = new DalamudTextField();
         var shell = new HandsetShell(destinations, clock, preferences, textField);
 
-        window = new HandsetWindow(shell, fonts, theme, router, sizePreference);
+        window = new HandsetWindow(shell, fonts, theme, router, shapePreference);
         windowSystem.AddWindow(window);
 
         pluginInterface.UiBuilder.Draw += windowSystem.Draw;

@@ -102,13 +102,23 @@ Clock/Calculator/Settings (most likely from "You" or via search) doesn't exist y
   a player/venue/activity screen, so it only closes the overlay rather than faking a navigation.
 - **Done:** phone size now has two ways to change it that agree with each other. Corner-grip
   drag (existing) and a new "Phone size" stepper in You's Display section both read/write the
-  same `HandsetSizePreference` (Abstractions), so dragging and the explicit control can never
+  same `HandsetShapePreference` (Abstractions), so dragging and the explicit control can never
   disagree about the current size. Moved `HandsetSizeCatalog`/`HandsetForm` down from
   `Linkpearl.Device` to `Linkpearl.Abstractions` (`Linkpearl.Chassis` namespace) to make this
   possible — same "pure data, zero Dalamud dependency, shouldn't require the Device layer" reason
-  `Stack`/`TileGrid` moved earlier. Resize still doesn't persist across launches (no settings
-  layer exists yet), and `HandsetWindow.SetForm` (Pocket/Slate) still has no caller — only the six
-  size steps are reachable, not the form switch.
+  `Stack`/`TileGrid` moved earlier.
+- **Done:** `HandsetForm` renamed `Pocket`/`Slate` → `Phone`/`Tablet` (plain English, matching how
+  the feature is actually talked about), and the form switch now has a caller: a "Form" toggle
+  sits right below the size stepper in You, sharing the same `HandsetShapePreference` — so form
+  and size are both explicitly reachable through the same two-control pattern.
+- Size range widened to be comparable to what Aetherphone's own resize allows (~290-880 width,
+  versus Aetherphone's continuous 240-900) — see `docs/aetherphone-screen-reference.md` for the
+  three-way comparison this was based on (upstream Aetherphone's continuous soft-snap-near-preset
+  design, the old Linkpearl fork's always-hard-snapped six steps, and this rebuild's current
+  middle ground of continuous-while-dragging/discrete-on-release). The aspect ratio itself (9:16)
+  was deliberately left alone — that's a documented, intentional break from Aetherphone's taller
+  19.5:9-style proportions, not an oversight.
+- Resize/form still don't persist across launches (no settings layer exists yet).
 - Chassis renders one finish (Crystal); the Etched art-panel finish is defined in
   `ChassisMetrics` but nothing selects it yet.
 - No settings persistence at all: window size/form/search-query reset every launch.
