@@ -68,6 +68,12 @@
           "Linkpearl.Destinations": "[0.1.0, )"
         }
       },
+      "linkpearl.net": {
+        "type": "Project",
+        "dependencies": {
+          "Linkpearl.Abstractions": "[0.1.0, )"
+        }
+      },
       "linkpearl.platform.ffxiv": {
         "type": "Project",
         "dependencies": {

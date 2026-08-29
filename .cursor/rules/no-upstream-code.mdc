@@ -1,0 +1,10 @@
+---
+description: Never copy Aetherphone, Aetheros, or old Linkpearl code
+alwaysApply: true
+---
+
+# No upstream code
+
+Do not copy, port, translate, or mechanically rename code from **Aetherphone**, **Aetheros**, or the old Linkpearl fork. This rebuild is independent. Reading those trees only as a behavioral reference (what a feature does) is allowed. Using their files as an implementation source is not, under any circumstance.
+
+Write Linkpearl types, HTTP, UI, and crypto from Pearlgate contracts and this repo's own architecture. If a feature already exists in Aetherphone or Aetheros, design it again here. Do not open those codebases to "match their structure."

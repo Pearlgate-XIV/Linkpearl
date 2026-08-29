@@ -2,19 +2,24 @@ using Linkpearl.Chassis;
 
 namespace Linkpearl.Preferences;
 
-// In-memory only for now, same as DisplayPreferences (no settings-persistence layer exists yet).
-// Shared between HandsetWindow (which reads both every frame to size the window, and writes
-// ScaleStep from corner-drag) and whatever UI controls let a player pick a size or form
-// explicitly, so dragging and an explicit control never fight over two separate sources of truth.
 public sealed class HandsetShapePreference
 {
     private float scaleStep;
+    private float pocketScale;
     private HandsetForm form;
+    private HandsetFinish finish;
+    private bool positionLocked;
+    private bool showLockTab = true;
 
-    public HandsetShapePreference(float initialScaleStep, HandsetForm initialForm)
+    public HandsetShapePreference(float initialScaleStep, HandsetForm initialForm, bool positionLocked,
+        float pocketScale = 1f, HandsetFinish finish = HandsetFinish.Crystal, bool showLockTab = true)
     {
         scaleStep = initialScaleStep;
         form = initialForm;
+        this.positionLocked = positionLocked;
+        this.pocketScale = pocketScale;
+        this.finish = finish;
+        this.showLockTab = showLockTab;
     }
 
     public event Action? Changed;
@@ -34,6 +39,22 @@ public sealed class HandsetShapePreference
         }
     }
 
+    public float PocketScale
+    {
+        get => pocketScale;
+        set
+        {
+            var snapped = SnapPocket(value);
+            if (pocketScale.Equals(snapped))
+            {
+                return;
+            }
+
+            pocketScale = snapped;
+            Changed?.Invoke();
+        }
+    }
+
     public HandsetForm Form
     {
         get => form;
@@ -47,5 +68,85 @@ public sealed class HandsetShapePreference
             form = value;
             Changed?.Invoke();
         }
+    }
+
+    public HandsetFinish Finish
+    {
+        get => finish;
+        set
+        {
+            if (finish == value)
+            {
+                return;
+            }
+
+            finish = value;
+            Changed?.Invoke();
+        }
+    }
+
+    public bool PositionLocked
+    {
+        get => positionLocked;
+        set
+        {
+            if (positionLocked == value)
+            {
+                return;
+            }
+
+            positionLocked = value;
+            Changed?.Invoke();
+        }
+    }
+
+    public bool ShowLockTab
+    {
+        get => showLockTab;
+        set
+        {
+            if (showLockTab == value)
+            {
+                return;
+            }
+
+            showLockTab = value;
+            Changed?.Invoke();
+        }
+    }
+
+    public static readonly float[] PocketSteps = { 0.85f, 1f, 1.22f };
+
+    public static readonly string[] PocketLabels = { "S", "M", "L" };
+
+    public static float SnapPocket(float scale)
+    {
+        var closest = PocketSteps[0];
+        var best = float.MaxValue;
+        for (var index = 0; index < PocketSteps.Length; index++)
+        {
+            var delta = MathF.Abs(PocketSteps[index] - scale);
+            if (delta < best)
+            {
+                best = delta;
+                closest = PocketSteps[index];
+            }
+        }
+
+        return closest;
+    }
+
+    public int PocketIndex()
+    {
+        var snapped = SnapPocket(pocketScale);
+        for (var index = 0; index < PocketSteps.Length; index++)
+        {
+            if (PocketSteps[index].Equals(snapped))
+            {
+                return index;
+            }
+        }
+
+        return 1;
     }
 }

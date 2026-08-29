@@ -18,6 +18,18 @@ public enum GameChannel : byte
     Emote = 13,
 }
 
+public readonly struct GamePeer
+{
+    public readonly string Name;
+    public readonly string World;
+
+    public GamePeer(string name, string world)
+    {
+        Name = name;
+        World = world;
+    }
+}
+
 public readonly struct GameChatLine
 {
     public readonly GameChannel Channel;
@@ -26,9 +38,10 @@ public readonly struct GameChatLine
     public readonly string SenderWorld;
     public readonly string Body;
     public readonly DateTimeOffset Received;
+    public readonly bool Mine;
 
     public GameChatLine(GameChannel channel, int channelIndex, string sender, string senderWorld, string body,
-        DateTimeOffset received)
+        DateTimeOffset received, bool mine)
     {
         Channel = channel;
         ChannelIndex = channelIndex;
@@ -36,6 +49,7 @@ public readonly struct GameChatLine
         SenderWorld = senderWorld;
         Body = body;
         Received = received;
+        Mine = mine;
     }
 }
 
@@ -44,6 +58,14 @@ public interface IChatBridge
     event Action<GameChatLine>? LineReceived;
 
     bool CanSend { get; }
+
+    bool InParty { get; }
+
+    bool InAlliance { get; }
+
+    IReadOnlyList<GamePeer> PartyMembers { get; }
+
+    IReadOnlyList<GamePeer> NearbyPlayers { get; }
 
     void Send(GameChannel channel, int channelIndex, string body);
 

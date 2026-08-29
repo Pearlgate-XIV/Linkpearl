@@ -10,30 +10,30 @@ public enum SideEdge : byte
     Left = 1,
 }
 
-// A single functional button on the window's outer rail, matching where a real phone's power
-// button sits: upper third of the edge, protruding slightly from the frame. Position and length
-// are fractions of window height so it scales with every size step.
+// A functional button on the window's outer rail, outside the glass. Power sits on the
+// upper-right edge. Position and length are fractions/units of the window so they scale.
 public readonly struct SideButton
 {
-    private const float CenterFraction = 0.22f;
-    private const float LengthUnits = 34f;
-
     public readonly SideEdge Edge;
+    public readonly float CenterFraction;
+    public readonly float LengthUnits;
 
-    public SideButton(SideEdge edge)
+    public SideButton(SideEdge edge, float centerFraction = 0.22f, float lengthUnits = 34f)
     {
         Edge = edge;
+        CenterFraction = centerFraction;
+        LengthUnits = lengthUnits;
     }
 
     public Rect Area(Rect window, float railDepth, float scale)
     {
         var length = LengthUnits * scale;
         var centerY = window.Min.Y + window.Height * CenterFraction;
-        var top = new Vector2(0f, centerY - length * 0.5f);
-        var bottom = new Vector2(0f, centerY + length * 0.5f);
+        var top = centerY - length * 0.5f;
+        var bottom = centerY + length * 0.5f;
         return Edge == SideEdge.Right
-            ? new Rect(new Vector2(window.Max.X - railDepth, top.Y), new Vector2(window.Max.X, bottom.Y))
-            : new Rect(new Vector2(window.Min.X, top.Y), new Vector2(window.Min.X + railDepth, bottom.Y));
+            ? new Rect(new Vector2(window.Max.X - railDepth, top), new Vector2(window.Max.X, bottom))
+            : new Rect(new Vector2(window.Min.X, top), new Vector2(window.Min.X + railDepth, bottom));
     }
 
     public bool Update(Rect window, float railDepth, float scale, IInputProbe input) =>

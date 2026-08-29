@@ -4,18 +4,20 @@ public readonly struct CharacterIdentity : IEquatable<CharacterIdentity>
 {
     public readonly ulong ContentId;
     public readonly string Name;
+    public readonly string WorldName;
     public readonly uint HomeWorldId;
     public readonly uint CurrentWorldId;
 
-    public CharacterIdentity(ulong contentId, string name, uint homeWorldId, uint currentWorldId)
+    public CharacterIdentity(ulong contentId, string name, string worldName, uint homeWorldId, uint currentWorldId)
     {
         ContentId = contentId;
         Name = name;
+        WorldName = worldName;
         HomeWorldId = homeWorldId;
         CurrentWorldId = currentWorldId;
     }
 
-    public static CharacterIdentity Unknown => new(0UL, string.Empty, 0u, 0u);
+    public static CharacterIdentity Unknown => new(0UL, string.Empty, string.Empty, 0u, 0u);
 
     public bool IsKnown => ContentId != 0UL;
 
@@ -38,9 +40,21 @@ public interface IGameSession
 
     uint TerritoryId { get; }
 
+    string JobName { get; }
+
+    string ZoneName { get; }
+
+    string WeatherName { get; }
+
+    uint Gil { get; }
+
+    int PartySize { get; }
+
     bool IsInCombat { get; }
 
     bool IsInDuty { get; }
+
+    bool IsInParty { get; }
 
     bool IsInCutscene { get; }
 

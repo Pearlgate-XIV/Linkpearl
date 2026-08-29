@@ -51,9 +51,16 @@ public sealed class DalamudTextPainter : ITextPainter
 
     public void DrawWrapped(Rect area, ReadOnlySpan<char> text, in TextStyle style)
     {
+        if (area.Width < 1f || area.Height < 1f)
+        {
+            return;
+        }
+
         using var pushed = fonts.Handle(style.Role).Push();
+        drawList.PushClipRect(area.Min, area.Max, true);
         drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), area.Min, ImGui.GetColorU32(style.Color), text,
             area.Width);
+        drawList.PopClipRect();
     }
 
     public void DrawEllipsized(Rect area, ReadOnlySpan<char> text, in TextStyle style)

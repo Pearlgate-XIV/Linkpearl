@@ -9,7 +9,9 @@ public enum StackAxis : byte
 }
 
 // Splits a Rect into a run of cells along one axis, forward-only: each Take() consumes from the
-// remaining space and advances past the gap. No layout state survives past the call site.
+// remaining space and advances past the gap. Take always reserves the requested length, even when
+// that walks past the original box, so later cells stack instead of collapsing on the last pixel.
+// Remaining.Height (or Width) can go negative; Compose uses that to report the true content size.
 public struct Stack
 {
     private Rect remaining;
@@ -30,13 +32,13 @@ public struct Stack
         Rect cell;
         if (axis == StackAxis.Vertical)
         {
-            cell = remaining.TopSlice(length);
-            remaining = remaining.Inset(new Edges(0f, MathF.Min(length + gap, remaining.Height), 0f, 0f));
+            cell = Rect.FromSize(remaining.Min, new Vector2(remaining.Width, length));
+            remaining = new Rect(new Vector2(remaining.Min.X, remaining.Min.Y + length + gap), remaining.Max);
         }
         else
         {
-            cell = remaining.LeftSlice(length);
-            remaining = remaining.Inset(new Edges(MathF.Min(length + gap, remaining.Width), 0f, 0f, 0f));
+            cell = Rect.FromSize(remaining.Min, new Vector2(length, remaining.Height));
+            remaining = new Rect(new Vector2(remaining.Min.X + length + gap, remaining.Min.Y), remaining.Max);
         }
 
         return cell;

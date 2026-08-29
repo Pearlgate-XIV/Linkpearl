@@ -13,6 +13,15 @@ public static class ModuleDiscovery
     {
         new SettingsModule(),
         new ClockModule(),
+        new AlarmsModule(),
+        new NotesModule(),
+        new CalendarModule(),
         new CalculatorModule(),
+        new TimerModule(),
+        new StopwatchModule(),
+        new WeatherModule(),
+        new PlaceModule(),
+        new CameraModule(),
+        new WalletModule(),
     };
 }

@@ -1,18 +1,27 @@
 using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
+using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Talk;
 using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 
-// The signature Linkpearl/crystal interaction: tap the crystal, search across the whole phone.
-// Results here come from DemoData.Search — a small in-memory placeholder index, not a live
-// backend (none exists yet). The visual interaction is real; the data behind it is labelled
-// demo content, matching the reference's own instruction not to fake backend functionality.
 public sealed class UniversalSearchOverlay
 {
+    private readonly IPearlHub pearl;
+    private readonly ITalk talk;
+    private readonly DestinationHub hub;
+    private readonly SearchResult[] resultsScratch = new SearchResult[24];
     private string query = string.Empty;
+
+    public UniversalSearchOverlay(IPearlHub pearl, ITalk talk, DestinationHub hub)
+    {
+        this.pearl = pearl;
+        this.talk = talk;
+        this.hub = hub;
+    }
 
     public bool IsOpen { get; private set; }
 
@@ -55,29 +64,45 @@ public sealed class UniversalSearchOverlay
 
         var fieldArea = new Rect(inset.Min, new Vector2(closeButton.Min.X - scale * 8f, inset.Min.Y + scale * 28f));
         query = textField.Draw("universal-search", fieldArea, query, "Search Eorzea...");
+        pearl.NoteQuery(query);
 
         var listArea = new Rect(new Vector2(inset.Min.X, fieldArea.Max.Y + scale * 12f), inset.Max);
-        var results = query.Length > 0 ? UniversalSearch.Search(query) : UniversalSearch.RecentSearches;
-        var kicker = query.Length > 0 ? "RESULTS" : "RECENT SEARCHES";
-        if (DrawResults(paint, text, input, listArea, scale, theme, kicker, results))
+        var snapshot = pearl.Current;
+        var resultCount = DirectorySearch.Fill(snapshot, query, resultsScratch, talk);
+        var kicker = query.Length > 0 ? "Results" : "Recent";
+        if (DrawResults(paint, text, input, listArea, scale, theme, kicker, resultsScratch, resultCount,
+                EmptySearchCopy(snapshot, query), out var picked))
         {
-            // Selecting a result only closes the overlay for now: there is no real screen yet
-            // for a player profile, venue, or activity to open into, and pretending to navigate
-            // somewhere that doesn't exist would be exactly the fake backend behavior this
-            // overlay is documented as avoiding.
+            if (picked.TalkId.Length > 0)
+            {
+                hub.OpenTalk(picked.TalkId);
+            }
+            else if (picked.ProfileId.Length > 0)
+            {
+                hub.OpenProfile(picked.ProfileId);
+            }
+
             Close();
         }
     }
 
     private static bool DrawResults(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area,
-        float scale, ITheme theme, string kicker, IReadOnlyList<SearchResult> results)
+        float scale, ITheme theme, string kicker, SearchResult[] results, int count, string emptyCopy,
+        out SearchResult picked)
     {
+        picked = default;
         text.DrawIn(area.TopSlice(scale * 16f), kicker,
             new TextStyle(FontRole.CaptionStrong, theme.Palette.InkMuted));
 
+        if (count == 0)
+        {
+            text.DrawWrapped(area.Inset(new Edges(0f, scale * 24f, 0f, 0f)).TopSlice(scale * 48f), emptyCopy,
+                new TextStyle(FontRole.Caption, theme.Palette.InkMuted));
+            return false;
+        }
+
         var rowHeight = scale * 32f;
-        var selected = false;
-        for (var index = 0; index < results.Count; index++)
+        for (var index = 0; index < count; index++)
         {
             var row = new Rect(new Vector2(area.Min.X, area.Min.Y + scale * 20f + index * rowHeight),
                 new Vector2(area.Max.X, area.Min.Y + scale * 20f + (index + 1) * rowHeight - scale * 4f));
@@ -87,11 +112,6 @@ public sealed class UniversalSearchOverlay
                 paint.Fill(row, theme.Palette.SurfaceRaised, scale * 8f);
             }
 
-            if (input.ConsumeClick(row))
-            {
-                selected = true;
-            }
-
             var entry = results[index];
             text.DrawIn(row.TopSlice(scale * 18f), entry.Title, new TextStyle(FontRole.Body, theme.Palette.Ink));
             if (entry.Subtitle.Length > 0)
@@ -99,8 +119,24 @@ public sealed class UniversalSearchOverlay
                 text.DrawIn(row.BottomSlice(scale * 14f), entry.Subtitle,
                     new TextStyle(FontRole.Caption, theme.Palette.InkFaint));
             }
+
+            if (input.ConsumeClick(row))
+            {
+                picked = entry;
+                return true;
+            }
         }
 
-        return selected;
+        return false;
+    }
+
+    private static string EmptySearchCopy(PearlSnapshot snapshot, string query)
+    {
+        if (!snapshot.SignedIn)
+        {
+            return query.Trim().Length >= 2 ? "No talks match." : "Sign in from You to search Pearlgate.";
+        }
+
+        return query.Trim().Length >= 2 ? "No people match." : "No recent chats or people.";
     }
 }

@@ -14,67 +14,86 @@ public enum SoftKey : byte
     Back = 3,
 }
 
-// Android/AQUOS-style soft keys: Recents, Home, Back, in a translucent strip along the bottom
-// edge. This is the identity choice that keeps Linkpearl off an iOS gesture-nav read.
+// Recents, Home, Back along the bottom of the glass. Home is the Linkpearl diamond.
 public static class SoftKeyBar
 {
-    private const float HeightUnits = 48f;
-    private const float FillAlpha = 0.42f;
-    private const float StrokeWidth = 1.7f;
+    private const float HeightUnits = 54f;
 
     public static float Height(float scale) => HeightUnits * scale;
 
     public static Rect StripArea(Rect screen, float scale) => screen.BottomSlice(Height(scale));
 
-    public static SoftKey Draw(in AppletFrame frame, Rect screen, bool canGoBack)
+    public static SoftKey Consume(IInputProbe input, Rect screen, float scale, bool canGoBack)
     {
-        var strip = StripArea(screen, frame.Scale);
-        frame.Paint.Fill(strip, frame.Theme.Palette.Surface with { W = FillAlpha });
-
+        var strip = StripArea(screen, scale);
         var cellWidth = strip.Width / 3f;
-        var pressed = SoftKey.None;
-
-        if (DrawKey(frame, CellAt(strip, 0, cellWidth), true, DrawRecentsGlyph))
+        if (input.ConsumeClick(CellAt(strip, 0, cellWidth)))
         {
-            pressed = SoftKey.Recents;
+            return SoftKey.Recents;
         }
 
-        if (DrawKey(frame, CellAt(strip, 1, cellWidth), true, DrawHomeGlyph))
+        if (input.ConsumeClick(CellAt(strip, 1, cellWidth)))
         {
-            pressed = SoftKey.Home;
+            return SoftKey.Home;
         }
 
-        if (DrawKey(frame, CellAt(strip, 2, cellWidth), canGoBack, DrawBackGlyph))
+        if (canGoBack && input.ConsumeClick(CellAt(strip, 2, cellWidth)))
         {
-            pressed = SoftKey.Back;
+            return SoftKey.Back;
         }
 
-        return pressed;
+        return SoftKey.None;
+    }
+
+    public static void Paint(IPaintSurface paint, ITheme theme, Rect screen, float scale, bool canGoBack)
+    {
+        var strip = StripArea(screen, scale);
+        var cellWidth = strip.Width / 3f;
+        var ink = theme.Palette.Ink;
+        var gold = theme.Palette.WarmAccent;
+        DrawRecents(paint, CellAt(strip, 0, cellWidth).Center, scale * 12f, ink);
+        DrawHome(paint, CellAt(strip, 1, cellWidth).Center, scale * 14f, gold, theme.Palette.SurfaceOverlay);
+        DrawBack(paint, CellAt(strip, 2, cellWidth).Center, scale * 12f, canGoBack ? ink : theme.Palette.InkFaint);
     }
 
     private static Rect CellAt(Rect strip, int index, float cellWidth) =>
         strip.Translate(new Vector2(index * cellWidth, 0f)).WithWidth(cellWidth);
 
-    private static bool DrawKey(in AppletFrame frame, Rect cell, bool enabled, Action<IPaintSurface, Vector2, float, Vector4> draw)
+    private static void DrawRecents(IPaintSurface paint, Vector2 center, float radius, Vector4 color)
     {
-        var ink = enabled ? frame.Theme.Palette.Ink : frame.Theme.Palette.InkFaint;
-        draw(frame.Paint, cell.Center, frame.Units(9f), ink);
-        return enabled && frame.Input.ConsumeClick(cell);
+        var rise = radius * 0.95f;
+        var gap = radius * 0.48f;
+        var stroke = MathF.Max(2.2f, radius * 0.22f);
+        paint.Line(center + new Vector2(-gap, -rise), center + new Vector2(-gap, rise), color, stroke);
+        paint.Line(center + new Vector2(0f, -rise), center + new Vector2(0f, rise), color, stroke);
+        paint.Line(center + new Vector2(gap, -rise), center + new Vector2(gap, rise), color, stroke);
     }
 
-    private static void DrawRecentsGlyph(IPaintSurface paint, Vector2 center, float radius, Vector4 color) =>
-        paint.Stroke(Rect.FromSize(center - new Vector2(radius * 0.8f), new Vector2(radius, radius) * 1.6f), color,
-            StrokeWidth, radius * 0.3f);
-
-    private static void DrawHomeGlyph(IPaintSurface paint, Vector2 center, float radius, Vector4 color) =>
-        paint.StrokeCircle(center, radius * 0.75f, color, StrokeWidth * 1.3f);
-
-    private static void DrawBackGlyph(IPaintSurface paint, Vector2 center, float radius, Vector4 color)
+    private static void DrawHome(IPaintSurface paint, Vector2 center, float radius, Vector4 gold, Vector4 inner)
     {
-        var tip = center + new Vector2(-radius * 0.5f, 0f);
-        paint.Polyline(new[]
+        var hit = Rect.FromSize(center - new Vector2(radius, radius), new Vector2(radius, radius) * 2f);
+        paint.Glow(hit, gold with { W = 0.82f }, radius * 1.15f, radius * 0.85f);
+        DrawDiamond(paint, center, radius, gold, MathF.Max(2.4f, radius * 0.22f));
+        DrawDiamond(paint, center, radius * 0.52f, inner, MathF.Max(1.8f, radius * 0.16f));
+    }
+
+    private static void DrawBack(IPaintSurface paint, Vector2 center, float radius, Vector4 color)
+    {
+        var stroke = MathF.Max(2.4f, radius * 0.24f);
+        var tip = center + new Vector2(-radius * 0.42f, 0f);
+        paint.Line(center + new Vector2(radius * 0.38f, -radius * 0.7f), tip, color, stroke);
+        paint.Line(center + new Vector2(radius * 0.38f, radius * 0.7f), tip, color, stroke);
+    }
+
+    private static void DrawDiamond(IPaintSurface paint, Vector2 center, float radius, Vector4 color, float stroke)
+    {
+        Span<Vector2> points = stackalloc Vector2[4]
         {
-            center + new Vector2(radius * 0.4f, -radius * 0.6f), tip, center + new Vector2(radius * 0.4f, radius * 0.6f),
-        }, color, StrokeWidth, false);
+            center + new Vector2(0f, -radius),
+            center + new Vector2(radius, 0f),
+            center + new Vector2(0f, radius),
+            center + new Vector2(-radius, 0f),
+        };
+        paint.Polyline(points, color, stroke, closed: true);
     }
 }

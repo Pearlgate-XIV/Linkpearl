@@ -35,14 +35,30 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService]
     private static IPluginLog Log { get; set; } = null!;
 
+    [PluginService]
+    private static ITextureProvider TextureProvider { get; set; } = null!;
+
+    [PluginService]
+    private static IDataManager DataManager { get; set; } = null!;
+
+    [PluginService]
+    private static IChatGui ChatGui { get; set; } = null!;
+
+    [PluginService]
+    private static IPartyList PartyList { get; set; } = null!;
+
+    [PluginService]
+    private static IKeyState KeyState { get; set; } = null!;
+
     private readonly HandsetHost host;
 
     public Plugin()
     {
-        host = new HandsetHost(PluginInterface, Framework, ClientState, ObjectTable, Condition, DutyState, Log);
+        host = new HandsetHost(PluginInterface, Framework, ClientState, ObjectTable, Condition, DutyState, Log,
+            TextureProvider, DataManager, ChatGui, PartyList, KeyState);
         Commands.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open the Linkpearl handset.",
+            HelpMessage = "Open the Linkpearl handset, or wake it if it is minimized.",
         });
     }
 
