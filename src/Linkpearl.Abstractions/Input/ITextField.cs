@@ -8,4 +8,8 @@ namespace Linkpearl.Input;
 public interface ITextField
 {
     string Draw(string id, Rect area, string value, string placeholder);
+
+    string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted);
+
+    void Release();
 }

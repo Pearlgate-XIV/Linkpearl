@@ -13,12 +13,25 @@ public static class CardChrome
 {
     public static void Draw(in AppletFrame frame, Rect area, float emphasis = 1f)
     {
-        var radius = frame.Units(14f);
+        var radius = frame.Units(12f);
         frame.Paint.Fill(area, frame.Theme.Palette.SurfaceOverlay, radius);
         frame.Paint.Stroke(area, frame.Theme.Palette.Separator, frame.Units(1f), radius);
         if (emphasis > 1f)
         {
             frame.Paint.Stroke(area, frame.Theme.Palette.Accent with { W = 0.35f }, frame.Units(1f), radius);
+        }
+    }
+
+    public static void DrawGold(in AppletFrame frame, Rect area)
+    {
+        var radius = frame.Units(12f);
+        var hovered = frame.Input.IsHovering(area);
+        frame.Paint.Fill(area, frame.Theme.Palette.SurfaceOverlay, radius);
+        var gold = frame.Theme.Palette.WarmAccent with { W = hovered ? 0.55f : 0.32f };
+        frame.Paint.Stroke(area, gold, frame.Units(1f), radius);
+        if (hovered)
+        {
+            frame.Paint.Glow(area, frame.Theme.Palette.WarmAccent with { W = 0.16f }, radius, frame.Units(5f));
         }
     }
 

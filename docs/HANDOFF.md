@@ -17,10 +17,11 @@ built from a functional spec, not a refactor of that code.
 These came from the user directly and apply project-wide, not just to the request that produced
 them:
 
-1. **No Aetherphone or old-Linkpearl code, ever.** Reading either as a *behavioral* reference
-   (to understand what a feature does, then independently design how to build it) is fine and
-   already happened repeatedly — see `docs/aetherphone-screen-reference.md` for the pattern. Copying,
-   porting, translating, or mechanically renaming their code is not, under any circumstance.
+1. **No Aetherphone, Aetheros, or old-Linkpearl code, ever.** Reading those as a *behavioral*
+   reference (to understand what a feature does, then independently design how to build it) is
+   fine. Copying, porting, translating, or mechanically renaming their code is not, under any
+   circumstance. This includes net/auth clients, UI, and crypto. Pearlgate contracts in this
+   workspace are the API spec to implement against, not a license to lift Aetheros.
 2. **No AI in the product identity — and that extends to git.** The phone itself must never
    present as an AI product (no "AI-powered", no AI branding/copy/naming). This also covers the
    repository: no AI-tool mentions in commit messages, no Co-Authored-By trailers, no
@@ -36,29 +37,38 @@ them:
    "what's actually built and verified" voice, not aspirational. When a gap gets closed, the old
    gap bullet gets replaced/marked done, not left stale alongside a new one saying the same thing.
 
+## Working from another computer
+
+1. **This chat.** Sign into the **same Cursor account** on the other machine. Open this
+   repo and look for this conversation (chassis skins, Apps grid, desktop zip). The thread
+   follows the account; it is not inside the dll zip.
+2. **The source.** Clone `https://github.com/Pearlgate-XIV/Linkpearl.git` (or pull). Debug
+   assembly name is `LinkpearlDev`. Read this file, then `docs/STATUS.md`.
+3. **The plugin zip.** `LinkpearlDev.zip` on the Desktop is a loadable **Linkpearl (rebuild
+   dev)** snapshot for another machine or another person. In `/xlplugins` add
+   `LinkpearlDev.dll` as a Dev Plugin Location. Leave the old plugin named just **Linkpearl**
+   (Aetherphone fork) disabled.
+4. **Tell the next agent:** version stays `0.1.0.0`; no Aetherphone, Aetheros,
+   or old-Linkpearl code; git identity is the local `Pearlgate-XIV` override; no AI mentions in
+   commits.
+
 ## Architecture in one paragraph
 
 Layered projects, dependencies point one direction only: `Linkpearl.Abstractions` (contracts +
 pure data, zero Dalamud dependency) → `Linkpearl.Canvas` (ImGui-backed implementations of those
 contracts) → `Linkpearl.Device` (chassis, window, shell chrome) + `Linkpearl.Destinations`
 (the four screens — both depend on Abstractions, neither depends on the other except Device
-depending on Destinations to display them) → `Linkpearl.Platform.Ffxiv` (Dalamud game-state
-adapters behind interfaces) → `Linkpearl.Applets.Core`/`Linkpearl.Applets.Life` (a separate,
-currently-dormant "installable mini-app" model — see below) → `Linkpearl.Host` (composition root,
-`HandsetHost`, `Plugin.cs` — the only place that knows every concrete type).
+depending on Destinations to display them) → `Linkpearl.Net` (Pearlgate HTTP client, Abstractions
+only) + `Linkpearl.Platform.Ffxiv` (Dalamud game-state adapters behind interfaces) →
+`Linkpearl.Applets.Core`/`Linkpearl.Applets.Life` (a separate, currently-dormant "installable
+mini-app" model — see below) → `Linkpearl.Host` (composition root, `HandsetHost`, `Plugin.cs` —
+the only place that knows every concrete type).
 
-**Two navigation models coexist, deliberately, mid-transition:**
-- **Primary (active):** four fixed destinations — Home/Social/Explore/You — plus a central
-  "crystal" button opening Universal Search. This is what's actually on screen. Lives in
-  `Linkpearl.Destinations` + `Linkpearl.Device/Shell/{DestinationBar,QuickBar,
-  UniversalSearchOverlay,HandsetShell}.cs`.
-- **Dormant (compiles, unused):** an older "icon grid of installable apps" model
-  (`HomeSurface`, `SoftKeyBar`, `RouteStack`, `IApplet`, three real apps: Clock/Calculator/
-  Settings). Not deleted on purpose — it's the plumbing a destination will eventually need for
-  its own drill-down navigation (e.g. Explore pushing a venue-detail screen), and Settings-style
-  functionality has to live *somewhere* reachable, most likely surfaced from "You" or search.
-  Don't be surprised these classes exist and aren't called from `HandsetShell` — that's correct,
-  not an oversight, see the "Product direction pivot" note at the top of `STATUS.md`.
+**Chrome that is actually on screen:** left `DestinationDock` (Messages / You / Explore /
+Settings), right `AppsDock` (Life apps carousel), bottom `SoftKeyBar` (Recents | Home diamond |
+Back). Bundled chassis skins (`Chassis/phone.png`, `tablet.png`) draw over a transparent window
+with an opaque body fill so the world does not show through the glass hole. Tune is Settings.
+`SettingsApplet` still compiles and is unused.
 
 ## Build
 
@@ -76,10 +86,19 @@ accepted, not regressions to fix reflexively.
 
 ## Loading it in-game (dev plugin)
 
-The user's FFXIV + Dalamud run on their own machine. Dev plugin locations persist across game
-restarts and auto-load on launch — but **do not** get picked up automatically if you rebuild the
-DLL while the game is already running; that needs a manual toggle in `/xlplugins` (find the dev
-plugin entry, disable, re-enable) to force Dalamud to re-read the file from disk.
+Dalamud's Dev Plugin Locations entry for this rebuild is the Debug host output (Wine `Z:` is
+`/`):
+
+`Z:\home\cas\Linkpearl\src\Linkpearl.Host\bin\Debug\LinkpearlDev.dll`
+
+Same file on Linux: `~/Linkpearl/src/Linkpearl.Host/bin/Debug/LinkpearlDev.dll`. Build with
+`-c Debug` so wallpaper PNGs and the json sit next to that dll. Release output is a different
+assembly name (`Linkpearl.dll`) and will not refresh this entry.
+
+Dev plugin locations persist across game restarts and auto-load on launch — but **do not** get
+picked up automatically if you rebuild the DLL while the game is already running; that needs a
+manual toggle in `/xlplugins` (find the dev plugin entry, disable, re-enable) to force Dalamud
+to re-read the file from disk.
 
 **A real crash already happened and got fixed** (see `STATUS.md`): Dalamud constructs plugins off
 the main thread, but most game-state reads (anything touching `IObjectTable`, likely others) are
@@ -89,19 +108,19 @@ read to the first `IFramework.Update` tick instead, the way `FfxivGameSession.Ha
 already does. Check `~/.xlcore/logs/dalamud.log` for the actual exception before guessing at
 plugin-load failures; it's the source of truth, not speculation.
 
-## Immediate next steps (not yet started, ranked by what's probably most valuable)
+## Immediate next steps (ranked by what's probably most valuable)
 
-1. Real functionality behind Social/Explore/You — right now only their first tab has content, and
-   it's all `DemoData`.
-2. A settings-persistence layer (`Linkpearl.Data`) — window size/form/search text and both
-   preference objects (`DisplayPreferences`, `HandsetShapePreference`) currently reset every
-   launch.
-3. `Linkpearl.Net` — a real Pearlgate client. The backend already exists and is live (Kamatera
-   box, `docker compose`, both `aetherchannel` and `pearlgate` stacks healthy as of this handoff),
-   but nothing in this codebase talks to it yet.
-4. A wallpaper system — see `docs/aetherphone-screen-reference.md`'s notes on async texture
-   loading, cover-fit cropping, and brightness-driven legibility scrims for the shape a real
-   implementation should take.
+1. Game talk is wired (party / tells / linkshells as one Messages inbox). Tells persist per
+   character and each counterpart has a Profile. Next drill-down: Pearlgate chat **send**.
+   Home/Social already list Pearlgate people and stories (or an honest empty state when that
+   surface is off). `DemoData` is gone.
+2. Tune look/plate/shape/presence now persist on `HandsetConfig` with size, form, and the
+   Pearlgate session token. Remaining in-memory: search text, notes, camera stills (alarms
+   write their own json). `Linkpearl.Data` is still unbuilt.
+3. Pearlgate beyond REST lists: websocket/realtime, E2E chat keys, posting stories, AfterDark.
+   `Linkpearl.Net` already signs in, refreshes `/me` + chats + contacts + stories, and searches
+   people.
+4. Wallpaper is in: `ScreenField` + bundled day/night plates. Still resets Look on launch.
 
 Full gap list with more detail is in `STATUS.md`'s "Known gaps" section — this is just the
 short version for getting started.

@@ -17,12 +17,13 @@ public sealed class ScrollState
 
     public float Offset => offset;
 
-    public float Update(float contentHeight, float viewportHeight, float wheelDelta, float scale)
+    public void Update(float contentHeight, float viewportHeight, float wheelDelta, float scale)
     {
         var maxOffset = MathF.Max(contentHeight - viewportHeight, 0f);
-        offset = Math.Clamp(offset - wheelDelta * WheelUnitsPerNotch * scale, 0f, maxOffset);
-        return offset;
+        offset = Scalar.Clamp(offset - wheelDelta * WheelUnitsPerNotch * scale, 0f, maxOffset);
     }
+
+    public void Reset() => offset = 0f;
 
     public static void DrawIndicator(IPaintSurface paint, ITheme theme, Rect viewport, float contentHeight,
         float offset, float scale)

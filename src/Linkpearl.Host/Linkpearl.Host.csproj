@@ -18,17 +18,36 @@
     <Content Include="Images\Icon.png" Condition="Exists('Images\Icon.png')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Wallpapers\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Chassis\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
   </ItemGroup>
 
+  <Target Name="PokeDevPluginForReload" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Debug' And Exists('$(TargetPath)')">
+    <!-- Dalamud's auto-reload watches LastWrite on the DLL. Native Linux builds often
+         replace the file in a way Wine's FileSystemWatcher misses, so rewrite one byte
+         in place (same contents) to force a modify event. Harmless if the game is closed. -->
+    <Exec Condition="'$(OS)' == 'Unix'"
+          Command="python3 -c &quot;p=r'$(TargetPath)'; f=open(p,'r+b'); b=f.read(1); f.seek(0); f.write(b or b'\0'); f.close()&quot;"
+          IgnoreExitCode="true"
+          EchoOff="true" />
+    <Touch Condition="'$(OS)' != 'Unix'" Files="$(TargetPath)" AlwaysCreate="false" ForceTouch="true" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\Linkpearl.Abstractions\Linkpearl.Abstractions.csproj" />
     <ProjectReference Include="..\Linkpearl.Canvas\Linkpearl.Canvas.csproj" />
     <ProjectReference Include="..\Linkpearl.Device\Linkpearl.Device.csproj" />
     <ProjectReference Include="..\Linkpearl.Destinations\Linkpearl.Destinations.csproj" />
+    <ProjectReference Include="..\Linkpearl.Net\Linkpearl.Net.csproj" />
     <ProjectReference Include="..\Linkpearl.Platform.Ffxiv\Linkpearl.Platform.Ffxiv.csproj" />
     <ProjectReference Include="..\Linkpearl.Applets.Core\Linkpearl.Applets.Core.csproj" />
     <ProjectReference Include="..\Linkpearl.Applets.Life\Linkpearl.Applets.Life.csproj" />

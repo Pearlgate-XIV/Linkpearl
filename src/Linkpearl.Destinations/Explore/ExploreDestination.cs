@@ -2,20 +2,22 @@ using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
+using Linkpearl.Net;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Destinations.Explore;
 
-// "What can I do?" — one feed instead of separate Venue/Activity/Event apps. The kind label on
-// each card (VENUE/ACTIVITY/EVENT) is what tells the player what they're looking at, not which
-// app they're in. Section tabs genuinely switch; only "For You" has real content behind it, the
-// rest show an honest "not built yet" placeholder rather than a tab that looks clickable and does
-// nothing (see the design brief's own "impossible widgets" warning).
-public sealed class ExploreDestination : IDestinationScreen
+public sealed class ExploreDestination : IDestinationScreen, ISectionedDestination
 {
     private static readonly string[] SectionTabs = { "For You", "Places", "Activities", "Events", "Groups" };
 
+    private readonly IPearlHub pearl;
     private int selectedSection;
+
+    public ExploreDestination(IPearlHub pearl)
+    {
+        this.pearl = pearl;
+    }
 
     public DestinationTab Tab => DestinationTab.Explore;
 
@@ -23,27 +25,55 @@ public sealed class ExploreDestination : IDestinationScreen
 
     public string Label => "Explore";
 
+    public int CurrentSection => selectedSection;
+
+    public void ShowSection(int section) =>
+        selectedSection = Math.Clamp(section, 0, SectionTabs.Length - 1);
+
     public float Compose(in AppletFrame frame)
     {
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var snapshot = pearl.Current;
 
-        frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore", new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
         DrawSectionTabs(frame, stack.Take(frame.Units(28f)));
 
         if (selectedSection != 0)
         {
-            DrawUnbuiltSection(frame, stack.TakeRemaining(), SectionTabs[selectedSection]);
+            DrawEmpty(frame, stack.TakeRemaining(),
+                SectionTabs[selectedSection] + " needs Yellow Pages and Muster, which Pearlgate has turned off.");
             return content.Height + inset * 2f;
         }
 
-        var feed = DemoData.ExploreFeed;
-        for (var index = 0; index < feed.Count; index++)
+        if (!snapshot.SignedIn)
         {
-            var cardRow = stack.Take(frame.Units(88f));
-            CardChrome.Draw(frame, cardRow);
-            DrawCard(frame, cardRow.Inset(frame.Units(12f)), feed[index]);
+            DrawEmpty(frame, stack.TakeRemaining(), "Sign in from You to load people and stories.");
+            return content.Height + inset * 2f;
+        }
+
+        var drew = false;
+        for (var index = 0; index < snapshot.Stories.Length; index++)
+        {
+            var row = stack.Take(frame.Units(72f));
+            CardChrome.Draw(frame, row);
+            DrawStory(frame, row.Inset(frame.Units(12f)), snapshot.Stories[index]);
+            drew = true;
+        }
+
+        for (var index = 0; index < snapshot.People.Length; index++)
+        {
+            var row = stack.Take(frame.Units(72f));
+            CardChrome.Draw(frame, row);
+            DrawPerson(frame, row.Inset(frame.Units(12f)), snapshot.People[index]);
+            drew = true;
+        }
+
+        if (!drew)
+        {
+            DrawEmpty(frame, stack.Take(frame.Units(72f)), "Nothing to explore yet. Add people from Social.");
         }
 
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -59,7 +89,6 @@ public sealed class ExploreDestination : IDestinationScreen
             frame.Text.DrawEllipsized(cell, SectionTabs[index],
                 new TextStyle(FontRole.Caption, isActive ? frame.Theme.Palette.Accent : frame.Theme.Palette.InkFaint,
                     TextAlign.Center));
-
             if (frame.Input.ConsumeClick(cell))
             {
                 selectedSection = index;
@@ -67,28 +96,29 @@ public sealed class ExploreDestination : IDestinationScreen
         }
     }
 
-    private static void DrawUnbuiltSection(in AppletFrame frame, Rect area, string sectionName)
-    {
-        frame.Text.DrawIn(area.TopSlice(frame.Units(60f)), $"{sectionName} isn't built yet",
-            new TextStyle(FontRole.Body, frame.Theme.Palette.InkMuted, TextAlign.Center));
-    }
-
-    private static void DrawCard(in AppletFrame frame, Rect inset, DemoData.ExploreCard card)
+    private static void DrawStory(in AppletFrame frame, Rect inset, PearlStory story)
     {
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
-        CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), card.Kind, frame.Theme.Palette.WarmAccent);
-
-        var titleRow = stack.Take(frame.Units(22f));
-        var hasMeta = card.Meta.Length > 0;
-        frame.Text.DrawIn(hasMeta ? titleRow.LeftSlice(titleRow.Width - frame.Units(100f)) : titleRow, card.Title,
+        CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Story", frame.Theme.Palette.WarmAccent);
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), story.AuthorName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        if (hasMeta)
-        {
-            frame.Text.DrawIn(titleRow.RightSlice(frame.Units(100f)), card.Meta,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.Positive, TextAlign.Right));
-        }
-
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), card.Detail,
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), story.HasUnseen ? "Unseen" : "Seen",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private static void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)
+    {
+        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Player", frame.Theme.Palette.WarmAccent);
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), person.DisplayName,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), person.Handle.Length > 0 ? "@" + person.Handle : "Pearlgate",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private static void DrawEmpty(in AppletFrame frame, Rect area, string text)
+    {
+        frame.Text.DrawWrapped(area.TopSlice(frame.Units(80f)), text,
+            new TextStyle(FontRole.Body, frame.Theme.Palette.InkMuted, TextAlign.Center));
     }
 }

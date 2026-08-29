@@ -6,12 +6,18 @@ using Linkpearl.Painting;
 
 namespace Linkpearl.Device.Shell;
 
-// Linkpearl's home grid: circular tiles, not squircles. Renders one page at a time; paging and
-// folders are follow-up work, not part of this foundation pass.
+// Phone-style home grid: 5x6, packed from the top. Icons stay a fixed diameter. Columns
+// use the full width so labels read in full; rows stay close rather than stretching to
+// fill leftover glass.
 public sealed class HomeSurface
 {
-    private const int Columns = 4;
-    private const int Rows = 5;
+    private const int Columns = 5;
+    private const int Rows = 6;
+    private const float IconUnits = 52f;
+    private const float LabelGapUnits = 4f;
+    private const float GapUnits = 10f;
+    private const float TopPadUnits = 2f;
+    private const float UnderLabelUnits = 4f;
 
     private readonly IReadOnlyList<IApplet> apps;
 
@@ -20,38 +26,96 @@ public sealed class HomeSurface
         this.apps = apps;
     }
 
-    public void Draw(in AppletFrame frame, Rect area)
+    public void Draw(in AppletFrame frame, Rect area, bool hush = false)
     {
-        var grid = new TileGrid(area.Inset(frame.Units(12f)), Columns, Rows, frame.Units(14f));
-        for (var index = 0; index < apps.Count && index < grid.CapacityPerPage; index++)
+        var usable = area.Inset(frame.Units(8f));
+        var count = Math.Min(apps.Count, Columns * Rows);
+        if (count == 0 || usable.IsEmpty)
         {
-            DrawTile(frame, grid.CellAt(index), apps[index]);
+            return;
+        }
+
+        var icon = frame.Units(IconUnits);
+        var labelGap = frame.Units(LabelGapUnits);
+        var labelHeight = frame.Text.LineHeight(FontRole.Caption);
+        var gap = frame.Units(GapUnits);
+        var topPad = frame.Units(TopPadUnits);
+        var underLabel = frame.Units(UnderLabelUnits);
+        var cellHeight = topPad + icon + labelGap + labelHeight + underLabel;
+        var packedHeight = cellHeight * Rows + gap * (Rows - 1);
+        if (packedHeight > usable.Height && packedHeight > 0.001f)
+        {
+            var fit = usable.Height / packedHeight;
+            gap *= fit;
+            topPad *= fit;
+            underLabel *= fit;
+            cellHeight = topPad + icon + labelGap + labelHeight + underLabel;
+            packedHeight = cellHeight * Rows + gap * (Rows - 1);
+        }
+
+        var grid = new TileGrid(Rect.FromSize(usable.Min, new Vector2(usable.Width, packedHeight)), Columns, Rows,
+            gap);
+        for (var index = 0; index < count; index++)
+        {
+            DrawTile(frame, grid.CellAt(index), apps[index], icon, labelGap, labelHeight, hush);
         }
     }
 
-    private static void DrawTile(in AppletFrame frame, Rect cell, IApplet applet)
+    private static void DrawTile(in AppletFrame frame, Rect cell, IApplet applet, float icon, float labelGap,
+        float labelHeight, bool hush)
     {
-        var diameter = MathF.Min(cell.Width, cell.Height * 0.72f);
-        var iconArea = Rect.FromSize(new Vector2(cell.Center.X - diameter * 0.5f, cell.Min.Y), new Vector2(diameter, diameter));
+        if (cell.IsEmpty)
+        {
+            return;
+        }
+
+        icon = MathF.Min(icon, MathF.Max(MathF.Min(cell.Width, cell.Height) * 0.72f, 1f));
+        var topPad = frame.Units(TopPadUnits);
+        if (icon + labelGap + labelHeight + topPad > cell.Height && cell.Height > icon + labelGap + topPad)
+        {
+            labelHeight = MathF.Max(cell.Height - icon - labelGap - topPad, frame.Text.LineHeight(FontRole.Caption));
+        }
+
+        var iconArea = Rect.FromSize(new Vector2(cell.Center.X - icon * 0.5f, cell.Min.Y + topPad),
+            new Vector2(icon, icon));
         var accent = frame.Theme.AccentFor(applet.Manifest.Id);
 
-        frame.Paint.FillCircle(iconArea.Center, diameter * 0.5f, accent);
+        frame.Paint.FillCircle(iconArea.Center, icon * 0.5f, accent);
         frame.Text.DrawIn(iconArea, applet.Manifest.Glyph,
-            new TextStyle(FontRole.Title, frame.Theme.Palette.AccentInk, TextAlign.Center));
+            new TextStyle(FontRole.Body, frame.Theme.Palette.AccentInk, TextAlign.Center));
 
-        if (applet.Badge.IsVisible)
+        if (applet.Badge.IsVisible && !hush)
         {
             DrawBadge(frame, iconArea, applet.Badge);
         }
 
-        var labelArea = new Rect(new Vector2(cell.Min.X, iconArea.Max.Y + frame.Units(4f)), cell.Max);
-        frame.Text.DrawEllipsized(labelArea, applet.Manifest.DisplayNameKey,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
+        var labelArea = new Rect(
+            new Vector2(cell.Min.X + frame.Units(2f), iconArea.Max.Y + labelGap),
+            new Vector2(cell.Max.X - frame.Units(2f), iconArea.Max.Y + labelGap + labelHeight));
+        DrawLabel(frame, labelArea, applet.Manifest.DisplayNameKey);
 
-        if (frame.Input.ConsumeClick(iconArea))
+        if (frame.Input.ConsumeClick(cell))
         {
             frame.Router.OpenFrom(applet.Manifest.Id, iconArea);
         }
+    }
+
+    private static void DrawLabel(in AppletFrame frame, Rect area, string name)
+    {
+        if (area.IsEmpty)
+        {
+            return;
+        }
+
+        var style = new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center);
+        var size = frame.Text.Measure(name, FontRole.Caption);
+        if (size.X <= area.Width)
+        {
+            frame.Text.DrawIn(area, name, style);
+            return;
+        }
+
+        frame.Text.DrawWrapped(area, name, style);
     }
 
     private static void DrawBadge(in AppletFrame frame, Rect iconArea, AppletBadge badge)

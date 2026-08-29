@@ -14,11 +14,12 @@ public readonly struct AppletFrame
     public readonly IInputProbe Input;
     public readonly ITheme Theme;
     public readonly IRouter Router;
+    public readonly ITextField TextField;
     public readonly float Scale;
     public readonly float DeltaSeconds;
 
     public AppletFrame(Rect content, IPaintSurface paint, ITextPainter text, IInputProbe input, ITheme theme,
-        IRouter router, float scale, float deltaSeconds)
+        IRouter router, ITextField textField, float scale, float deltaSeconds)
     {
         Content = content;
         Paint = paint;
@@ -26,12 +27,16 @@ public readonly struct AppletFrame
         Input = input;
         Theme = theme;
         Router = router;
+        TextField = textField;
         Scale = scale;
         DeltaSeconds = deltaSeconds;
     }
 
     public AppletFrame WithContent(Rect content) =>
-        new(content, Paint, Text, Input, Theme, Router, Scale, DeltaSeconds);
+        new(content, Paint, Text, Input, Theme, Router, TextField, Scale, DeltaSeconds);
+
+    public AppletFrame WithInput(IInputProbe input) =>
+        new(Content, Paint, Text, input, Theme, Router, TextField, Scale, DeltaSeconds);
 
     public float Units(float designUnits) => designUnits * Scale;
 }

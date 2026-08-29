@@ -17,12 +17,14 @@ public sealed class RouteStack : IRouter
 {
     private readonly IReadOnlyDictionary<string, IApplet> applets;
     private readonly Stack<IApplet> history = new();
+    private readonly List<string> recents = new();
     private IApplet? current;
     private IApplet? motionEntering;
     private IApplet? motionLeaving;
     private ShellMotion motion = ShellMotion.None;
     private Rect? motionOrigin;
     private float motionProgress;
+    private bool recentsWanted;
 
     public RouteStack(IReadOnlyDictionary<string, IApplet> applets)
     {
@@ -36,6 +38,8 @@ public sealed class RouteStack : IRouter
     public IApplet? Current => current;
 
     public string? CurrentAppletId => current?.Manifest.Id;
+
+    public IReadOnlyList<string> RecentIds => recents;
 
     public bool AtHome => current is null && motion == ShellMotion.None;
 
@@ -61,11 +65,7 @@ public sealed class RouteStack : IRouter
 
     public void Back()
     {
-        if (motion != ShellMotion.None)
-        {
-            return;
-        }
-
+        CancelMotion();
         if (history.Count == 0)
         {
             return;
@@ -83,11 +83,7 @@ public sealed class RouteStack : IRouter
 
     public void Home()
     {
-        if (motion != ShellMotion.None)
-        {
-            return;
-        }
-
+        CancelMotion();
         while (history.Count > 0)
         {
             history.Pop().Leave();
@@ -97,8 +93,17 @@ public sealed class RouteStack : IRouter
         ReturnedHome?.Invoke();
     }
 
-    public void Recents()
+    public void Recents() => recentsWanted = true;
+
+    public bool TakeRecents()
     {
+        if (!recentsWanted)
+        {
+            return false;
+        }
+
+        recentsWanted = false;
+        return true;
     }
 
     public void Advance(float deltaSeconds, float durationSeconds)
@@ -121,6 +126,15 @@ public sealed class RouteStack : IRouter
         motionProgress = 0f;
     }
 
+    private void CancelMotion()
+    {
+        motion = ShellMotion.None;
+        motionEntering = null;
+        motionLeaving = null;
+        motionOrigin = null;
+        motionProgress = 0f;
+    }
+
     private void Open(string appletId, string? routeHint, Rect? originTile)
     {
         if (!applets.TryGetValue(appletId, out var applet))
@@ -133,14 +147,21 @@ public sealed class RouteStack : IRouter
             return;
         }
 
-        motionLeaving = current;
-        motionEntering = applet;
-        motionOrigin = originTile;
-        motion = ShellMotion.Presenting;
-        motionProgress = 0f;
+        CancelMotion();
         history.Push(applet);
         current = applet;
+        RememberRecent(appletId);
         applet.Enter(new AppletEntry(routeHint, originTile));
         Opened?.Invoke(appletId);
+    }
+
+    private void RememberRecent(string appletId)
+    {
+        recents.Remove(appletId);
+        recents.Insert(0, appletId);
+        if (recents.Count > 8)
+        {
+            recents.RemoveAt(recents.Count - 1);
+        }
     }
 }

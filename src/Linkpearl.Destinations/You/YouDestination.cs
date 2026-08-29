@@ -1,25 +1,23 @@
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
-using Linkpearl.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
+using Linkpearl.Net;
 using Linkpearl.Painting;
-using Linkpearl.Preferences;
+using Linkpearl.Platform;
 
 namespace Linkpearl.Destinations.You;
 
-// The player's personal space: profile identity, a couple of stat rows, and phone display
-// settings — the one piece of "phone customization" the design brief lists for You that has
-// anywhere real to live yet. Everything else the spec lists (glamours, collections, favorites)
-// belongs here eventually, as entries in this list rather than as separate destinations — only a
-// small placeholder slice is built in this pass.
 public sealed class YouDestination : IDestinationScreen
 {
-    private readonly HandsetShapePreference shapePreference;
+    private readonly IGameSession game;
+    private readonly IPearlHub pearl;
 
-    public YouDestination(HandsetShapePreference shapePreference)
+    public YouDestination(IGameSession game, IPearlHub pearl)
     {
-        this.shapePreference = shapePreference;
+        this.game = game;
+        this.pearl = pearl;
     }
 
     public DestinationTab Tab => DestinationTab.You;
@@ -33,107 +31,121 @@ public sealed class YouDestination : IDestinationScreen
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var snapshot = pearl.Current;
 
         var profileRow = stack.Take(frame.Units(72f));
         CardChrome.Draw(frame, profileRow);
-        DrawProfile(frame, profileRow.Inset(frame.Units(12f)));
+        DrawProfile(frame, profileRow.Inset(frame.Units(12f)), snapshot);
 
-        var stats = DemoData.ProfileStats;
-        for (var index = 0; index < stats.Count; index++)
+        if (snapshot.Notice.Length > 0)
         {
-            var statRow = stack.Take(frame.Units(44f));
-            CardChrome.Draw(frame, statRow);
-            DrawStat(frame, statRow.Inset(new Edges(frame.Units(12f), 0f)), stats[index]);
+            var noticeRow = stack.Take(frame.Units(56f));
+            CardChrome.Draw(frame, noticeRow);
+            frame.Text.DrawWrapped(noticeRow.Inset(frame.Units(12f)), snapshot.Notice,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
 
-        stack.Take(frame.Units(10f));
-        CardChrome.DrawKicker(frame, stack.Take(frame.Units(16f)), "PHONE");
+        if (snapshot.ChallengeCode.Length > 0)
+        {
+            var codeRow = stack.Take(frame.Units(56f));
+            CardChrome.Draw(frame, codeRow);
+            DrawChallenge(frame, codeRow.Inset(frame.Units(12f)), snapshot.ChallengeCode);
+        }
 
-        var sizeRow = stack.Take(frame.Units(44f));
-        CardChrome.Draw(frame, sizeRow);
-        DrawSizeStepper(frame, sizeRow.Inset(new Edges(frame.Units(12f), 0f)));
+        var accountRow = stack.Take(frame.Units(44f));
+        CardChrome.Draw(frame, accountRow);
+        DrawAccount(frame, accountRow.Inset(new Edges(frame.Units(12f), 0f)), snapshot);
 
-        var formRow = stack.Take(frame.Units(44f));
-        CardChrome.Draw(frame, formRow);
-        DrawFormToggle(frame, formRow.Inset(new Edges(frame.Units(12f), 0f)));
+        if (snapshot.SignedIn)
+        {
+            DrawStat(frame, stack.Take(frame.Units(44f)), "Followers",
+                snapshot.Followers.ToString(CultureInfo.InvariantCulture));
+            DrawStat(frame, stack.Take(frame.Units(44f)), "Following",
+                snapshot.Following.ToString(CultureInfo.InvariantCulture));
+            if (snapshot.MyNumber.Length > 0)
+            {
+                DrawStat(frame, stack.Take(frame.Units(44f)), "Number", snapshot.MyNumber);
+            }
+        }
 
         return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
-    private static void DrawProfile(in AppletFrame frame, Rect inset)
+    private void DrawProfile(in AppletFrame frame, Rect inset, PearlSnapshot snapshot)
     {
+        var name = snapshot.MeName.Length > 0 ? snapshot.MeName : game.Character.Name;
+        if (name.Length == 0)
+        {
+            name = "Not logged in";
+        }
+
+        var world = snapshot.MeWorld.Length > 0 ? snapshot.MeWorld : game.Character.WorldName;
+        var detail = world;
+        if (snapshot.MeHandle.Length > 0)
+        {
+            detail = world.Length > 0 ? world + " · @" + snapshot.MeHandle : "@" + snapshot.MeHandle;
+        }
+
+        if (detail.Length == 0)
+        {
+            detail = snapshot.SignedIn ? "Pearlgate" : "Sign in to Pearlgate";
+        }
+
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
-        frame.Text.DrawIn(stack.Take(frame.Units(22f)), $"{DemoData.CharacterName} Morningstar",
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), $"⛨ {DemoData.CharacterTitle} · {DemoData.World}",
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private static void DrawStat(in AppletFrame frame, Rect row, DemoData.ProfileStat stat)
+    private static void DrawChallenge(in AppletFrame frame, Rect inset, string code)
     {
-        frame.Text.DrawIn(row.LeftSlice(row.Width - frame.Units(140f)), stat.Label,
+        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Sign-in code",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), code,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+    }
+
+    private void DrawAccount(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
+    {
+        var label = snapshot.Busy ? "Working..." : snapshot.SignedIn ? "Sign out" : "Sign in";
+        frame.Text.DrawIn(row.LeftSlice(row.Width - frame.Units(110f)), "Pearlgate",
             new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(row.RightSlice(frame.Units(140f)), stat.Value,
+
+        var action = row.RightSlice(frame.Units(110f));
+        if (snapshot.Busy)
+        {
+            frame.Paint.Fill(action.Inset(frame.Units(2f)), frame.Theme.Palette.SurfaceRaised, frame.Units(999f));
+        }
+        else
+        {
+            frame.Paint.Fill(action.Inset(frame.Units(2f)), frame.Theme.Palette.Accent, frame.Units(999f));
+        }
+
+        var ink = snapshot.Busy ? frame.Theme.Palette.InkMuted : frame.Theme.Palette.AccentInk;
+        frame.Text.DrawIn(action, label, new TextStyle(FontRole.Caption, ink, TextAlign.Center));
+
+        if (!snapshot.Busy && frame.Input.ConsumeClick(action))
+        {
+            if (snapshot.SignedIn)
+            {
+                pearl.SignOut();
+            }
+            else
+            {
+                pearl.BeginSignIn();
+            }
+        }
+    }
+
+    private static void DrawStat(in AppletFrame frame, Rect row, string label, string value)
+    {
+        CardChrome.Draw(frame, row);
+        var inset = row.Inset(new Edges(frame.Units(12f), 0f));
+        frame.Text.DrawIn(inset.LeftSlice(inset.Width - frame.Units(140f)), label,
+            new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(inset.RightSlice(frame.Units(140f)), value,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Right));
-    }
-
-    private void DrawSizeStepper(in AppletFrame frame, Rect row)
-    {
-        var index = HandsetSizeCatalog.StepIndex(shapePreference.ScaleStep);
-        frame.Text.DrawIn(row.LeftSlice(row.Width - frame.Units(110f)), "Phone size",
-            new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
-
-        var controls = row.RightSlice(frame.Units(110f));
-        var minus = controls.LeftSlice(frame.Units(28f));
-        var label = new Rect(new Vector2(minus.Max.X, controls.Min.Y),
-            new Vector2(controls.Max.X - frame.Units(28f), controls.Max.Y));
-        var plus = controls.RightSlice(frame.Units(28f));
-
-        DrawStepButton(frame, minus, "−", index - 1);
-        frame.Text.DrawIn(label, HandsetSizeCatalog.StepLabels[index],
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
-        DrawStepButton(frame, plus, "+", index + 1);
-    }
-
-    private void DrawStepButton(in AppletFrame frame, Rect area, string glyph, int targetIndex)
-    {
-        var enabled = targetIndex >= 0 && targetIndex < HandsetSizeCatalog.ScaleSteps.Count;
-        var ink = enabled ? frame.Theme.Palette.Ink : frame.Theme.Palette.InkFaint;
-        frame.Text.DrawIn(area, glyph, new TextStyle(FontRole.BodyStrong, ink, TextAlign.Center));
-        if (enabled && frame.Input.ConsumeClick(area))
-        {
-            shapePreference.ScaleStep = HandsetSizeCatalog.ScaleSteps[targetIndex];
-        }
-    }
-
-    private void DrawFormToggle(in AppletFrame frame, Rect row)
-    {
-        frame.Text.DrawIn(row.LeftSlice(row.Width - frame.Units(140f)), "Form",
-            new TextStyle(FontRole.Body, frame.Theme.Palette.Ink));
-
-        var controls = row.RightSlice(frame.Units(140f));
-        var half = controls.Width * 0.5f;
-        var phoneArea = controls.LeftSlice(half);
-        var tabletArea = controls.RightSlice(controls.Width - half);
-
-        DrawFormOption(frame, phoneArea, "Phone", HandsetForm.Phone);
-        DrawFormOption(frame, tabletArea, "Tablet", HandsetForm.Tablet);
-    }
-
-    private void DrawFormOption(in AppletFrame frame, Rect area, string label, HandsetForm form)
-    {
-        var isActive = shapePreference.Form == form;
-        if (isActive)
-        {
-            frame.Paint.Fill(area.Inset(frame.Units(2f)), frame.Theme.Palette.Accent, frame.Units(999f));
-        }
-
-        var ink = isActive ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.InkMuted;
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.Caption, ink, TextAlign.Center));
-
-        if (!isActive && frame.Input.ConsumeClick(area))
-        {
-            shapePreference.Form = form;
-        }
     }
 }
