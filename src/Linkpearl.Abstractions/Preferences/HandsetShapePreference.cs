@@ -8,11 +8,13 @@ public sealed class HandsetShapePreference
     private float pocketScale;
     private HandsetForm form;
     private HandsetFinish finish;
+    private HandsetCase casing;
     private bool positionLocked;
     private bool showLockTab = true;
 
     public HandsetShapePreference(float initialScaleStep, HandsetForm initialForm, bool positionLocked,
-        float pocketScale = 1f, HandsetFinish finish = HandsetFinish.Crystal, bool showLockTab = true)
+        float pocketScale = 1f, HandsetFinish finish = HandsetFinish.Crystal, bool showLockTab = true,
+        HandsetCase casing = HandsetCase.Pearl)
     {
         scaleStep = initialScaleStep;
         form = initialForm;
@@ -20,6 +22,7 @@ public sealed class HandsetShapePreference
         this.pocketScale = pocketScale;
         this.finish = finish;
         this.showLockTab = showLockTab;
+        this.casing = casing;
     }
 
     public event Action? Changed;
@@ -81,6 +84,21 @@ public sealed class HandsetShapePreference
             }
 
             finish = value;
+            Changed?.Invoke();
+        }
+    }
+
+    public HandsetCase Case
+    {
+        get => casing;
+        set
+        {
+            if (casing == value)
+            {
+                return;
+            }
+
+            casing = value;
             Changed?.Invoke();
         }
     }

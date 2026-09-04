@@ -30,6 +30,18 @@ public readonly struct EorzeaTime
         return new EorzeaTime(hour, minute);
     }
 
+    public EorzeaTime AddHours(int hours)
+    {
+        var total = ((Hour + hours) % 24 + 24) % 24;
+        return new EorzeaTime(total, Minute);
+    }
+
+    public int HoursUntilNextWeather()
+    {
+        var used = Hour % 8;
+        return used == 0 && Minute == 0 ? 8 : 8 - used;
+    }
+
     public string Format() =>
         Hour.ToString("00", CultureInfo.InvariantCulture) + ":" +
         Minute.ToString("00", CultureInfo.InvariantCulture);

@@ -30,12 +30,12 @@ public sealed class ScreenField
         this.clock = clock;
     }
 
-    public void Paint(IPaintSurface paint, ITheme theme, Rect screen, float deltaSeconds)
+    public void Paint(IPaintSurface paint, ITheme theme, Rect screen, float deltaSeconds, float radius = 0f)
     {
         float luminance;
         if (preferences.UsingCustomPlate)
         {
-            var drawn = DrawFile(paint, screen, PlateFiles.Absolute(paths, preferences.CustomPlateFile), 1f);
+            var drawn = DrawFile(paint, screen, PlateFiles.Absolute(paths, preferences.CustomPlateFile), 1f, radius);
             luminance = drawn ? 0.42f : (theme.IsDark ? 0.12f : 0.72f);
             nightMix = 0f;
         }
@@ -45,8 +45,8 @@ public sealed class ScreenField
             var target = TargetDarkness();
             nightMix += (target - nightMix) * (1f - MathF.Exp(-MixRate * MathF.Max(deltaSeconds, 0f)));
 
-            var day = DrawPlate(paint, screen, plate.DayFile, 1f);
-            var night = DrawPlate(paint, screen, plate.NightFile, nightMix);
+            var day = DrawPlate(paint, screen, plate.DayFile, 1f, radius);
+            var night = DrawPlate(paint, screen, plate.NightFile, nightMix, radius);
             luminance = plate.DayLuminance + (plate.NightLuminance - plate.DayLuminance) * nightMix;
             if (!day && !night)
             {
@@ -55,7 +55,7 @@ public sealed class ScreenField
         }
 
         var scrim = theme.Palette.SurfaceSunken with { W = LegibilityScrim.Alpha(luminance) * preferences.ShadeMul };
-        paint.Fill(screen, scrim);
+        paint.Fill(screen, scrim, radius);
     }
 
     private float TargetDarkness() => preferences.Appearance switch
@@ -65,10 +65,10 @@ public sealed class ScreenField
         _ => DayNight.Darkness(clock.Now),
     };
 
-    private bool DrawPlate(IPaintSurface paint, Rect screen, string fileName, float alpha) =>
-        DrawFile(paint, screen, paths.Asset(Path.Combine(WallpaperCatalog.Folder, fileName)), alpha);
+    private bool DrawPlate(IPaintSurface paint, Rect screen, string fileName, float alpha, float radius) =>
+        DrawFile(paint, screen, paths.Asset(Path.Combine(WallpaperCatalog.Folder, fileName)), alpha, radius);
 
-    private bool DrawFile(IPaintSurface paint, Rect screen, string path, float alpha)
+    private bool DrawFile(IPaintSurface paint, Rect screen, string path, float alpha, float radius)
     {
         if (alpha <= 0.004f)
         {
@@ -82,7 +82,16 @@ public sealed class ScreenField
         }
 
         var crop = CoverFit.Uv(texture.Size, screen.Size);
-        paint.Image(texture, screen, crop.Min, crop.Max, new Vector4(1f, 1f, 1f, alpha));
+        var tint = new Vector4(1f, 1f, 1f, alpha);
+        if (radius > 0.5f)
+        {
+            paint.ImageRounded(texture, screen, crop.Min, crop.Max, tint, radius);
+        }
+        else
+        {
+            paint.Image(texture, screen, crop.Min, crop.Max, tint);
+        }
+
         return true;
     }
 }

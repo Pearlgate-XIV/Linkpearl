@@ -27,18 +27,25 @@ public readonly struct TextStyle
     public readonly Vector4 Color;
     public readonly TextAlign Align;
     public readonly float LineSpacing;
+    public readonly float Scale;
+    public readonly Vector4 Glow;
+    public readonly float GlowSpread;
 
-    public TextStyle(FontRole role, Vector4 color, TextAlign align = TextAlign.Left, float lineSpacing = 1f)
+    public TextStyle(FontRole role, Vector4 color, TextAlign align = TextAlign.Left, float lineSpacing = 1f,
+        float scale = 1f, Vector4 glow = default, float glowSpread = 0f)
     {
         Role = role;
         Color = color;
         Align = align;
         LineSpacing = lineSpacing;
+        Scale = scale > 0f ? scale : 1f;
+        Glow = glow;
+        GlowSpread = glowSpread;
     }
 
-    public TextStyle With(Vector4 color) => new(Role, color, Align, LineSpacing);
+    public TextStyle With(Vector4 color) => new(Role, color, Align, LineSpacing, Scale, Glow, GlowSpread);
 
-    public TextStyle With(TextAlign align) => new(Role, Color, align, LineSpacing);
+    public TextStyle With(TextAlign align) => new(Role, Color, align, LineSpacing, Scale, Glow, GlowSpread);
 }
 
 public interface ITextPainter
@@ -56,4 +63,6 @@ public interface ITextPainter
     void DrawWrapped(Rect area, ReadOnlySpan<char> text, in TextStyle style);
 
     void DrawEllipsized(Rect area, ReadOnlySpan<char> text, in TextStyle style);
+
+    void DrawFitted(Rect area, ReadOnlySpan<char> text, in TextStyle style);
 }

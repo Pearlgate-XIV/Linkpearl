@@ -152,7 +152,8 @@ public static class DirectorySearch
                 continue;
             }
 
-            dest[cursor] = new SearchResult(hit.Kind, hit.Title, hit.Subtitle);
+            dest[cursor] = new SearchResult(hit.Kind, hit.Title, hit.Subtitle, string.Empty,
+                hit.Id.Length == 0 ? string.Empty : TalkIds.Person(hit.Id));
             cursor++;
         }
 

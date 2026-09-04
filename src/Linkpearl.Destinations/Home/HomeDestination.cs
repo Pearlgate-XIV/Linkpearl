@@ -1,6 +1,8 @@
 using System.Globalization;
 using Linkpearl.Applets;
+using Linkpearl.Badges;
 using Linkpearl.Cards;
+using Linkpearl.Destinations.Profile;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -24,10 +26,16 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
     private readonly DisplayPreferences display;
     private readonly HostPaths paths;
     private readonly ITextureSource textures;
+    private readonly BadgeBook badges;
+    private readonly bool development;
+    private readonly ProfileChrome profile;
     private readonly AnnouncementShelf announcements;
+    private readonly NoticeLedger notices;
+    private readonly HomeWeatherCard weather;
 
     public HomeDestination(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
-        DisplayPreferences display, HostPaths paths, ITextureSource textures)
+        DisplayPreferences display, HostPaths paths, ITextureSource textures, BadgeBook badges, IFilePicker files,
+        IWeatherOracle weather, NoticeLedger notices, bool development)
     {
         this.clock = clock;
         this.game = game;
@@ -37,8 +45,15 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         this.display = display;
         this.paths = paths;
         this.textures = textures;
-        announcements = new AnnouncementShelf(pearl, clock);
+        this.badges = badges;
+        this.development = development;
+        this.notices = notices;
+        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development);
+        announcements = new AnnouncementShelf(pearl, talk, clock, hub, notices);
+        this.weather = new HomeWeatherCard(game, clock, weather);
     }
+
+    public ProfileChrome Profile => profile;
 
     public DestinationTab Tab => DestinationTab.Home;
 
@@ -46,17 +61,42 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     public string Label => "Home";
 
-    public int CurrentSection => announcements.IsOpen ? HomePane.Announcements : HomePane.Dashboard;
+    public int CurrentSection => profile.OverlayOpen
+        ? HomePane.Profile
+        : announcements.IsOpen
+            ? HomePane.Announcements
+            : HomePane.Dashboard;
 
     public void ShowSection(int section)
     {
         if (section == HomePane.Announcements)
         {
             announcements.ShowList();
+            profile.Close();
+            return;
+        }
+
+        if (section == HomePane.Profile)
+        {
+            announcements.Close();
+            profile.OpenEdit();
             return;
         }
 
         announcements.Close();
+        profile.Close();
+    }
+
+    public bool CanGoBack => profile.OverlayOpen || announcements.IsOpen;
+
+    public bool Back()
+    {
+        if (profile.Back())
+        {
+            return true;
+        }
+
+        return announcements.Back();
     }
 
     public float Compose(in AppletFrame frame)
@@ -71,21 +111,24 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         var content = frame.Content.Inset(new Edges(inset, frame.Units(8f), inset, frame.Units(6f)));
         var stack = new Stack(content, StackAxis.Vertical, gap);
         var snapshot = pearl.Current;
+        badges.Sync(snapshot.SignedIn && snapshot.FounderSeat > 0 && snapshot.FounderSeat <= FounderFaces.SeatLimit,
+            game.JobName, development, GlassName.IsPatron(badges, snapshot, display, development));
 
-        var heroHeight = MathF.Max(frame.Units(148f), frame.Content.Height * 0.28f);
-        var header = stack.Take(heroHeight);
+        if (profile.OverlayOpen)
+        {
+            return profile.DrawOverlay(frame);
+        }
+
+        var header = stack.Take(frame.Units(162f));
         DrawBanner(frame, new Rect(new Vector2(frame.Content.Min.X, frame.Content.Min.Y),
             new Vector2(frame.Content.Max.X, header.Max.Y)));
         DrawHeader(frame, header, snapshot);
 
-        var featured = MathF.Max(frame.Units(100f), frame.Content.Height * 0.155f);
-        DrawHero(frame, CardBand(stack.Take(featured)), snapshot);
+        weather.Draw(frame, CardBand(stack.Take(frame.Units(85f))));
+        DrawHero(frame, CardBand(stack.Take(frame.Units(48f))), snapshot);
 
         var gridBudget = stack.Remaining.Height;
-        var packed = gridBudget > gap * 2f
-            ? (gridBudget - gap * 2f) / 3f
-            : frame.Units(96f);
-        var rowHeight = MathF.Max(packed * 0.8f, frame.Units(74f));
+        var rowHeight = MathF.Max(0f, (gridBudget - gap * 3f) / 3f);
 
         DrawPair(frame, CardBand(stack.Take(rowHeight)), gap, snapshot, isMessagesAndParty: true);
         DrawPair(frame, CardBand(stack.Take(rowHeight)), gap, snapshot, isMessagesAndParty: false);
@@ -120,123 +163,77 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
     private void DrawHeader(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var ink = frame.Theme.Palette.Ink;
+        var hush = display.Hushed(game.IsInDuty || game.IsInCutscene);
+        var waiting = this.notices.Count(snapshot, talk, clock);
+        HomeHeaderTools.Draw(frame, frame.Content, waiting, hush, out var notice, out var settings);
 
-        var bell = row.TopSlice(frame.Units(24f)).RightSlice(frame.Units(26f));
-        HomeMarks.Draw(frame.Paint, bell, HomeMark.Bell, gold with { W = 0.82f });
-        if (talk.UnreadTotal > 0 && !display.Hushed(game.IsInDuty || game.IsInCutscene))
+        if (frame.Input.ConsumeClick(settings))
         {
-            DrawBadge(frame, bell, talk.UnreadTotal, gold);
+            hub.Open(DestinationTab.Settings);
         }
 
-        if (frame.Input.ConsumeClick(bell))
+        if (frame.Input.ConsumeClick(notice))
         {
-            hub.Open(DestinationTab.Social, SocialPane.Messages);
+            hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
-        var fullName = DisplayName(snapshot);
-        var given = GivenName(fullName);
-        var hour = clock.Now.Hour;
-        var greet = hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,";
-        var text = row.Inset(new Edges(0f, frame.Units(2f), frame.Units(32f), frame.Units(4f)));
-        var cursor = new Stack(text, StackAxis.Vertical, frame.Units(5f));
-
-        frame.Text.DrawIn(cursor.Take(frame.Units(18f)), greet,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-
-        var nameRow = cursor.Take(frame.Units(46f));
-        frame.Text.DrawEllipsized(nameRow, given, new TextStyle(FontRole.Display, ink));
-        if (frame.Input.ConsumeClick(nameRow))
+        var name = GlassName.Resolve(display, ShownName.Linked(game.Character.Name, snapshot.MeName),
+            GlassName.IsPatron(badges, snapshot, display, development));
+        if (name.Length == 0)
         {
-            hub.Open(DestinationTab.You);
+            name = "Linkpearl";
         }
-
         var job = game.JobName.Length > 0 ? TitleCase(game.JobName) : "Warrior of Light";
-        var jobRow = cursor.Take(frame.Units(20f));
-        var gem = jobRow.LeftSlice(frame.Units(16f));
-        HomeMarks.Draw(frame.Paint, gem, HomeMark.Diamond, gold);
-        var jobText = jobRow.Inset(new Edges(frame.Units(20f), 0f, 0f, 0f));
-        frame.Text.DrawEllipsized(jobText, job, new TextStyle(FontRole.CaptionStrong, gold));
-
-        var jobWidth = frame.Text.Measure(job, FontRole.CaptionStrong).X + frame.Units(20f);
-        var rule = cursor.Take(frame.Units(6f));
-        var ruleEnd = MathF.Min(jobWidth + frame.Units(8f), rule.Width);
-        frame.Paint.Line(new Vector2(rule.Min.X, rule.Center.Y),
-            new Vector2(rule.Min.X + ruleEnd, rule.Center.Y), gold with { W = 0.55f }, frame.Units(1f));
-
-        var weather = game.WeatherName;
-        if (weather.Length > 0)
+        var world = snapshot.MeWorld.Length > 0 ? snapshot.MeWorld : game.Character.WorldName;
+        if (world.Length == 0)
         {
-            DrawMeta(frame, cursor.Take(frame.Units(18f)), WeatherGlyph(weather), weather, ink);
+            world = game.ZoneName;
         }
 
-        var place = game.ZoneName;
-        if (place.Length == 0)
-        {
-            place = snapshot.MeWorld.Length > 0 ? snapshot.MeWorld : game.Character.WorldName;
-        }
-
-        if (place.Length > 0)
-        {
-            DrawMeta(frame, cursor.Take(frame.Units(18f)), HomeMark.Place, place, ink);
-        }
+        var card = row.Inset(new Edges(0f, frame.Units(28f) + frame.Units(4f), 0f, 0f));
+        profile.DrawCard(frame, card, name, job, world, game.MapPlace, game.JobIconId);
     }
 
     private void DrawHero(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
     {
         CardChrome.DrawGold(frame, row);
-        frame.Paint.Glow(row.LeftSlice(frame.Units(6f)), frame.Theme.Palette.Accent with { W = 0.20f },
-            frame.Units(12f), frame.Units(8f));
         var gold = frame.Theme.Palette.WarmAccent;
-        var inset = row.Inset(frame.Units(14f));
-        HomeMarks.Draw(frame.Paint, inset.RightSlice(frame.Units(16f)), HomeMark.Chevron, gold with { W = 0.7f });
+        var inset = row.Inset(new Edges(frame.Units(12f), frame.Units(8f), frame.Units(12f), frame.Units(8f)));
+        DrawAnnouncementMark(frame, inset.LeftSlice(frame.Units(22f)));
+        HomeMarks.Draw(frame.Paint, inset.RightSlice(frame.Units(12f)), HomeMark.Chevron, gold with { W = 0.7f });
 
-        var icon = inset.LeftSlice(frame.Units(48f));
-        frame.Paint.FillCircle(icon.Center, frame.Units(20f), new Vector4(0.28f, 0.12f, 0.16f, 0.9f));
-        frame.Paint.StrokeCircle(icon.Center, frame.Units(20f), gold, frame.Units(1.4f));
-        HomeMarks.Draw(frame.Paint, icon, HomeMark.Mask, frame.Theme.Palette.Ink);
-
-        var body = inset.Inset(new Edges(frame.Units(56f), 0f, frame.Units(18f), 0f));
-        frame.Text.DrawEllipsized(body.TopSlice(frame.Units(16f)), "LINKPEARL ANNOUNCEMENTS",
+        var body = inset.Inset(new Edges(frame.Units(28f), 0f, frame.Units(16f), 0f));
+        frame.Text.DrawEllipsized(body.TopSlice(frame.Units(14f)), "LINKPEARL ANNOUNCEMENTS",
             new TextStyle(FontRole.CaptionStrong, gold));
 
         string title;
-        string detail;
-        string when;
-        var latest = snapshot.Announcements.Length > 0 ? snapshot.Announcements[0] : default(PearlAnnouncement?);
+        var notices = snapshot.Announcements ?? [];
+        var latest = notices.Length > 0 ? notices[0] : default(PearlAnnouncement?);
         if (latest is { } notice)
         {
             title = notice.Title;
-            detail = AnnouncementShelf.Snippet(notice.Body);
-            when = UnixAgo.Format(notice.CreatedAtUnix, clock.Now);
         }
         else if (!snapshot.SignedIn)
         {
-            title = "Sign in from You";
-            detail = "Announcements load after Pearlgate.";
-            when = string.Empty;
+            title = LinkPearlgate;
         }
         else
         {
-            title = "No announcements";
-            detail = "Notices from Linkpearl will sit here when they exist.";
-            when = string.Empty;
+            title = "No announcements.";
         }
 
-        frame.Text.DrawEllipsized(body.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(36f))), title,
-            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-        frame.Text.DrawEllipsized(body.Inset(new Edges(0f, frame.Units(44f), 0f, frame.Units(18f))), detail,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        if (when.Length > 0)
-        {
-            frame.Text.DrawIn(body.BottomSlice(frame.Units(16f)), when,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint));
-        }
+        frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(14f)), title,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink));
 
         if (frame.Input.ConsumeClick(row))
         {
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
+    }
+
+    private void DrawAnnouncementMark(in AppletFrame frame, Rect area)
+    {
+        HomeMarks.Draw(frame, area, HomeMark.Mask, frame.Theme.Palette.WarmAccent);
     }
 
     // 5% narrower than the glass, split across both sides so the gutter between pairs stays put.
@@ -252,43 +249,117 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
         else
         {
-            DrawRetainer(frame, row.LeftSlice(half));
+            DrawRetainer(frame, row.LeftSlice(half), snapshot);
             DrawPeople(frame, row.RightSlice(half), snapshot);
         }
     }
 
+    private const string LinkPearlgate = "Link to Pearlgate";
+
     private void DrawMarketAndEvent(in AppletFrame frame, Rect row, float gap, PearlSnapshot snapshot)
     {
         var half = (row.Width - gap) * 0.5f;
-        DrawOffCard(frame, row.LeftSlice(half), HomeMark.Market, "MARKET WATCH", "Not on Pearlgate",
-            "Yellow Pages is off.", DestinationTab.Explore, ExplorePane.Places);
-        if (snapshot.Stories.Length > 0)
+        DrawOffCard(frame, row.LeftSlice(half), HomeMark.Market, "MARKET", LinkPearlgate,
+            string.Empty, snapshot.SignedIn ? DestinationTab.Explore : DestinationTab.You,
+            snapshot.SignedIn ? ExplorePane.Places : 0);
+        if (snapshot.SignedIn && snapshot.Stories.Length > 0)
         {
             var story = FirstUnseenOrFirst(snapshot);
-            DrawWidget(frame, row.RightSlice(half), HomeMark.Event, "EVENT STARTING", story.AuthorName,
+            DrawWidget(frame, row.RightSlice(half), HomeMark.Event, "EVENTS", story.AuthorName,
                 story.HasUnseen ? "New story" : "Story", story.HasUnseen ? 1 : 0, DestinationTab.Social,
                 SocialPane.Feed);
+            return;
         }
-        else
-        {
-            DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "EVENT STARTING", "Not on Pearlgate",
-                "Muster is off.", DestinationTab.Explore, ExplorePane.Events);
-        }
+
+        DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "EVENTS", LinkPearlgate,
+            string.Empty, snapshot.SignedIn ? DestinationTab.Explore : DestinationTab.You,
+            snapshot.SignedIn ? ExplorePane.Events : 0);
     }
 
     private void DrawMessages(in AppletFrame frame, Rect area, PearlSnapshot snapshot)
     {
-        var latest = FirstActive(talk.Inbox());
-        if (latest is { } thread)
+        var received = LatestReceived(4);
+        if (received.Count == 0)
         {
-            DrawWidget(frame, area, HomeMark.Messages, "MESSAGES", thread.Title, thread.Preview, talk.UnreadTotal,
-                DestinationTab.Social, SocialPane.Messages, thread.Id, thread.Title, UnixAgo.Format(thread.LastAt, clock.Now));
+            DrawWidget(frame, area, HomeMark.Messages, "MESSAGES",
+                snapshot.SignedIn ? "No chats yet" : LinkPearlgate, string.Empty,
+                0, snapshot.SignedIn ? DestinationTab.Social : DestinationTab.You,
+                snapshot.SignedIn ? SocialPane.Messages : 0);
             return;
         }
 
-        DrawWidget(frame, area, HomeMark.Messages, "MESSAGES", "Ready to talk",
-            snapshot.SignedIn ? "Party, tells, and linkshells." : "Type here instead of the chat box.",
-            0, DestinationTab.Social, SocialPane.Messages);
+        var body = DrawGoldHeader(frame, area, HomeMark.Messages, "MESSAGES", string.Empty);
+        if (talk.UnreadTotal > 0)
+        {
+            DrawBadge(frame, area, talk.UnreadTotal, frame.Theme.Palette.WarmAccent);
+        }
+
+        if (frame.Input.ConsumeClick(area.TopSlice(body.Min.Y - area.Min.Y)))
+        {
+            hub.Open(DestinationTab.Social, SocialPane.Messages);
+        }
+
+        var stack = new Stack(body, StackAxis.Vertical, frame.Units(5f));
+        var rowH = PreviewRowHeight(frame);
+        for (var index = 0; index < received.Count && stack.Remaining.Height >= rowH; index++)
+        {
+            var (thread, line) = received[index];
+            var name = line.Sender.Length > 0 ? line.Sender : thread.Title;
+            if (DrawPreviewRow(frame, stack.Take(rowH), name, line.Body))
+            {
+                OpenMessagePerson(thread);
+            }
+        }
+
+        if (stack.Remaining.Height > 1f && frame.Input.ConsumeClick(stack.Remaining))
+        {
+            hub.Open(DestinationTab.Social, SocialPane.Messages);
+        }
+    }
+
+    private void OpenMessagePerson(TalkThread thread)
+    {
+        if (thread.Kind == TalkKind.Tell)
+        {
+            hub.OpenProfile(thread.Id);
+            return;
+        }
+
+        hub.OpenTalk(thread.Id);
+    }
+
+    private List<(TalkThread Thread, TalkLine Line)> LatestReceived(int max)
+    {
+        var hits = new List<(TalkThread, TalkLine)>(max);
+        var inbox = talk.Inbox();
+        var scanned = 0;
+        for (var index = 0; index < inbox.Count && hits.Count < max && scanned < 16; index++)
+        {
+            var thread = inbox[index];
+            scanned++;
+            if (LastIncoming(thread.Id) is not TalkLine line)
+            {
+                continue;
+            }
+
+            hits.Add((thread, line));
+        }
+
+        return hits;
+    }
+
+    private TalkLine? LastIncoming(string threadId)
+    {
+        var lines = talk.Lines(threadId);
+        for (var index = lines.Count - 1; index >= 0; index--)
+        {
+            if (!lines[index].Mine && lines[index].Body.Length > 0)
+            {
+                return lines[index];
+            }
+        }
+
+        return null;
     }
 
     private void DrawParty(in AppletFrame frame, Rect area)
@@ -304,27 +375,135 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             return;
         }
 
-        DrawWidget(frame, area, HomeMark.Party, "PARTY", "No party", "Opens party chat when you join one.", 0,
+        DrawWidget(frame, area, HomeMark.Party, "PARTY", LinkPearlgate, string.Empty, 0,
             DestinationTab.Social, SocialPane.Linkshells, TalkIds.Party);
     }
 
-    private void DrawRetainer(in AppletFrame frame, Rect area) =>
-        DrawOffCard(frame, area, HomeMark.Retainer, "RETAINER", "Not wired", "Retainers stay in the game client.",
+    private void DrawRetainer(in AppletFrame frame, Rect area, PearlSnapshot snapshot)
+    {
+        if (!snapshot.SignedIn)
+        {
+            DrawOffCard(frame, area, HomeMark.Retainer, "RETAINER", LinkPearlgate, string.Empty,
+                DestinationTab.You, 0);
+            return;
+        }
+
+        if (snapshot.Retainers.Length == 0)
+        {
+            DrawOffCard(frame, area, HomeMark.Retainer, "RETAINER", "No retainers yet", string.Empty,
+                DestinationTab.You, 0);
+            return;
+        }
+
+        var retainer = snapshot.Retainers[0];
+        var gil = retainer.Gil.ToString("N0", CultureInfo.InvariantCulture) + " gil";
+        var stock = retainer.ItemsOnSale == 1
+            ? "1 on sale"
+            : retainer.ItemsOnSale.ToString(CultureInfo.InvariantCulture) + " on sale";
+        DrawWidget(frame, area, HomeMark.Retainer, "RETAINER", retainer.Name, gil + " · " + stock, 0,
             DestinationTab.You, 0);
+    }
 
     private void DrawPeople(in AppletFrame frame, Rect area, PearlSnapshot snapshot)
     {
-        var count = snapshot.SignedIn ? snapshot.People.Length : 0;
-        var title = count > 0 ? count.ToString(CultureInfo.InvariantCulture) : "0";
-        DrawWidget(frame, area, HomeMark.Friends, "FRIENDS ONLINE", title,
-            snapshot.SignedIn ? "On Pearlgate" : "Sign in from You", 0,
-            snapshot.SignedIn ? DestinationTab.Social : DestinationTab.You,
-            snapshot.SignedIn ? SocialPane.People : 0, people: snapshot);
+        var roster = talk.Friends();
+        var online = new List<GameFriend>();
+        for (var index = 0; index < roster.Count; index++)
+        {
+            if (roster[index].Online)
+            {
+                online.Add(roster[index]);
+            }
+        }
+
+        if (online.Count == 0)
+        {
+            var gate = snapshot.SignedIn ? snapshot.People.Length : 0;
+            if (gate > 0)
+            {
+                DrawWidget(frame, area, HomeMark.Friends, "FRIENDS ONLINE",
+                    "None in Eorzea", "On Pearlgate", 0,
+                    DestinationTab.Social, SocialPane.People, people: snapshot);
+                return;
+            }
+
+            if (roster.Count > 0)
+            {
+                DrawWidget(frame, area, HomeMark.Friends, "FRIENDS ONLINE",
+                    "None online", string.Empty, 0, DestinationTab.Social, SocialPane.People);
+                return;
+            }
+
+            DrawWidget(frame, area, HomeMark.Friends, "FRIENDS ONLINE",
+                "No friends yet", string.Empty, 0, DestinationTab.Social, SocialPane.People);
+            return;
+        }
+
+        var count = online.Count.ToString(CultureInfo.InvariantCulture);
+        var body = DrawGoldHeader(frame, area, HomeMark.Friends, "FRIENDS ONLINE", count);
+        if (frame.Input.ConsumeClick(area.TopSlice(body.Min.Y - area.Min.Y)))
+        {
+            hub.Open(DestinationTab.Social, SocialPane.People);
+        }
+
+        var stack = new Stack(body, StackAxis.Vertical, frame.Units(5f));
+        var rowH = PreviewRowHeight(frame);
+        for (var index = 0; index < online.Count && stack.Remaining.Height >= rowH; index++)
+        {
+            var friend = online[index];
+            var where = friend.Place.Length > 0 ? friend.Place : friend.World;
+            if (DrawPreviewRow(frame, stack.Take(rowH), friend.Name, where))
+            {
+                hub.OpenProfile(TalkIds.Tell(friend.Name, friend.World));
+            }
+        }
+
+        if (stack.Remaining.Height > 1f && frame.Input.ConsumeClick(stack.Remaining))
+        {
+            hub.Open(DestinationTab.Social, SocialPane.People);
+        }
     }
 
     private void DrawOffCard(in AppletFrame frame, Rect area, HomeMark mark, string kicker, string title,
         string detail, DestinationTab tab, int pane) =>
         DrawWidget(frame, area, mark, kicker, title, detail, 0, tab, pane);
+
+    private static Rect DrawGoldHeader(in AppletFrame frame, Rect area, HomeMark mark, string kicker, string meta)
+    {
+        CardChrome.DrawGold(frame, area);
+        var gold = frame.Theme.Palette.WarmAccent;
+        var inset = area.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f), frame.Units(7f)));
+        var headerH = MathF.Max(frame.Text.LineHeight(FontRole.CaptionStrong), frame.Units(13f));
+        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(5f));
+        var header = stack.Take(headerH);
+        HomeMarks.Draw(frame, header.LeftSlice(frame.Units(14f)), mark, gold);
+        HomeMarks.Draw(frame.Paint, header.RightSlice(frame.Units(11f)), HomeMark.Chevron, gold with { W = 0.65f });
+        var kickerArea = header.Inset(new Edges(frame.Units(18f), 0f, frame.Units(13f), 0f));
+        if (meta.Length > 0)
+        {
+            var metaWidth = frame.Text.Measure(meta, FontRole.Caption).X + frame.Units(4f);
+            frame.Text.DrawIn(kickerArea.RightSlice(metaWidth), meta,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Right));
+            kickerArea = kickerArea.Inset(new Edges(0f, 0f, metaWidth, 0f));
+        }
+
+        frame.Text.DrawEllipsized(kickerArea, kicker, new TextStyle(FontRole.CaptionStrong, gold));
+        return stack.Remaining;
+    }
+
+    private static float PreviewRowHeight(in AppletFrame frame) =>
+        frame.Text.LineHeight(FontRole.CaptionStrong) + frame.Units(1f) +
+        frame.Text.LineHeight(FontRole.Caption);
+
+    private static bool DrawPreviewRow(in AppletFrame frame, Rect row, string title, string detail)
+    {
+        var nameH = frame.Text.LineHeight(FontRole.CaptionStrong);
+        frame.Text.DrawEllipsized(row.TopSlice(nameH), title,
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawEllipsized(row.Inset(new Edges(0f, nameH + frame.Units(1f), 0f, 0f)), detail,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        return frame.Input.ConsumeClick(row);
+    }
 
     private void DrawWidget(in AppletFrame frame, Rect area, HomeMark mark, string kicker, string title,
         string detail, int badge, DestinationTab tab, int pane, string talkId = "", string avatarName = "",
@@ -333,12 +512,12 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         CardChrome.DrawGold(frame, area);
         var gold = frame.Theme.Palette.WarmAccent;
         var inset = area.Inset(frame.Units(12f));
-        var header = inset.TopSlice(frame.Units(16f));
-        var icon = header.LeftSlice(frame.Units(16f));
-        HomeMarks.Draw(frame.Paint, icon, mark, gold);
+        var header = inset.TopSlice(frame.Units(18f));
+        var icon = header.LeftSlice(frame.Units(18f));
+        HomeMarks.Draw(frame, icon, mark, gold);
         var chevron = header.RightSlice(frame.Units(12f));
         HomeMarks.Draw(frame.Paint, chevron, HomeMark.Chevron, gold with { W = 0.65f });
-        var kickerArea = header.Inset(new Edges(frame.Units(20f), 0f, frame.Units(14f), 0f));
+        var kickerArea = header.Inset(new Edges(frame.Units(22f), 0f, frame.Units(14f), 0f));
         if (meta.Length > 0)
         {
             var metaWidth = frame.Text.Measure(meta, FontRole.Caption).X + frame.Units(4f);
@@ -354,52 +533,28 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
 
         var body = inset.Inset(new Edges(0f, frame.Units(20f), 0f, 0f));
-        if (avatarName.Length > 0)
+        if (title.Length > 0)
         {
-            var avatar = body.TopSlice(frame.Units(28f)).LeftSlice(frame.Units(28f));
-            DrawInitial(frame, avatar, avatarName);
-            var copy = body.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f));
-            var nameRow = copy.TopSlice(frame.Units(16f));
-            if (when.Length > 0)
-            {
-                var whenWidth = frame.Text.Measure(when, FontRole.Caption).X + frame.Units(2f);
-                frame.Text.DrawIn(nameRow.RightSlice(whenWidth), when,
-                    new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint, TextAlign.Right));
-                nameRow = nameRow.Inset(new Edges(0f, 0f, whenWidth, 0f));
-            }
+            frame.Text.DrawEllipsized(body.TopSlice(frame.Units(14f)), title,
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
+        }
 
-            frame.Text.DrawEllipsized(nameRow, title,
-                new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-            frame.Text.DrawEllipsized(copy.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)), detail,
+        if (detail.Length > 0)
+        {
+            var detailBottom = members > 0 || people is not null
+                ? frame.Units(16f)
+                : 0f;
+            frame.Text.DrawEllipsized(body.Inset(new Edges(0f, frame.Units(15f), 0f, detailBottom)), detail,
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
-        else
+
+        if (members > 0)
         {
-            var friendsLive = mark == HomeMark.Friends && people is { SignedIn: true } &&
-                !title.Equals("0", StringComparison.Ordinal);
-            var titleColor = title.Equals("Not wired", StringComparison.Ordinal) ||
-                title.Equals("Not on Pearlgate", StringComparison.Ordinal)
-                ? frame.Theme.Palette.InkMuted
-                : friendsLive
-                    ? frame.Theme.Palette.Positive
-                    : frame.Theme.Palette.Ink;
-            frame.Text.DrawEllipsized(body.TopSlice(frame.Units(20f)), title,
-                new TextStyle(FontRole.BodyStrong, titleColor));
-            frame.Text.DrawEllipsized(body.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(18f))), detail,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-            if (members > 0)
-            {
-                DrawMemberPips(frame, body.BottomSlice(frame.Units(14f)), members);
-            }
-            else if (people is { } snapshot)
-            {
-                DrawAvatars(frame, body.BottomSlice(frame.Units(18f)), snapshot, 4);
-            }
-            else if (mark == HomeMark.Retainer)
-            {
-                HomeMarks.Draw(frame.Paint, body.BottomSlice(frame.Units(22f)).RightSlice(frame.Units(28f)),
-                    HomeMark.Pouch, gold);
-            }
+            DrawMemberPips(frame, body.BottomSlice(frame.Units(14f)), members);
+        }
+        else if (people is { } snapshot)
+        {
+            DrawAvatars(frame, body.BottomSlice(frame.Units(18f)), snapshot, 4);
         }
 
         if (frame.Input.ConsumeClick(area))
@@ -417,13 +572,6 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
 
         hub.Open(tab, pane);
-    }
-
-    private static void DrawMeta(in AppletFrame frame, Rect row, HomeMark mark, string label, Vector4 ink)
-    {
-        HomeMarks.Draw(frame.Paint, row.LeftSlice(frame.Units(14f)), mark, ink with { W = 0.92f });
-        frame.Text.DrawEllipsized(row.Inset(new Edges(frame.Units(18f), 0f, 0f, 0f)), label,
-            new TextStyle(FontRole.Caption, ink));
     }
 
     private static void DrawInitial(in AppletFrame frame, Rect area, string name)
@@ -474,16 +622,6 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             new TextStyle(FontRole.Caption, frame.Theme.Palette.SurfaceSunken, TextAlign.Center));
     }
 
-    private string DisplayName(PearlSnapshot snapshot)
-    {
-        if (snapshot.MeName.Length > 0)
-        {
-            return snapshot.MeName;
-        }
-
-        return game.Character.Name.Length > 0 ? game.Character.Name : "Linkpearl";
-    }
-
     private static string TitleCase(string value)
     {
         if (value.Length == 0)
@@ -500,38 +638,6 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         return space < 0 ? name.AsSpan() : name.AsSpan(0, space);
     }
 
-    private HomeMark WeatherGlyph(string weather)
-    {
-        if (Contains(weather, "fog") || Contains(weather, "cloud") || Contains(weather, "overcast") ||
-            Contains(weather, "gloom") || Contains(weather, "dust") || Contains(weather, "mist"))
-        {
-            return HomeMark.Cloud;
-        }
-
-        if (Contains(weather, "rain") || Contains(weather, "shower") || Contains(weather, "thunder") ||
-            Contains(weather, "storm"))
-        {
-            return HomeMark.Rain;
-        }
-
-        if (Contains(weather, "snow") || Contains(weather, "blizzard") || Contains(weather, "frost"))
-        {
-            return HomeMark.Cloud;
-        }
-
-        if (Night(clock.Now) && (Contains(weather, "fair") || Contains(weather, "clear") || weather.Length == 0))
-        {
-            return HomeMark.Moon;
-        }
-
-        return HomeMark.Sun;
-    }
-
-    private static bool Contains(string haystack, string needle) =>
-        haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
-
-    private static bool Night(DateTimeOffset local) => local.Hour < 7 || local.Hour >= 19;
-
     private static PearlStory FirstUnseenOrFirst(PearlSnapshot snapshot)
     {
         for (var index = 0; index < snapshot.Stories.Length; index++)
@@ -543,18 +649,5 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
 
         return snapshot.Stories[0];
-    }
-
-    private static TalkThread? FirstActive(IReadOnlyList<TalkThread> inbox)
-    {
-        for (var index = 0; index < inbox.Count; index++)
-        {
-            if (inbox[index].LastAt > DateTimeOffset.MinValue || inbox[index].Unread > 0 || inbox[index].Pinned)
-            {
-                return inbox[index];
-            }
-        }
-
-        return null;
     }
 }

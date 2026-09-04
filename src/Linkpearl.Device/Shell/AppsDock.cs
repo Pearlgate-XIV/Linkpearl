@@ -5,68 +5,274 @@ using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 
-// Right-edge, vertically centered handle. Tapping it carousels the content: destinations slide
-// left and the apps screen slides in from the right. The handle stays on the right and the
-// chevron points at the page you will land on.
+// Horizontal glass pager. Extra home pages sit to the left of Studio. Apps sit to the right.
+// Destinations take the middle lane only while a tab is open.
 public sealed class AppsDock
 {
-    private const float TriggerWidthUnits = 18f;
-    private const float TriggerHeightUnits = 72f;
+    public const int ExtraCap = 5;
+
     private const float SlideSeconds = 0.28f;
+    private const float SwipeCommit = 0.28f;
 
-    private bool showingApps;
-    private float slide;
+    private int extras;
+    private int page = -1;
+    private int rest = -1;
+    private float slide = -1f;
+    private bool destLane;
+    private bool tracking;
+    private bool dragging;
+    private Vector2 grabOrigin;
+    private float grabSlide;
 
-    public bool OnApps => showingApps;
+    public bool OnApps => page == AppsPage;
 
-    public bool IsOpen => showingApps || slide > 0.004f;
+    public bool OnStudio => page == StudioPage;
 
-    public float Shift => Ease(slide);
+    public bool OnExtra => !destLane && page >= 0 && page < extras;
 
-    public void Close() => showingApps = false;
+    public int ExtraIndex => OnExtra ? page : -1;
 
-    public void Open() => showingApps = true;
+    public int ExtraCount => extras;
 
-    public bool DrawHandle(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float scale,
-        float deltaSeconds, bool reduceMotion)
+    public int StudioPage => destLane ? -1 : extras;
+
+    public int AppsPage => destLane ? 1 : extras + 1;
+
+    public bool DestLane => destLane;
+
+    public bool IsOpen => OnApps || MathF.Abs(slide - page) > 0.004f;
+
+    public bool IsDragging => dragging;
+
+    public bool IsPaging => dragging || MathF.Abs(slide - page) > 0.02f;
+
+    public float Slide => destLane ? EaseSigned(slide) : slide;
+
+    public float Shift => OnApps || slide > (destLane ? 0.5f : extras + 0.5f) ? 1f : 0f;
+
+    public void ShowStudio()
     {
-        if (reduceMotion)
+        rest = StudioPage;
+        page = StudioPage;
+    }
+
+    public void SnapStudio()
+    {
+        rest = StudioPage;
+        page = StudioPage;
+        slide = page;
+    }
+
+    public void SetExtraScreens(int count)
+    {
+        extras = Math.Clamp(count, 0, ExtraCap);
+        if (!destLane)
         {
-            slide = showingApps ? 1f : 0f;
+            var next = Math.Clamp(page, MinPage, MaxPage);
+            if (next != page)
+            {
+                page = next;
+                slide = page;
+            }
+
+            slide = Scalar.Clamp(slide, MinPage, MaxPage);
         }
-        else
+    }
+
+    public void SetDestLane(bool open)
+    {
+        if (destLane == open)
         {
-            StepSlide(deltaSeconds);
+            return;
         }
 
-        var trigger = HandleArea(screen, scale);
-        var onApps = Shift > 0.5f;
-        var handleFill = theme.Palette.SurfaceOverlay with { W = onApps ? 0.86f : 0.50f };
-        var handleInk = (onApps ? theme.Palette.Accent : theme.Palette.Ink) with { W = onApps ? 1f : 0.50f };
-        paint.Fill(trigger, handleFill, trigger.Height * 0.5f, Corner.Left);
-        DrawChevron(paint, trigger, handleInk, pointLeft: onApps);
+        var wantApps = OnApps;
+        destLane = open;
+        if (wantApps)
+        {
+            page = AppsPage;
+            rest = page;
+            return;
+        }
 
-        if (!input.ConsumeClick(trigger))
+        page = StudioPage;
+        rest = page;
+    }
+
+    public void ShowDestinations()
+    {
+        destLane = true;
+        rest = 0;
+        page = 0;
+    }
+
+    public void ShowExtra(int index)
+    {
+        if (destLane || extras == 0)
+        {
+            return;
+        }
+
+        page = Math.Clamp(index, 0, extras - 1);
+        rest = page;
+    }
+
+    public void Close() => ShowStudio();
+
+    public void Open()
+    {
+        if (!OnApps)
+        {
+            rest = page;
+        }
+
+        page = AppsPage;
+    }
+
+    public bool Step(int delta)
+    {
+        if (delta == 0)
         {
             return false;
         }
 
-        showingApps = !showingApps;
+        var next = page + delta;
+        if (destLane)
+        {
+            next = Math.Clamp(next, -1, 1);
+        }
+        else
+        {
+            next = Math.Clamp(next, MinPage, MaxPage);
+        }
+
+        if (next == page)
+        {
+            return false;
+        }
+
+        rest = page;
+        page = next;
         return true;
     }
 
-    private static Rect HandleArea(Rect screen, float scale)
+    public bool CaptureSwipe(IInputProbe input, Rect glass, float scale, bool allow)
     {
-        var width = TriggerWidthUnits * scale;
-        var height = TriggerHeightUnits * scale;
-        var origin = new Vector2(screen.Max.X - width, screen.Center.Y - height * 0.5f);
-        return Rect.FromSize(origin, new Vector2(width, height));
+        if (!allow)
+        {
+            tracking = false;
+            dragging = false;
+            return false;
+        }
+
+        var pageWidth = MathF.Max(glass.Width, 1f);
+        var threshold = MathF.Max(10f, 14f * scale);
+        var span = destLane ? 1f : MathF.Max(1f, extras + 1);
+
+        if (!tracking && input.WasPressed(glass))
+        {
+            tracking = true;
+            dragging = false;
+            grabOrigin = input.Pointer;
+            grabSlide = slide;
+        }
+
+        if (tracking && input.IsHeld())
+        {
+            var delta = input.Pointer - grabOrigin;
+            if (!dragging && MathF.Abs(delta.X) >= threshold && MathF.Abs(delta.X) > MathF.Abs(delta.Y) * 1.15f)
+            {
+                dragging = true;
+                input.Claim(glass);
+            }
+
+            if (dragging)
+            {
+                slide = Scalar.Clamp(grabSlide - delta.X / pageWidth * span, MinPage, MaxPage);
+                input.Claim(glass);
+            }
+
+            return false;
+        }
+
+        if (!tracking)
+        {
+            return false;
+        }
+
+        var committed = dragging;
+        if (dragging)
+        {
+            page = CommitPage(grabSlide, slide);
+            input.Claim(glass);
+        }
+
+        tracking = false;
+        dragging = false;
+        return committed;
     }
+
+    public bool ConsumeHandle(IInputProbe input, Rect screen, float scale)
+    {
+        if (input.ConsumeClick(EdgeHandles.Left(screen, scale)))
+        {
+            return Step(-1);
+        }
+
+        if (input.ConsumeClick(EdgeHandles.Right(screen, scale)))
+        {
+            return Step(1);
+        }
+
+        return false;
+    }
+
+    public void Advance(float deltaSeconds, bool reduceMotion)
+    {
+        if (dragging || reduceMotion)
+        {
+            if (!dragging && reduceMotion)
+            {
+                slide = page;
+            }
+
+            return;
+        }
+
+        StepSlide(deltaSeconds);
+    }
+
+    public void DrawHandle(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float scale)
+    {
+        DrawSide(paint, input, theme, EdgeHandles.Left(screen, scale), Corner.Right, pointLeft: true);
+        DrawSide(paint, input, theme, EdgeHandles.Right(screen, scale), Corner.Left, pointLeft: false);
+    }
+
+    private static void DrawSide(IPaintSurface paint, IInputProbe input, ITheme theme, Rect trigger, Corner corner,
+        bool pointLeft)
+    {
+        var hot = input.IsHovering(trigger);
+        var handleFill = theme.Palette.SurfaceOverlay with { W = hot ? 0.78f : 0.22f };
+        var handleInk = theme.Palette.Ink with { W = hot ? 1f : 0.28f };
+        paint.Fill(trigger, handleFill, trigger.Height * 0.5f, corner);
+        DrawChevron(paint, trigger, handleInk, pointLeft);
+    }
+
+    public Rect PageArea(Rect content, int packedPage)
+    {
+        var shown = destLane ? EaseSigned(slide) : slide;
+        return content.Translate(new Vector2((packedPage - shown) * content.Width, 0f));
+    }
+
+    private int MinPage => destLane ? -1 : 0;
+
+    private int MaxPage => destLane ? 1 : extras + 1;
 
     private void StepSlide(float deltaSeconds)
     {
-        var target = showingApps ? 1f : 0f;
-        var delta = MathF.Max(deltaSeconds, 0f) / SlideSeconds;
+        var target = (float)page;
+        var span = destLane ? 1f : MathF.Max(1f, extras + 1);
+        var delta = MathF.Max(deltaSeconds, 0f) / SlideSeconds * span;
         if (slide < target)
         {
             slide = MathF.Min(target, slide + delta);
@@ -77,7 +283,33 @@ public sealed class AppsDock
         }
     }
 
+    private int CommitPage(float from, float to)
+    {
+        var commit = destLane ? SwipeCommit : SwipeCommit;
+        int next;
+        if (to - from >= commit)
+        {
+            next = (int)MathF.Round(from) + 1;
+        }
+        else if (from - to >= commit)
+        {
+            next = (int)MathF.Round(from) - 1;
+        }
+        else
+        {
+            next = (int)MathF.Round(to);
+        }
+
+        return Math.Clamp(next, MinPage, MaxPage);
+    }
+
     private static float Ease(float value) => value * value * (3f - 2f * value);
+
+    private static float EaseSigned(float value)
+    {
+        var sign = MathF.Sign(value);
+        return sign * Ease(MathF.Abs(value));
+    }
 
     private static void DrawChevron(IPaintSurface paint, Rect trigger, Vector4 color, bool pointLeft)
     {

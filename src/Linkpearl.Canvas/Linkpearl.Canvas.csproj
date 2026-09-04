@@ -3,10 +3,11 @@
 
   <PropertyGroup>
     <RootNamespace>Linkpearl.Canvas</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Fonts\*.ttf;Fonts\Inter-OFL.txt">
+    <Content Include="Fonts\**\*.ttf;Fonts\**\*.txt;Fonts\Inter-OFL.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

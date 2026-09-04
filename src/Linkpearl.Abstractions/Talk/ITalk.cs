@@ -1,3 +1,5 @@
+using Linkpearl.Platform;
+
 namespace Linkpearl.Talk;
 
 public enum TalkKind : byte
@@ -10,6 +12,7 @@ public enum TalkKind : byte
     Pearl = 5,
     FreeCompany = 6,
     Novice = 7,
+    Live = 8,
 }
 
 public readonly record struct TalkThread(
@@ -28,7 +31,8 @@ public readonly record struct TalkLine(
     string Sender,
     string Body,
     DateTimeOffset At,
-    bool Mine);
+    bool Mine,
+    string Tag = "");
 
 public readonly record struct TalkPeer(
     string Id,
@@ -44,6 +48,8 @@ public readonly record struct TalkPeer(
 
 public interface ITalk
 {
+    event Action<string, TalkLine>? LinePosted;
+
     int Generation { get; }
 
     int UnreadTotal { get; }
@@ -61,6 +67,8 @@ public interface ITalk
     IReadOnlyList<TalkThread> Urgent(int max);
 
     IReadOnlyList<GamePeerHint> SuggestTells();
+
+    IReadOnlyList<GameFriend> Friends();
 
     IReadOnlyList<GamePeerHint> SearchNearby(string query);
 

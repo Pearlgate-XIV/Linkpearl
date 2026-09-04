@@ -13,6 +13,14 @@ public interface IApplet
     void Leave();
 
     void Compose(in AppletFrame frame);
+
+    // Soft-key Back. Return true when an inner page was closed so the shell stays here.
+    bool CanGoBack => false;
+
+    bool Back() => false;
+
+    // Last inner page or tab, restored through AppletEntry.RouteHint after a cold open.
+    string Place => string.Empty;
 }
 
 public interface IAppletBackground

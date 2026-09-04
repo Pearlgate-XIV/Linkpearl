@@ -25,6 +25,8 @@ internal sealed class SilentInput : IInputProbe
 
     public bool ConsumeClick(Rect area, PointerButton button = PointerButton.Primary) => false;
 
+    public bool PressedInside(Rect area, PointerButton button = PointerButton.Primary) => false;
+
     public void Claim(Rect area)
     {
     }

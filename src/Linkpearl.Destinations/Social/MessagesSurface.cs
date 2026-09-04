@@ -3,6 +3,7 @@ using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
+using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
@@ -17,6 +18,8 @@ internal sealed class MessagesSurface
     private readonly IClock clock;
     private readonly IGameSession game;
     private readonly DisplayPreferences display;
+    private readonly IPearlHub pearl;
+    private readonly ITalkPopouts popouts;
     private string openId = string.Empty;
     private string profileId = string.Empty;
     private string filter = string.Empty;
@@ -31,12 +34,15 @@ internal sealed class MessagesSurface
 
     private int inboxPane = SocialPane.Messages;
 
-    public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display)
+    public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display, IPearlHub pearl,
+        ITalkPopouts popouts)
     {
         this.talk = talk;
         this.clock = clock;
         this.game = game;
         this.display = display;
+        this.pearl = pearl;
+        this.popouts = popouts;
     }
 
     public bool ThreadOpen => openId.Length > 0 && profileId.Length == 0;
@@ -84,6 +90,27 @@ internal sealed class MessagesSurface
         lastFilterLength = 0;
         suppressAutofill = false;
         noteDraft = string.Empty;
+    }
+
+    public bool Back()
+    {
+        if (profileId.Length > 0)
+        {
+            RememberNote();
+            profileId = string.Empty;
+            noteDraft = string.Empty;
+            profileFromThread = false;
+            return true;
+        }
+
+        if (openId.Length > 0)
+        {
+            openId = string.Empty;
+            draft = string.Empty;
+            return true;
+        }
+
+        return false;
     }
 
     public float Compose(in AppletFrame frame)
@@ -175,8 +202,15 @@ internal sealed class MessagesSurface
 
             var row = stack.Take(frame.Units(72f));
             CardChrome.DrawGold(frame, row);
-            DrawThreadRow(frame, row.Inset(frame.Units(12f)), thread);
-            if (frame.Input.ConsumeClick(row))
+            var inner = row.Inset(frame.Units(12f));
+            var offerAdd = CanOfferFriend(thread);
+            var text = offerAdd ? inner.Inset(new Edges(0f, 0f, frame.Units(72f), 0f)) : inner;
+            DrawThreadRow(frame, text, thread);
+            if (offerAdd && Chip(frame, inner.RightSlice(frame.Units(64f)).TopSlice(frame.Units(28f)), "Add"))
+            {
+                OfferFriend(thread);
+            }
+            else if (frame.Input.ConsumeClick(row))
             {
                 Open(thread.Id);
             }
@@ -199,16 +233,23 @@ internal sealed class MessagesSurface
     {
         talk.MarkRead(openId);
         var thread = talk.Find(openId);
+        RememberFriendLookup(thread);
         var inset = frame.Units(12f);
         var area = frame.Content.Inset(new Edges(inset, inset, inset, inset));
         var header = area.TopSlice(frame.Units(36f));
+        var friendH = CanOfferFriend(thread) ? frame.Units(36f) : 0f;
+        var friendBar = friendH > 0f
+            ? new Rect(new Vector2(area.Min.X, header.Max.Y + frame.Units(6f)),
+                new Vector2(area.Max.X, header.Max.Y + frame.Units(6f) + friendH))
+            : header;
         var replies = thread?.CanSend == true ? frame.Units(36f) : 0f;
         var composer = area.BottomSlice(frame.Units(44f));
         var tray = replies > 0f
             ? new Rect(new Vector2(area.Min.X, composer.Min.Y - replies - frame.Units(6f)),
                 new Vector2(area.Max.X, composer.Min.Y - frame.Units(6f)))
             : composer;
-        var messages = new Rect(new Vector2(area.Min.X, header.Max.Y + frame.Units(8f)),
+        var messagesTop = friendH > 0f ? friendBar.Max.Y + frame.Units(8f) : header.Max.Y + frame.Units(8f);
+        var messages = new Rect(new Vector2(area.Min.X, messagesTop),
             new Vector2(area.Max.X, (replies > 0f ? tray.Min.Y : composer.Min.Y) - frame.Units(8f)));
 
         DrawHeader(frame, header, thread);
@@ -217,7 +258,13 @@ internal sealed class MessagesSurface
             return frame.Content.Height;
         }
 
-        DrawLines(frame, messages, thread);
+        if (friendH > 0f)
+        {
+            DrawThreadFriend(frame, friendBar, thread);
+        }
+
+        frame.Paint.Fill(messages, frame.Theme.Palette.SurfaceSunken with { W = 0.90f }, frame.Units(14f));
+        DrawLines(frame, messages.Inset(frame.Units(12f)), thread);
         if (replies > 0f)
         {
             DrawReplies(frame, tray, thread);
@@ -261,6 +308,178 @@ internal sealed class MessagesSurface
         }
     }
 
+    private void RememberFriendLookup(TalkThread? thread)
+    {
+        if (!pearl.Current.SignedIn || thread is not { Kind: TalkKind.Tell } tell)
+        {
+            return;
+        }
+
+        if (tell.Title.Length >= 2)
+        {
+            pearl.NoteQuery(tell.Title);
+        }
+    }
+
+    private bool CanOfferFriend(TalkThread? thread)
+    {
+        if (!pearl.Current.SignedIn || thread is not { } row)
+        {
+            return false;
+        }
+
+        if (row.Kind == TalkKind.Pearl)
+        {
+            var chat = ChatOf(row.Id);
+            return chat is { IsGroup: false } && chat.Value.OtherUserId.Length > 0 &&
+                !AlreadyFriend(chat.Value.OtherUserId);
+        }
+
+        return row.Kind == TalkKind.Tell && !AlreadyNamedFriend(row.Title);
+    }
+
+    private void DrawThreadFriend(in AppletFrame frame, Rect row, TalkThread? thread)
+    {
+        CardChrome.DrawGold(frame, row);
+        frame.Text.DrawIn(row, "Add friend",
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        if (frame.Input.ConsumeClick(row))
+        {
+            OfferFriend(thread);
+        }
+    }
+
+    private void OfferFriend(TalkThread? thread)
+    {
+        if (thread is not { } row)
+        {
+            return;
+        }
+
+        if (TryResolveFriend(row, out var userId, out var number))
+        {
+            pearl.AddFriend(userId, number);
+            return;
+        }
+
+        if (row.Kind == TalkKind.Tell && row.Title.Length >= 2)
+        {
+            pearl.NoteQuery(row.Title);
+        }
+    }
+
+    private bool TryResolveFriend(TalkThread thread, out string userId, out string number)
+    {
+        userId = string.Empty;
+        number = string.Empty;
+        var snapshot = pearl.Current;
+        if (thread.Kind == TalkKind.Pearl)
+        {
+            var chat = ChatOf(thread.Id);
+            if (chat is { IsGroup: false } && chat.Value.OtherUserId.Length > 0)
+            {
+                userId = chat.Value.OtherUserId;
+                return true;
+            }
+
+            return false;
+        }
+
+        var peer = talk.FindPeer(thread.Id);
+        if (peer is { Number.Length: > 0 })
+        {
+            number = peer.Value.Number;
+        }
+
+        for (var index = 0; index < snapshot.People.Length; index++)
+        {
+            var person = snapshot.People[index];
+            if (!person.DisplayName.Equals(thread.Title, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            userId = person.Id;
+            number = person.PhoneNumber;
+            return true;
+        }
+
+        for (var index = 0; index < snapshot.SearchHits.Length; index++)
+        {
+            var hit = snapshot.SearchHits[index];
+            if (hit.Id.Length == 0 || string.Equals(hit.Id, snapshot.MeId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!hit.Title.Equals(thread.Title, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            userId = hit.Id;
+            return true;
+        }
+
+        return number.Length > 0;
+    }
+
+    private PearlChat? ChatOf(string threadId)
+    {
+        const string prefix = "pearl:";
+        if (!threadId.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var id = threadId[prefix.Length..];
+        var chats = pearl.Current.Chats;
+        for (var index = 0; index < chats.Length; index++)
+        {
+            if (string.Equals(chats[index].Id, id, StringComparison.Ordinal))
+            {
+                return chats[index];
+            }
+        }
+
+        return null;
+    }
+
+    private bool AlreadyFriend(string userId)
+    {
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            if (string.Equals(people[index].Id, userId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AlreadyNamedFriend(string name)
+    {
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            if (people[index].DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Chip(in AppletFrame frame, Rect area, string label)
+    {
+        frame.Paint.Fill(area.Inset(frame.Units(2f)), frame.Theme.Palette.Accent, frame.Units(999f));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.Caption, frame.Theme.Palette.AccentInk, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
+    }
+
     private float DrawProfile(in AppletFrame frame)
     {
         var peer = talk.FindPeer(profileId);
@@ -281,7 +500,11 @@ internal sealed class MessagesSurface
 
         if (peer is null)
         {
-            DrawEmpty(frame, stack.Take(frame.Units(72f)), "This person is not saved yet.");
+            if (!TryDrawGateProfile(frame, ref stack, profileId))
+            {
+                DrawEmpty(frame, stack.Take(frame.Units(72f)), "This person is not saved yet.");
+            }
+
             return (content.Height - stack.Remaining.Height) + inset * 2f;
         }
 
@@ -303,6 +526,8 @@ internal sealed class MessagesSurface
         {
             DrawFact(frame, stack.Take(frame.Units(48f)), "Pearlgate", "Not on Pearlgate. Tells still save here.");
         }
+
+        DrawFriendAction(frame, ref stack, profileId, person.Number);
 
         var when = UnixAgo.Format(person.LastAt, clock.Now);
         var history = person.LineCount > 0
@@ -375,6 +600,122 @@ internal sealed class MessagesSurface
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
+    private bool TryDrawGateProfile(in AppletFrame frame, ref Stack stack, string peerId)
+    {
+        if (!TalkIds.TryParsePerson(peerId, out var userId))
+        {
+            return false;
+        }
+
+        var snapshot = pearl.Current;
+        PearlPerson? friend = null;
+        for (var index = 0; index < snapshot.People.Length; index++)
+        {
+            if (string.Equals(snapshot.People[index].Id, userId, StringComparison.Ordinal))
+            {
+                friend = snapshot.People[index];
+                break;
+            }
+        }
+
+        PearlHit hit = default;
+        var hasHit = false;
+        for (var index = 0; index < snapshot.SearchHits.Length; index++)
+        {
+            if (string.Equals(snapshot.SearchHits[index].Id, userId, StringComparison.Ordinal))
+            {
+                hit = snapshot.SearchHits[index];
+                hasHit = true;
+                break;
+            }
+        }
+
+        if (friend is null && !hasHit)
+        {
+            return false;
+        }
+
+        var name = friend?.DisplayName ?? hit.Title;
+        var detail = friend is { Handle.Length: > 0 } ? "@" + friend.Value.Handle : hit.Subtitle;
+        var hero = stack.Take(frame.Units(88f));
+        CardChrome.DrawGold(frame, hero);
+        var inset = hero.Inset(frame.Units(12f));
+        var avatar = inset.LeftSlice(frame.Units(56f));
+        frame.Paint.FillCircle(avatar.Center, avatar.Width * 0.38f, frame.Theme.Palette.SurfaceRaised);
+        frame.Paint.StrokeCircle(avatar.Center, avatar.Width * 0.38f, frame.Theme.Palette.WarmAccent,
+            frame.Units(1.4f));
+        var initial = name.Length > 0 ? name.AsSpan(0, 1) : "?".AsSpan();
+        frame.Text.DrawIn(avatar, initial,
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink, TextAlign.Center));
+        var text = inset.Inset(new Edges(frame.Units(64f), 0f, 0f, 0f));
+        frame.Text.DrawEllipsized(text.TopSlice(frame.Units(24f)), name,
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        frame.Text.DrawEllipsized(text.Inset(new Edges(0f, frame.Units(26f), 0f, 0f)),
+            detail.Length > 0 ? detail : "Pearlgate",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        DrawFriendAction(frame, ref stack, peerId, friend?.PhoneNumber ?? string.Empty);
+        return true;
+    }
+
+    private void DrawFriendAction(in AppletFrame frame, ref Stack stack, string peerId, string number)
+    {
+        var snapshot = pearl.Current;
+        if (!snapshot.SignedIn)
+        {
+            return;
+        }
+
+        TalkIds.TryParsePerson(peerId, out var userId);
+        var known = false;
+        if (userId.Length > 0)
+        {
+            for (var index = 0; index < snapshot.People.Length; index++)
+            {
+                if (string.Equals(snapshot.People[index].Id, userId, StringComparison.Ordinal))
+                {
+                    known = true;
+                    break;
+                }
+            }
+        }
+
+        if (!known && number.Length > 0)
+        {
+            for (var index = 0; index < snapshot.People.Length; index++)
+            {
+                if (string.Equals(snapshot.People[index].PhoneNumber, number, StringComparison.Ordinal))
+                {
+                    known = true;
+                    userId = snapshot.People[index].Id;
+                    break;
+                }
+            }
+        }
+
+        if (!known && userId.Length == 0 && number.Length == 0)
+        {
+            return;
+        }
+
+        var row = stack.Take(frame.Units(44f));
+        CardChrome.DrawGold(frame, row);
+        var label = known ? "Remove friend" : "Add friend";
+        frame.Text.DrawIn(row, label,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        if (!frame.Input.ConsumeClick(row))
+        {
+            return;
+        }
+
+        if (known && userId.Length > 0)
+        {
+            pearl.RemoveFriend(userId);
+            return;
+        }
+
+        pearl.AddFriend(userId, number);
+    }
+
     private static void DrawFact(in AppletFrame frame, Rect row, string kicker, string value)
     {
         CardChrome.Draw(frame, row);
@@ -387,10 +728,22 @@ internal sealed class MessagesSurface
 
     private void DrawComposer(in AppletFrame frame, Rect composer, TalkThread? thread)
     {
-        CardChrome.Draw(frame, composer);
+        var glass = frame.Theme.Palette.SurfaceOverlay with { W = 0.34f };
+        frame.Paint.Fill(composer, glass, frame.Units(12f));
+        frame.Paint.Stroke(composer, frame.Theme.Palette.WarmAccent with { W = 0.22f }, frame.Theme.Metrics.Hairline,
+            frame.Units(12f));
         var inner = composer.Inset(frame.Units(6f));
+        var dock = inner.LeftSlice(frame.Units(28f));
         var send = inner.RightSlice(frame.Units(56f));
-        var field = inner.Inset(new Edges(0f, 0f, send.Width + frame.Units(6f), 0f));
+        var field = new Rect(new Vector2(dock.Max.X + frame.Units(6f), inner.Min.Y),
+            new Vector2(send.Min.X - frame.Units(6f), inner.Max.Y));
+        var armed = popouts.IsArmed(openId);
+        DrawPopoutToggle(frame, dock, armed);
+        if (frame.Input.ConsumeClick(dock) && openId.Length > 0)
+        {
+            popouts.Toggle(openId);
+        }
+
         var canSend = thread?.CanSend == true;
         var hint = ComposerHint(thread);
         if (!canSend)
@@ -400,14 +753,31 @@ internal sealed class MessagesSurface
             return;
         }
 
-        draft = frame.TextField.Draw("messages-draft", field, draft, hint, 400, out var submitted);
+        draft = frame.TextField.Draw("messages-draft", field, draft, hint, 400, out var submitted, true);
         var sendInk = draft.Trim().Length > 0 ? frame.Theme.Palette.Accent : frame.Theme.Palette.InkFaint;
         frame.Text.DrawIn(send, "Send", new TextStyle(FontRole.CaptionStrong, sendInk, TextAlign.Center));
         if ((submitted || frame.Input.WasPressed(send) || frame.Input.ConsumeClick(send)) &&
             draft.Trim().Length > 0)
         {
             SendDraft();
+            frame.TextField.Focus("messages-draft");
         }
+    }
+
+    private static void DrawPopoutToggle(in AppletFrame frame, Rect area, bool on)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        var box = area.Inset(frame.Units(3f));
+        if (on)
+        {
+            frame.Paint.Fill(box, gold with { W = 0.88f }, frame.Units(6f));
+            frame.Text.DrawIn(box, "↗",
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.AccentInk, TextAlign.Center));
+            return;
+        }
+
+        frame.Paint.Stroke(box, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, frame.Units(6f));
+        frame.Text.DrawIn(box, "↗", new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
     }
 
     private void DrawReplies(in AppletFrame frame, Rect row, TalkThread? thread)
@@ -469,8 +839,6 @@ internal sealed class MessagesSurface
         }
 
         var lines = talk.Lines(openId);
-        var group = thread?.Kind is TalkKind.Party or TalkKind.Alliance or TalkKind.Linkshell
-            or TalkKind.CrossWorldLinkshell or TalkKind.FreeCompany or TalkKind.Novice;
         if (lines.Count == 0)
         {
             DrawEmpty(frame, viewport, EmptyThreadCopy(thread));
@@ -482,7 +850,7 @@ internal sealed class MessagesSurface
         var total = 0f;
         for (var index = 0; index < lines.Count; index++)
         {
-            heights[index] = MeasureLine(frame, viewport.Width, lines[index], group);
+            heights[index] = MeasureLine(frame, viewport.Width, lines[index]);
             total += heights[index] + (index == 0 ? 0f : gap);
         }
 
@@ -528,7 +896,7 @@ internal sealed class MessagesSurface
                 new Vector2(viewport.Max.X, cursor + height));
             if (row.Max.Y >= viewport.Min.Y && row.Min.Y <= viewport.Max.Y)
             {
-                DrawLine(frame, row, lines[index], group);
+                DrawLine(frame, row, lines[index], thread?.Title ?? string.Empty);
             }
 
             cursor += height + gap;
@@ -537,31 +905,32 @@ internal sealed class MessagesSurface
         frame.Paint.PopClip();
     }
 
-    private static float MeasureLine(in AppletFrame frame, float width, TalkLine line, bool group)
+    private static float MeasureLine(in AppletFrame frame, float width, TalkLine line)
     {
         var bubbleWidth = width * 0.78f;
         var textWidth = MathF.Max(bubbleWidth - frame.Units(16f), 8f);
         var body = frame.Text.MeasureWrapped(line.Body, FontRole.Body, textWidth).Y;
-        var sender = group && !line.Mine ? frame.Units(16f) : 0f;
-        return MathF.Max(body + frame.Units(16f) + sender, frame.Units(32f));
+        return MathF.Max(body + frame.Units(32f), frame.Units(44f));
     }
 
-    private static void DrawLine(in AppletFrame frame, Rect row, TalkLine line, bool group)
+    private static void DrawLine(in AppletFrame frame, Rect row, TalkLine line, string peerName)
     {
         var bubbleWidth = row.Width * 0.78f;
         var bubble = line.Mine ? row.RightSlice(bubbleWidth) : row.LeftSlice(bubbleWidth);
         var radius = frame.Units(12f);
-        var fill = line.Mine ? frame.Theme.Palette.Accent with { W = 0.88f } : frame.Theme.Palette.SurfaceRaised;
+        var fill = line.Mine
+            ? frame.Theme.Palette.Accent with { W = 0.38f }
+            : frame.Theme.Palette.SurfaceRaised with { W = 0.36f };
         var ink = line.Mine ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.Ink;
-        var top = bubble;
-        if (group && !line.Mine)
-        {
-            frame.Text.DrawEllipsized(bubble.TopSlice(frame.Units(14f)), line.Sender,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-            top = bubble.Inset(new Edges(0f, frame.Units(16f), 0f, 0f));
-        }
-
+        var who = line.Mine ? "ME" : line.Sender.Length > 0 ? line.Sender : peerName.Length > 0 ? peerName : "Them";
+        var nameRow = bubble.TopSlice(frame.Units(14f));
+        frame.Text.DrawEllipsized(nameRow, who,
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent,
+                line.Mine ? TextAlign.Right : TextAlign.Left));
+        var top = bubble.Inset(new Edges(0f, frame.Units(16f), 0f, 0f));
         frame.Paint.Fill(top, fill, radius);
+        frame.Paint.Stroke(top, frame.Theme.Palette.WarmAccent with { W = line.Mine ? 0.36f : 0.20f },
+            frame.Theme.Metrics.Hairline, radius);
         var copy = top.Inset(frame.Units(8f));
         frame.Paint.PushClip(copy);
         frame.Text.DrawWrapped(copy, line.Body, new TextStyle(FontRole.Body, ink));
@@ -616,7 +985,7 @@ internal sealed class MessagesSurface
         SocialPane.Linkshells => thread.Kind is TalkKind.Party or TalkKind.Alliance or TalkKind.Linkshell
             or TalkKind.CrossWorldLinkshell or TalkKind.FreeCompany or TalkKind.Novice,
         _ => thread.Kind is not (TalkKind.Party or TalkKind.Alliance or TalkKind.Linkshell
-            or TalkKind.CrossWorldLinkshell or TalkKind.FreeCompany or TalkKind.Novice),
+            or TalkKind.CrossWorldLinkshell or TalkKind.FreeCompany or TalkKind.Novice or TalkKind.Live),
     };
 
     private string InboxPlaceholder() =>
@@ -815,7 +1184,7 @@ internal sealed class MessagesSurface
             TalkKind.Party => "Party chat will collect here. Type below when you are in a party.",
             TalkKind.Tell => "Say something. Tells are saved on this character even if they are not on Pearlgate.",
             TalkKind.Linkshell or TalkKind.CrossWorldLinkshell => "This room is your linkshell. Type below.",
-            TalkKind.Pearl => "Pearlgate chats list here. Sending on the gate is not wired yet.",
+            TalkKind.Pearl => "No messages yet.",
             _ => "No messages yet.",
         };
     }

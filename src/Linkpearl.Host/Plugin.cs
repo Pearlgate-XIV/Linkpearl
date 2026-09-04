@@ -55,7 +55,7 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         host = new HandsetHost(PluginInterface, Framework, ClientState, ObjectTable, Condition, DutyState, Log,
-            TextureProvider, DataManager, ChatGui, PartyList, KeyState);
+            TextureProvider, DataManager, ChatGui, PartyList, KeyState, Commands);
         Commands.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
         {
             HelpMessage = "Open the Linkpearl handset, or wake it if it is minimized.",
