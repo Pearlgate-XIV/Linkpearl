@@ -16,9 +16,17 @@ public sealed class HandsetTheme : ITheme
         ["alarms"] = new Vector4(0.910f, 0.420f, 0.280f, 1.00f),
         ["weather"] = new Vector4(0.400f, 0.620f, 0.910f, 1.00f),
         ["calendar"] = new Vector4(0.910f, 0.620f, 0.280f, 1.00f),
+        ["music"] = new Vector4(0.659f, 0.333f, 0.969f, 1.00f),
+        ["afterdark"] = new Vector4(0.220f, 0.741f, 0.973f, 1.00f),
         ["camera"] = new Vector4(0.620f, 0.447f, 0.502f, 1.00f),
+        ["phone"] = new Vector4(0.298f, 0.784f, 0.529f, 1.00f),
         ["wallet"] = new Vector4(0.851f, 0.737f, 0.518f, 1.00f),
         ["message"] = new Vector4(0.361f, 0.749f, 0.463f, 1.00f),
+        ["pearlchat"] = new Vector4(0.831f, 0.686f, 0.373f, 1.00f),
+        ["friends"] = new Vector4(0.45f, 0.70f, 0.95f, 1.00f),
+        ["market"] = new Vector4(0.38f, 0.86f, 0.52f, 1.00f),
+        ["retainer"] = new Vector4(0.831f, 0.686f, 0.373f, 1.00f),
+        ["events"] = new Vector4(0.72f, 0.48f, 0.92f, 1.00f),
         ["settings"] = new Vector4(0.635f, 0.663f, 0.706f, 1.00f),
     };
 

@@ -1,4 +1,5 @@
 using Linkpearl.Applets;
+using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
 
@@ -19,7 +20,7 @@ public static class StatusStrip
     {
         var strip = StripArea(screen, frame.Scale);
         frame.Paint.Fill(strip, frame.Theme.Palette.SurfaceSunken with { W = 0.22f });
-        var inset = strip.Inset(new Edges(frame.Units(16f), 0f, frame.Units(40f), 0f));
+        var inset = strip.Inset(new Edges(frame.Units(16f), 0f, LockButton.ReservedRight(frame.Scale), 0f));
         var ink = frame.Theme.Palette.Ink;
         var muted = frame.Theme.Palette.InkMuted;
         var gold = frame.Theme.Palette.WarmAccent;
@@ -70,34 +71,42 @@ public static class StatusStrip
 
     private static void DrawSignal(in AppletFrame frame, Rect area, Vector4 color)
     {
-        var baseX = area.Center.X - frame.Units(6f);
-        var bottom = area.Center.Y + frame.Units(5f);
+        var mark = MarkHeight(frame);
+        var bottom = area.Center.Y + mark * 0.5f;
         var stroke = MathF.Max(1.2f, frame.Units(1.4f));
+        var pitch = frame.Units(3.2f);
+        var baseX = area.Center.X - pitch * 1.5f;
         for (var index = 0; index < 4; index++)
         {
-            var height = frame.Units(3f + index * 2.2f);
-            var x = baseX + index * frame.Units(3.2f);
+            var height = mark * (0.28f + index * 0.24f);
+            var x = baseX + index * pitch;
             frame.Paint.Line(new Vector2(x, bottom), new Vector2(x, bottom - height), color, stroke);
         }
     }
 
     private static void DrawWifi(in AppletFrame frame, Rect area, Vector4 color)
     {
-        var center = area.Center + new Vector2(0f, frame.Units(3f));
+        var mark = MarkHeight(frame);
+        var center = area.Center;
         var stroke = MathF.Max(1.2f, frame.Units(1.3f));
-        frame.Paint.StrokeCircle(center, frame.Units(3.5f), color, stroke);
-        frame.Paint.StrokeCircle(center, frame.Units(6.5f), color with { W = color.W * 0.7f }, stroke);
-        frame.Paint.FillCircle(center, frame.Units(1.2f), color);
+        frame.Paint.StrokeCircle(center, mark * 0.48f, color, stroke);
+        frame.Paint.StrokeCircle(center, mark * 0.30f, color with { W = color.W * 0.7f }, stroke);
+        frame.Paint.FillCircle(center, mark * 0.10f, color);
     }
 
     private static void DrawBattery(in AppletFrame frame, Rect area, Vector4 color)
     {
-        var body = Rect.FromSize(area.Center - new Vector2(frame.Units(7f), frame.Units(3.5f)),
-            new Vector2(frame.Units(12f), frame.Units(7f)));
+        var mark = MarkHeight(frame);
+        var width = frame.Units(12f);
+        var body = Rect.FromSize(area.Center - new Vector2(width * 0.5f, mark * 0.5f),
+            new Vector2(width, mark));
         var stroke = MathF.Max(1.1f, frame.Units(1.2f));
         frame.Paint.Stroke(body, color, stroke, frame.Units(1.4f));
-        frame.Paint.Fill(Rect.FromSize(new Vector2(body.Max.X, body.Center.Y - frame.Units(1.6f)),
-            new Vector2(frame.Units(1.8f), frame.Units(3.2f))), color, frame.Units(0.6f));
+        var nubH = mark * 0.46f;
+        frame.Paint.Fill(Rect.FromSize(new Vector2(body.Max.X, body.Center.Y - nubH * 0.5f),
+            new Vector2(frame.Units(1.8f), nubH)), color, frame.Units(0.6f));
         frame.Paint.Fill(body.Inset(frame.Units(1.6f)), color with { W = color.W * 0.55f }, frame.Units(0.8f));
     }
+
+    private static float MarkHeight(in AppletFrame frame) => frame.Units(7f);
 }

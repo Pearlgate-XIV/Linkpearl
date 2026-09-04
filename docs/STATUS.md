@@ -209,6 +209,12 @@ and Wallet. Settings is the Tune destination. Casino, Coin, Housing, and Hunts a
   upper-right rail. Tune's pin tray and the padlock both set `ImGuiWindowFlags.NoMove` and
   skip corner-grip resize. Unlock to move or corner-resize again. Tune's pin tray shares the
   same switch. Not yet verified in-game.
+- **Done:** Phase 4 window behavior. Open and miniature positions are remembered separately
+  (`HasOpenPos` / `HasPocketPos` on `HandsetConfig`). Minimize keeps the phone on that side and
+  restores the exact open corner; the miniature can be dragged while locked or unlocked without
+  stealing the slide-to-wake track. The pocket face uses the same chassis PNG and aspect as the
+  open phone. The wake slider outline uses `WarmAccent` (theme + accent from Settings). Not yet
+  verified in-game.
 - **Done:** `DestinationDock.DrawerArea` no longer throws `ArgumentException` from `Math.Clamp`. The side
   menu is sized to the phone (one `RowUnits` row per item, not 2× content that is taller than the
   9:16 screen at every size step), then vertically centered in the space above the crystal. Origin

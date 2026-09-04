@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Linkpearl.Abstractions/Linkpearl.Abstractions.csproj" />
+    <Project Path="src/Linkpearl.Audio/Linkpearl.Audio.csproj" />
     <Project Path="src/Linkpearl.Applets.Core/Linkpearl.Applets.Core.csproj" />
     <Project Path="src/Linkpearl.Applets.Life/Linkpearl.Applets.Life.csproj" />
     <Project Path="src/Linkpearl.Canvas/Linkpearl.Canvas.csproj" />

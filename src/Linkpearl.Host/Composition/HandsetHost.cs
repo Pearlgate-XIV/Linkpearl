@@ -3,6 +3,8 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Linkpearl.Applets;
+using Linkpearl.Audio;
+using Linkpearl.Badges;
 using Linkpearl.Canvas.Input;
 using Linkpearl.Canvas.Painting;
 using Linkpearl.Canvas.Text;
@@ -17,10 +19,16 @@ using Linkpearl.Destinations.You;
 using Linkpearl.Device.Shell;
 using Linkpearl.Device.Windows;
 using Linkpearl.Diagnostics;
+using Linkpearl.Feedback;
+using Linkpearl.Host.Feedback;
+using Linkpearl.Host.Platform;
 using Linkpearl.Host.Time;
+using Linkpearl.Host.Windows;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
+using Linkpearl.Net.Radio;
+using Linkpearl.Pearls;
 using Linkpearl.Platform;
 using Linkpearl.Platform.Ffxiv;
 using Linkpearl.Preferences;
@@ -40,6 +48,7 @@ public sealed class HandsetHost : IDisposable
     private readonly ServiceProvider provider;
     private readonly WindowSystem windowSystem = new("Linkpearl");
     private readonly HandsetWindow window;
+    private readonly HandsetPlacement placement;
     private readonly HandsetFontService fonts;
     private readonly FrameworkClock clock;
     private readonly FfxivGameSession session;
@@ -52,16 +61,25 @@ public sealed class HandsetHost : IDisposable
     private readonly IFramework framework;
     private readonly IKeyState keys;
     private readonly DalamudTextField textField;
+    private readonly TalkPopoutBoard popouts;
+    private readonly RouteStack router;
+    private readonly IHandsetAudio audio;
+    private readonly UsGenreRadio publicRadio;
+    private readonly PearlCommunityRadio communityRadio;
+    private readonly WasapiBroadcastSense broadcastSense;
+    private readonly IcecastBroadcastPush broadcastPush;
+    private readonly bool isDevelopment;
     private int lastUnread;
 
     public HandsetHost(IDalamudPluginInterface pluginInterface, IFramework framework, IClientState clientState,
         IObjectTable objectTable, ICondition condition, IDutyState dutyState, IPluginLog pluginLog,
         ITextureProvider textureProvider, IDataManager dataManager, IChatGui chatGui, IPartyList partyList,
-        IKeyState keys)
+        IKeyState keys, ICommandManager commands)
     {
         this.pluginInterface = pluginInterface;
         this.framework = framework;
         this.keys = keys;
+        isDevelopment = pluginInterface.IsDev;
         var services = new ServiceCollection();
 
         var log = new HandsetLog(pluginLog);
@@ -79,14 +97,17 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IClock>(clock);
         services.AddSingleton<IFrameLoop>(clock);
 
-        session = new FfxivGameSession(clientState, objectTable, condition, dutyState, partyList, framework, dataManager);
+        var jobs = new FfxivJobCatalog(dataManager);
+        services.AddSingleton<IJobCatalog>(jobs);
+        session = new FfxivGameSession(clientState, objectTable, condition, dutyState, partyList, framework, dataManager,
+            jobs);
         services.AddSingleton<IGameSession>(session);
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
 
         pearl = new PearlHub(string.Empty, config.SessionToken, session, clock, log,
-            token => clock.Post(() => RememberToken(token)));
+            token => clock.Post(() => RememberToken(token)), paths.State("media-cache"));
         services.AddSingleton<IPearlHub>(pearl);
 
         chat = new FfxivChatBridge(chatGui, clientState, partyList, objectTable, dataManager, session, framework,
@@ -100,9 +121,51 @@ public sealed class HandsetHost : IDisposable
         preferences.Changed += RememberDisplay;
         display = preferences;
         services.AddSingleton(preferences);
+        services.AddSingleton(_ => BadgeBook.Load(paths, clock));
+        services.AddSingleton(_ =>
+        {
+            var book = PearlLedger.Load(paths, clock);
+            if (isDevelopment)
+            {
+                book.GrantDevTestPurse();
+            }
+
+            return book;
+        });
 
         var chime = new DalamudChime(chatGui, preferences, session);
         services.AddSingleton<IChime>(chime);
+        var ports = new WindowsAudioPorts();
+        services.AddSingleton<IAudioPorts>(ports);
+        audio = new WasapiStreamPlayer(preferences.Volume, value =>
+        {
+            config.MusicVolume = value;
+            display.Volume = value;
+            pluginInterface.SavePluginConfig(config);
+        });
+        publicRadio = new UsGenreRadio();
+        communityRadio = new PearlCommunityRadio(() => config.SessionToken, () => pearl.Current.SignedIn, paths,
+            iceListenBase: config.IcecastListenBase, iceUser: config.IcecastSourceUser,
+            icePassword: config.IcecastSourcePassword);
+        broadcastSense = new WasapiBroadcastSense();
+        broadcastPush = new IcecastBroadcastPush();
+        services.AddSingleton<IHandsetAudio>(audio);
+        ApplyAudioRoute();
+        preferences.Changed += ApplyAudioRoute;
+        services.AddSingleton<IPublicRadio>(publicRadio);
+        services.AddSingleton<ICommunityRadio>(communityRadio);
+        services.AddSingleton<IBroadcastSense>(broadcastSense);
+        services.AddSingleton<IBroadcastPush>(broadcastPush);
+
+        var textures = new DalamudTextureSource(textureProvider);
+        services.AddSingleton<ITextureSource>(textures);
+        var files = new WindowsImagePicker();
+        services.AddSingleton<IFilePicker>(files);
+
+        var hub = new DestinationHub();
+        services.AddSingleton(hub);
+
+        services.AddSingleton<IFeedbackDesk>(new DiscordFeedbackDesk(environment, clock, clock, log));
 
         foreach (var module in ModuleDiscovery.Discover())
         {
@@ -112,33 +175,47 @@ public sealed class HandsetHost : IDisposable
         provider = services.BuildServiceProvider();
 
         fonts = new HandsetFontService(pluginInterface);
+        fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,
+            FounderFaces.Unlocked(false, 0, preferences.FounderFacesGranted, isDevelopment)));
         var theme = new HandsetTheme(1f, preferences);
+        popouts = new TalkPopoutBoard(windowSystem, talk, theme, RememberPopouts);
+        popouts.Restore(config.PopoutTalkIds, config.PopoutTalkPlaces);
 
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
         var apps = provider.GetServices<IApplet>().ToList();
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
-        var router = new RouteStack(appletById);
+        router = new RouteStack(appletById);
+        router.Restore(config.RecentAppIds, config.RecentAppPlaces);
+        router.RecentsChanged += RememberRecents;
 
         shapePreference = new HandsetShapePreference(config.ScaleStep, config.Form, config.PositionLocked,
-            config.PocketScale, config.Finish, config.ShowLockTab);
-        var hub = new DestinationHub();
-        var textures = new DalamudTextureSource(textureProvider);
+            config.PocketScale, config.Finish, config.ShowLockTab, config.Case);
+        var notices = new NoticeLedger();
+        var badges = provider.GetRequiredService<BadgeBook>();
+        var weather = new FfxivWeatherOracle(dataManager, clock);
         IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
         {
-            new HomeDestination(clock, session, pearl, talk, hub, preferences, paths, textures),
-            new SocialDestination(pearl, clock, talk, session, preferences),
-            new ExploreDestination(pearl), new YouDestination(session, pearl),
-            new SettingsDestination(shapePreference, preferences, environment, session, pearl, hub, paths, textures),
+            new HomeDestination(clock, session, pearl, talk, hub, preferences, paths, textures, badges, files,
+                weather, notices, isDevelopment),
+            new SocialDestination(pearl, clock, talk, session, preferences, popouts),
+            new ExploreDestination(pearl, session),
+            new YouDestination(session, pearl, badges, paths, textures, files, preferences, isDevelopment),
+            new SettingsDestination(shapePreference, preferences, environment, session, pearl, hub, paths, textures,
+                files, ports, audio),
         };
         var textField = new DalamudTextField(fonts);
         this.textField = textField;
+        var wife = new WifeSyncBridge(pluginInterface, commands);
         var shell = new HandsetShell(destinations, clock, session, preferences, textField, pearl, hub, router, talk,
-            apps);
+            apps, wife, notices, weather, isDevelopment, badges, audio, publicRadio);
         var screenField = new ScreenField(textures, paths, preferences, clock);
 
+        placement = new HandsetPlacement();
+        placement.Load(config.HasOpenPos, config.OpenX, config.OpenY, config.HasPocketPos, config.PocketX,
+            config.PocketY);
         window = new HandsetWindow(shell, fonts, theme, router, shapePreference, screenField, textField, preferences,
-            session, textures, paths, RememberShape, RememberOpen, RememberMinimized);
+            session, textures, paths, RememberShape, RememberOpen, RememberMinimized, placement, RememberPlacement);
         shapePreference.Changed += OnShapeChanged;
         windowSystem.AddWindow(window);
 
@@ -146,7 +223,7 @@ public sealed class HandsetHost : IDisposable
         preferences.Changed += () =>
             pluginInterface.UiBuilder.DisableGposeUiHide = preferences.StayInPortraits;
 
-        pluginInterface.UiBuilder.Draw += windowSystem.Draw;
+        pluginInterface.UiBuilder.Draw += OnUiDraw;
         pluginInterface.UiBuilder.OpenMainUi += ToggleHandset;
         framework.Update += OnFrameworkUpdate;
 
@@ -180,6 +257,7 @@ public sealed class HandsetHost : IDisposable
     private void OnFrameworkUpdate(IFramework _)
     {
         var unread = talk.UnreadTotal;
+        ApplyDisplayFace();
         if (window.IsOpen && window.IsMinimized && display.WakeInPocket &&
             !display.Hushed(session.IsInDuty || session.IsInCutscene) && unread > lastUnread)
         {
@@ -187,19 +265,16 @@ public sealed class HandsetHost : IDisposable
         }
 
         lastUnread = unread;
+        popouts.Pulse();
+    }
 
-        if (!window.IsOpen || window.IsMinimized)
+    private void OnUiDraw()
+    {
+        windowSystem.Draw();
+        if (window.IsOpen && !window.IsMinimized && textField.Capturing)
         {
-            return;
+            keys.ClearAll();
         }
-
-        if (!textField.Capturing)
-        {
-            return;
-        }
-
-        textField.Harvest(keys);
-        keys.ClearAll();
     }
 
     public void OpenHandset()
@@ -212,13 +287,22 @@ public sealed class HandsetHost : IDisposable
     {
         shapePreference.Changed -= OnShapeChanged;
         display.Changed -= RememberDisplay;
+        display.Changed -= ApplyAudioRoute;
+        router.RecentsChanged -= RememberRecents;
         RememberShape();
         RememberDisplay();
         RememberOpen(window.IsOpen);
         RememberMinimized(window.IsMinimized);
+        window.FlushPlacement();
         framework.Update -= OnFrameworkUpdate;
-        pluginInterface.UiBuilder.Draw -= windowSystem.Draw;
+        pluginInterface.UiBuilder.Draw -= OnUiDraw;
         pluginInterface.UiBuilder.OpenMainUi -= ToggleHandset;
+        popouts.Dispose();
+        audio.Dispose();
+        broadcastPush.Dispose();
+        broadcastSense.Dispose();
+        publicRadio.Dispose();
+        communityRadio.Dispose();
         windowSystem.RemoveAllWindows();
         fonts.Dispose();
         talk.Dispose();
@@ -227,6 +311,14 @@ public sealed class HandsetHost : IDisposable
         session.Dispose();
         clock.Dispose();
         provider.Dispose();
+    }
+
+    private void ApplyDisplayFace()
+    {
+        var snapshot = pearl.Current;
+        var unlocked = FounderFaces.Unlocked(snapshot.SignedIn, snapshot.FounderSeat, display.FounderFacesGranted,
+            isDevelopment);
+        fonts.SetDisplayFace(FounderFaces.Active(display.DisplayFace, unlocked));
     }
 
     private void OnShapeChanged()
@@ -241,12 +333,13 @@ public sealed class HandsetHost : IDisposable
 
     private void RememberShape()
     {
-        config.ScaleStep = HandsetSizeCatalog.SnapToStep(shapePreference.ScaleStep);
+        config.ScaleStep = HandsetSizeCatalog.ClampFree(shapePreference.ScaleStep, HandsetSizeCatalog.FreeCeiling);
         config.Form = shapePreference.Form;
         config.PositionLocked = shapePreference.PositionLocked;
         config.PocketScale = shapePreference.PocketScale;
         config.Finish = shapePreference.Finish;
         config.ShowLockTab = shapePreference.ShowLockTab;
+        config.Case = shapePreference.Case;
         pluginInterface.SavePluginConfig(config);
     }
 
@@ -255,15 +348,50 @@ public sealed class HandsetHost : IDisposable
         preferences.Use24HourClock = config.Use24HourClock;
         preferences.Appearance = (AppearanceMode)config.Appearance;
         preferences.WallpaperId = config.WallpaperId;
-        preferences.CustomPlateFile = config.CustomPlateFile;
+        preferences.ReplaceCustomPlates(config.CustomPlateFiles);
+        if (config.CustomPlateFile.Length > 0)
+        {
+            preferences.AddCustomPlate(config.CustomPlateFile);
+        }
+
         preferences.CustomBannerFile = config.CustomBannerFile;
         preferences.Colorway = config.Colorway;
         preferences.Core = config.Core;
         preferences.Shade = (ShadeLevel)config.Shade;
         preferences.ClockFace = (ClockFace)config.ClockFace;
         preferences.Lettering = (LetteringSize)config.Lettering;
+        preferences.NameStyle = (NameStyle)config.NameStyle;
+        preferences.TestingAccount = config.TestingAccount;
+        preferences.OwnName = config.OwnName;
+        preferences.OwnTitle = config.OwnTitle;
+        preferences.TitleMotion = (TitleMotion)config.TitleMotion;
+        preferences.TitleGlow = config.TitleGlow;
+        preferences.TitleGlowWeight = (NameGlowWeight)config.TitleGlowWeight;
+        preferences.TitleInkR = config.TitleInkR;
+        preferences.TitleInkG = config.TitleInkG;
+        preferences.TitleInkB = config.TitleInkB;
+        preferences.TitleGlowR = config.TitleGlowR;
+        preferences.TitleGlowG = config.TitleGlowG;
+        preferences.TitleGlowB = config.TitleGlowB;
+        preferences.NameMotion = (TitleMotion)config.NameMotion;
+        preferences.NameGlow = config.NameGlow;
+        preferences.NameGlowR = config.NameGlowR;
+        preferences.NameGlowG = config.NameGlowG;
+        preferences.NameGlowB = config.NameGlowB;
+        preferences.NameGlowWeight = (NameGlowWeight)config.NameGlowWeight;
+        preferences.NameInkCustom = config.NameInkCustom;
+        preferences.NameInkR = config.NameInkR;
+        preferences.NameInkG = config.NameInkG;
+        preferences.NameInkB = config.NameInkB;
+        preferences.DisplayFace = config.DisplayFace;
+        preferences.FounderFacesGranted = config.FounderFacesGranted;
         preferences.ShowWorld = config.ShowWorld;
         preferences.ShowMarks = config.ShowMarks;
+        preferences.FeedShowSay = config.FeedShowSay;
+        preferences.FeedShowShout = config.FeedShowShout;
+        preferences.FeedShowYell = config.FeedShowYell;
+        preferences.FeedShowParty = config.FeedShowParty;
+        preferences.ExtraHomeScreens = config.ExtraHomeScreens;
         preferences.ReduceMotion = config.ReduceMotion;
         preferences.Quiet = config.Quiet;
         preferences.QuietWhenBusy = config.QuietWhenBusy;
@@ -272,10 +400,19 @@ public sealed class HandsetHost : IDisposable
         preferences.TuckForCutscenes = config.TuckForCutscenes;
         preferences.Fight = (FightPresence)config.Fight;
         preferences.Layout = (TuneLayout)config.TuneLayout;
+        preferences.Brightness = config.Brightness;
+        preferences.Volume = config.MusicVolume;
+        preferences.MicVolume = config.MicVolume;
+        preferences.SpeakerId = config.SpeakerDeviceId;
+        preferences.MicrophoneId = config.MicrophoneDeviceId;
+        preferences.AutoRotate = config.AutoRotate;
         if (config.Replies.Length > 0)
         {
             preferences.SetReplies(config.Replies);
         }
+
+        preferences.LoadAppShelf(config.InstalledApps, config.FavoriteApps, config.AppFolders, config.QuickApps,
+            config.SeenShelfApps);
     }
 
     private void RememberDisplay()
@@ -284,14 +421,45 @@ public sealed class HandsetHost : IDisposable
         config.Appearance = (int)display.Appearance;
         config.WallpaperId = display.WallpaperId;
         config.CustomPlateFile = display.CustomPlateFile;
+        config.CustomPlateFiles = display.CustomPlateFiles.ToArray();
         config.CustomBannerFile = display.CustomBannerFile;
         config.Colorway = display.Colorway;
         config.Core = display.Core;
         config.Shade = (int)display.Shade;
         config.ClockFace = (int)display.ClockFace;
         config.Lettering = (int)display.Lettering;
+        config.NameStyle = (int)display.NameStyle;
+        config.TestingAccount = display.TestingAccount;
+        config.OwnName = display.OwnName;
+        config.OwnTitle = display.OwnTitle;
+        config.TitleMotion = (int)display.TitleMotion;
+        config.TitleGlow = display.TitleGlow;
+        config.TitleGlowWeight = (int)display.TitleGlowWeight;
+        config.TitleInkR = display.TitleInkR;
+        config.TitleInkG = display.TitleInkG;
+        config.TitleInkB = display.TitleInkB;
+        config.TitleGlowR = display.TitleGlowR;
+        config.TitleGlowG = display.TitleGlowG;
+        config.TitleGlowB = display.TitleGlowB;
+        config.NameMotion = (int)display.NameMotion;
+        config.NameGlow = display.NameGlow;
+        config.NameGlowR = display.NameGlowR;
+        config.NameGlowG = display.NameGlowG;
+        config.NameGlowB = display.NameGlowB;
+        config.NameGlowWeight = (int)display.NameGlowWeight;
+        config.NameInkCustom = display.NameInkCustom;
+        config.NameInkR = display.NameInkR;
+        config.NameInkG = display.NameInkG;
+        config.NameInkB = display.NameInkB;
+        config.DisplayFace = display.DisplayFace;
+        config.FounderFacesGranted = display.FounderFacesGranted;
         config.ShowWorld = display.ShowWorld;
         config.ShowMarks = display.ShowMarks;
+        config.FeedShowSay = display.FeedShowSay;
+        config.FeedShowShout = display.FeedShowShout;
+        config.FeedShowYell = display.FeedShowYell;
+        config.FeedShowParty = display.FeedShowParty;
+        config.ExtraHomeScreens = display.ExtraHomeScreens;
         config.ReduceMotion = display.ReduceMotion;
         config.Quiet = display.Quiet;
         config.QuietWhenBusy = display.QuietWhenBusy;
@@ -300,7 +468,40 @@ public sealed class HandsetHost : IDisposable
         config.TuckForCutscenes = display.TuckForCutscenes;
         config.Fight = (int)display.Fight;
         config.TuneLayout = (int)display.Layout;
+        config.Brightness = display.Brightness;
+        config.Volume = display.Volume;
+        config.MusicVolume = display.Volume;
+        config.MicVolume = display.MicVolume;
+        config.SpeakerDeviceId = display.SpeakerId;
+        config.MicrophoneDeviceId = display.MicrophoneId;
+        config.AutoRotate = display.AutoRotate;
         config.Replies = display.Replies.ToArray();
+        config.InstalledApps = display.InstalledApps.ToArray();
+        config.FavoriteApps = display.FavoriteApps.ToArray();
+        config.AppFolders = display.AppFolders.ToArray();
+        config.QuickApps = display.QuickApps.ToArray();
+        config.RecentAppIds = router.RecentIds.ToArray();
+        config.RecentAppPlaces = router.RecentPlaces.ToArray();
+        config.SeenShelfApps = display.SeenShelfApps.ToArray();
+        pluginInterface.SavePluginConfig(config);
+    }
+
+    private void ApplyAudioRoute()
+    {
+        audio.UseSpeaker(display.SpeakerId);
+        if (Math.Abs(audio.Volume - display.Volume) > 0.0005f)
+        {
+            audio.Volume = display.Volume;
+        }
+
+        broadcastSense.MicGain = display.MicVolume;
+        broadcastSense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+    }
+
+    private void RememberRecents()
+    {
+        config.RecentAppIds = router.RecentIds.ToArray();
+        config.RecentAppPlaces = router.RecentPlaces.ToArray();
         pluginInterface.SavePluginConfig(config);
     }
 
@@ -319,6 +520,25 @@ public sealed class HandsetHost : IDisposable
     private void RememberMinimized(bool minimized)
     {
         config.HandsetMinimized = minimized;
+        pluginInterface.SavePluginConfig(config);
+    }
+
+    private void RememberPopouts()
+    {
+        config.PopoutTalkIds = popouts.ArmedIds.ToArray();
+        config.PopoutTalkPlaces = popouts.PlaceBlobs.ToArray();
+        pluginInterface.SavePluginConfig(config);
+    }
+
+    private void RememberPlacement()
+    {
+        config.HasOpenPos = placement.HasOpen;
+        config.OpenX = placement.Open.X;
+        config.OpenY = placement.Open.Y;
+        config.HasPocketPos = placement.HasPocket;
+        config.PocketX = placement.Pocket.X;
+        config.PocketY = placement.Pocket.Y;
+        placement.ClearDirty();
         pluginInterface.SavePluginConfig(config);
     }
 }

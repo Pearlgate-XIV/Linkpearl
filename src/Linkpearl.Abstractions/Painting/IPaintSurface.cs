@@ -32,11 +32,24 @@ public interface IPaintSurface
 
     void FillGradient(Rect area, Vector4 from, Vector4 to, GradientAxis axis);
 
+    void FillCorners(Rect area, Vector4 topLeft, Vector4 topRight, Vector4 bottomRight, Vector4 bottomLeft);
+
     void FillCircle(Vector2 center, float radius, Vector4 color);
 
     void StrokeCircle(Vector2 center, float radius, Vector4 color, float thickness);
 
     void FillSquircle(Rect area, Vector4 color, float radius);
+
+    void FillOutsideRound(Rect area, float radius, Vector4 color);
+
+    void FillSquircleGradient(Rect area, Vector4 topLeft, Vector4 topRight, Vector4 bottomRight, Vector4 bottomLeft,
+        float radius);
+
+    void FillAppTile(Rect area, Vector4 color);
+
+    void FillAppTile(Rect area, Vector4 from, Vector4 to);
+
+    void StrokeAppTile(Rect area, Vector4 color, float thickness);
 
     void Line(Vector2 from, Vector2 to, Vector4 color, float thickness);
 
@@ -47,6 +60,8 @@ public interface IPaintSurface
     void Image(ITextureHandle texture, Rect area, Vector4 tint);
 
     void Image(ITextureHandle texture, Rect area, Vector2 uvMin, Vector2 uvMax, Vector4 tint);
+
+    void ImageRounded(ITextureHandle texture, Rect area, Vector2 uvMin, Vector2 uvMax, Vector4 tint, float rounding);
 
     void PushClip(Rect area);
 

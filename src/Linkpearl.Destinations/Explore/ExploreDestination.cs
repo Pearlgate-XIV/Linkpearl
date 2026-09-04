@@ -1,9 +1,11 @@
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Platform;
 
 namespace Linkpearl.Destinations.Explore;
 
@@ -12,11 +14,14 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
     private static readonly string[] SectionTabs = { "For You", "Places", "Activities", "Events", "Groups" };
 
     private readonly IPearlHub pearl;
+    private readonly IGameSession game;
     private int selectedSection;
+    private string itemDraft = string.Empty;
 
-    public ExploreDestination(IPearlHub pearl)
+    public ExploreDestination(IPearlHub pearl, IGameSession game)
     {
         this.pearl = pearl;
+        this.game = game;
     }
 
     public DestinationTab Tab => DestinationTab.Explore;
@@ -30,6 +35,19 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
     public void ShowSection(int section) =>
         selectedSection = Math.Clamp(section, 0, SectionTabs.Length - 1);
 
+    public bool CanGoBack => selectedSection != 0;
+
+    public bool Back()
+    {
+        if (selectedSection == 0)
+        {
+            return false;
+        }
+
+        selectedSection = 0;
+        return true;
+    }
+
     public float Compose(in AppletFrame frame)
     {
         var inset = frame.Units(14f);
@@ -40,6 +58,12 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
         DrawSectionTabs(frame, stack.Take(frame.Units(28f)));
+
+        if (selectedSection == 1)
+        {
+            DrawPlaces(frame, ref stack, snapshot);
+            return (content.Height - stack.Remaining.Height) + inset * 2f;
+        }
 
         if (selectedSection != 0)
         {
@@ -94,6 +118,99 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
                 selectedSection = index;
             }
         }
+    }
+
+    private void DrawPlaces(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    {
+        if (!snapshot.SignedIn)
+        {
+            DrawEmpty(frame, stack.TakeRemaining(), "Sign in from You to watch market prices.");
+            return;
+        }
+
+        itemDraft = frame.TextField.Draw("market-item", stack.Take(frame.Units(36f)), itemDraft, "Item id");
+        var parsed = uint.TryParse(itemDraft.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+            && itemId > 0;
+        var named = parsed ? game.ItemName(itemId) : string.Empty;
+        var addRow = stack.Take(frame.Units(40f));
+        var hint = named.Length > 0 ? named : parsed ? "Item " + itemId.ToString(CultureInfo.InvariantCulture) : "Type an item id";
+        frame.Text.DrawEllipsized(addRow.LeftSlice(addRow.Width - frame.Units(88f)), hint,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        if (Chip(frame, addRow.RightSlice(frame.Units(80f)), "Watch") && parsed)
+        {
+            pearl.WatchMarket(itemId, named);
+            itemDraft = string.Empty;
+        }
+
+        if (snapshot.MarketWatches.Length == 0)
+        {
+            DrawEmpty(frame, stack.Take(frame.Units(72f)), "No watches yet.");
+            return;
+        }
+
+        for (var index = 0; index < snapshot.MarketWatches.Length; index++)
+        {
+            var row = stack.Take(frame.Units(72f));
+            CardChrome.Draw(frame, row);
+            DrawWatch(frame, row.Inset(frame.Units(12f)), snapshot.MarketWatches[index]);
+        }
+    }
+
+    private void DrawWatch(in AppletFrame frame, Rect inset, PearlMarketWatch watch)
+    {
+        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var header = stack.Take(frame.Units(22f));
+        var title = MarketTitle(watch);
+        frame.Text.DrawEllipsized(header.LeftSlice(header.Width - frame.Units(64f)), title,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        if (Chip(frame, header.RightSlice(frame.Units(60f)), "Remove"))
+        {
+            pearl.UnwatchMarket((uint)watch.ItemId);
+        }
+
+        CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)),
+            watch.World.Length > 0 ? watch.World : "Market", frame.Theme.Palette.WarmAccent);
+        frame.Text.DrawEllipsized(stack.Take(frame.Units(18f)), MarketDetail(watch),
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private string MarketTitle(PearlMarketWatch watch)
+    {
+        var named = game.ItemName((uint)watch.ItemId);
+        if (named.Length > 0)
+        {
+            return named;
+        }
+
+        return watch.Label.Length > 0 ? watch.Label : "Item " + watch.ItemId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string MarketDetail(PearlMarketWatch watch)
+    {
+        var parts = new List<string>(3);
+        if (watch.NqGil > 0)
+        {
+            parts.Add("NQ " + watch.NqGil.ToString("N0", CultureInfo.InvariantCulture));
+        }
+
+        if (watch.HqGil > 0)
+        {
+            parts.Add("HQ " + watch.HqGil.ToString("N0", CultureInfo.InvariantCulture));
+        }
+
+        if (watch.Listed > 0)
+        {
+            parts.Add(watch.Listed.ToString(CultureInfo.InvariantCulture) + " listed");
+        }
+
+        return parts.Count == 0 ? "No quote yet" : string.Join(" · ", parts);
+    }
+
+    private static bool Chip(in AppletFrame frame, Rect area, string label)
+    {
+        frame.Paint.Fill(area.Inset(frame.Units(2f)), frame.Theme.Palette.Accent, frame.Units(999f));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.Caption, frame.Theme.Palette.AccentInk, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
     }
 
     private static void DrawStory(in AppletFrame frame, Rect inset, PearlStory story)

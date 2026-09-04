@@ -13,6 +13,9 @@ public static class HandsetSizeCatalog
 
     public const float DefaultStep = 1.000f;
 
+    // Free drag may grow past the last settings preset, but never past the display.
+    public const float FreeCeiling = 8f;
+
     public static IReadOnlyList<float> ScaleSteps => Steps;
 
     public static IReadOnlyList<string> StepLabels => Labels;
@@ -23,10 +26,22 @@ public static class HandsetSizeCatalog
 
     public static Vector2 BaseUnits(HandsetForm form) => form == HandsetForm.Tablet ? TabletBase : PhoneBase;
 
-    public static Vector2 SizeFor(HandsetForm form, float scale)
+    public static Vector2 BaseUnits(HandsetForm form, HandsetCase casing)
     {
-        var clamped = Math.Clamp(scale, MinScale, MaxScale);
-        return BaseUnits(form) * clamped;
+        if (casing == HandsetCase.Android && form != HandsetForm.Tablet)
+        {
+            return new Vector2(ChassisCatalog.Android.Aspect * 800f, 800f);
+        }
+
+        return BaseUnits(form);
+    }
+
+    public static Vector2 SizeFor(HandsetForm form, float scale) => SizeFor(form, HandsetCase.Pearl, scale);
+
+    public static Vector2 SizeFor(HandsetForm form, HandsetCase casing, float scale)
+    {
+        var clamped = Math.Clamp(scale, MinScale, FreeCeiling);
+        return BaseUnits(form, casing) * clamped;
     }
 
     public static float SnapToStep(float scale)
@@ -50,5 +65,20 @@ public static class HandsetSizeCatalog
     {
         var snapped = SnapToStep(scale);
         return Array.IndexOf(Steps, snapped);
+    }
+
+    public static float ClampFree(float scale, float maxFit) =>
+        Math.Clamp(scale, MinScale, Math.Clamp(maxFit, MinScale, FreeCeiling));
+
+    public static float FitScale(HandsetForm form, HandsetCase casing, Vector2 maxPixels, float dip, bool landscape)
+    {
+        var units = BaseUnits(form, casing) * MathF.Max(dip, 0.01f);
+        var sized = landscape ? new Vector2(units.Y, units.X) : units;
+        if (sized.X < 1f || sized.Y < 1f || maxPixels.X < 1f || maxPixels.Y < 1f)
+        {
+            return MinScale;
+        }
+
+        return MathF.Max(MinScale, MathF.Min(maxPixels.X / sized.X, maxPixels.Y / sized.Y));
     }
 }

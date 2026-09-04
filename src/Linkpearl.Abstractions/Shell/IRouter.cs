@@ -18,6 +18,8 @@ public interface IRouter
 
     void OpenFrom(string appletId, Rect originTile);
 
+    void OpenFrom(string appletId, Rect originTile, string routeHint);
+
     void Back();
 
     void Home();

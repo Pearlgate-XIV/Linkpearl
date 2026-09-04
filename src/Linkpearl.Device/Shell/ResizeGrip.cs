@@ -1,5 +1,4 @@
-using Linkpearl.Chassis;
-using Linkpearl.Device.Chassis;
+using Dalamud.Bindings.ImGui;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 
@@ -14,46 +13,55 @@ public enum ResizeCorner : sbyte
     BottomRight = 3,
 }
 
-// Corner-grip drag to resize: grab near any outer corner and drag away from center to scale up,
-// toward center to scale down. Distance-ratio based so the grab point stays under the cursor.
-// Snaps to the nearest HandsetSizeCatalog step only once the drag releases, so mid-drag motion
-// stays continuous instead of stair-stepping.
+// Corner drag keeps the opposite corner fixed and scales from that anchor. Measuring
+// against the moving window center made size chase itself and shake.
 public sealed class ResizeGrip
 {
-    private const float GripUnits = 18f;
+    private const float GripUnits = 28f;
 
     private bool dragging;
+    private ResizeCorner dragCorner = ResizeCorner.None;
     private float startStep;
     private float startDistance;
+    private Vector2 anchor;
 
     public bool IsDragging => dragging;
 
-    public ResizeCorner Update(Rect window, IInputProbe input, float scale, ref float step)
+    public bool JustReleased { get; private set; }
+
+    public ResizeCorner ActiveCorner => dragging ? dragCorner : ResizeCorner.None;
+
+    public Vector2 Anchor => anchor;
+
+    public ResizeCorner Update(Rect window, IInputProbe input, float scale, float caseRadius, bool roundCorners,
+        float minStep, float maxStep, ref float step)
     {
-        var grip = GripUnits * scale;
+        JustReleased = false;
         var pointer = input.Pointer;
-        var hovered = HitCorner(window, grip, pointer);
+        var hovered = HitCorner(window, GripUnits * scale, caseRadius, roundCorners, pointer);
 
         if (dragging)
         {
-            if (input.IsHeld())
+            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
             {
-                var distance = MathF.Max(Vector2.Distance(pointer, window.Center), 1f);
-                step = Math.Clamp(startStep * (distance / startDistance), HandsetSizeCatalog.MinScale,
-                    HandsetSizeCatalog.MaxScale);
-                return hovered != ResizeCorner.None ? hovered : CornerFromPoint(window, pointer);
+                var distance = MathF.Max(Vector2.Distance(pointer, anchor), 1f);
+                step = Math.Clamp(startStep * (distance / startDistance), minStep, maxStep);
+                return dragCorner;
             }
 
-            step = HandsetSizeCatalog.SnapToStep(step);
+            JustReleased = true;
             dragging = false;
+            dragCorner = ResizeCorner.None;
             return ResizeCorner.None;
         }
 
-        if (hovered != ResizeCorner.None && input.WasPressed(GripArea(window, grip, hovered)))
+        if (hovered != ResizeCorner.None && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             dragging = true;
+            dragCorner = hovered;
             startStep = step;
-            startDistance = MathF.Max(Vector2.Distance(pointer, window.Center), 1f);
+            anchor = Opposite(window, hovered);
+            startDistance = MathF.Max(Vector2.Distance(pointer, anchor), 1f);
         }
 
         return hovered;
@@ -61,11 +69,52 @@ public sealed class ResizeGrip
 
     public static bool IsDiagonalNwse(ResizeCorner corner) => corner is ResizeCorner.TopLeft or ResizeCorner.BottomRight;
 
-    private static ResizeCorner HitCorner(Rect window, float grip, Vector2 pointer)
+    public static bool Hits(Rect window, float scale, float caseRadius, bool roundCorners, Vector2 cursor) =>
+        HitCorner(window, GripUnits * scale, caseRadius, roundCorners, cursor) != ResizeCorner.None;
+
+    public static Vector2 Opposite(Rect window, ResizeCorner grabbed) => grabbed switch
     {
+        ResizeCorner.TopLeft => window.Max,
+        ResizeCorner.TopRight => new Vector2(window.Min.X, window.Max.Y),
+        ResizeCorner.BottomLeft => new Vector2(window.Max.X, window.Min.Y),
+        _ => window.Min,
+    };
+
+    public static Vector2 PosFromAnchor(ResizeCorner grabbed, Vector2 fixedCorner, Vector2 size) => grabbed switch
+    {
+        ResizeCorner.TopLeft => fixedCorner - size,
+        ResizeCorner.TopRight => new Vector2(fixedCorner.X, fixedCorner.Y - size.Y),
+        ResizeCorner.BottomLeft => new Vector2(fixedCorner.X - size.X, fixedCorner.Y),
+        _ => fixedCorner,
+    };
+
+    public static Vector2 RoomFromAnchor(ResizeCorner grabbed, Vector2 fixedCorner, Vector2 workMin, Vector2 workMax) =>
+        grabbed switch
+        {
+            ResizeCorner.TopLeft => fixedCorner - workMin,
+            ResizeCorner.TopRight => new Vector2(workMax.X - fixedCorner.X, fixedCorner.Y - workMin.Y),
+            ResizeCorner.BottomLeft => new Vector2(fixedCorner.X - workMin.X, workMax.Y - fixedCorner.Y),
+            _ => workMax - fixedCorner,
+        };
+
+    private static ResizeCorner HitCorner(Rect window, float grip, float caseRadius, bool roundCorners, Vector2 cursor)
+    {
+        if (roundCorners)
+        {
+            if (!InsideRound(window, caseRadius, cursor))
+            {
+                return ResizeCorner.None;
+            }
+        }
+        else if (!window.Contains(cursor))
+        {
+            return ResizeCorner.None;
+        }
+
+        var reach = grip + MathF.Max(caseRadius * 0.55f, 8f);
         for (var corner = ResizeCorner.TopLeft; corner <= ResizeCorner.BottomRight; corner++)
         {
-            if (GripArea(window, grip, corner).Contains(pointer))
+            if (NearCorner(window, corner, reach, cursor))
             {
                 return corner;
             }
@@ -74,25 +123,31 @@ public sealed class ResizeGrip
         return ResizeCorner.None;
     }
 
-    private static ResizeCorner CornerFromPoint(Rect window, Vector2 pointer)
+    private static bool NearCorner(Rect window, ResizeCorner corner, float reach, Vector2 cursor) => corner switch
     {
-        var left = pointer.X < window.Center.X;
-        var top = pointer.Y < window.Center.Y;
-        return (left, top) switch
-        {
-            (true, true) => ResizeCorner.TopLeft,
-            (false, true) => ResizeCorner.TopRight,
-            (true, false) => ResizeCorner.BottomLeft,
-            _ => ResizeCorner.BottomRight,
-        };
-    }
-
-    private static Rect GripArea(Rect window, float grip, ResizeCorner corner) => corner switch
-    {
-        ResizeCorner.TopLeft => Rect.FromSize(window.Min, new Vector2(grip, grip)),
-        ResizeCorner.TopRight => Rect.FromSize(new Vector2(window.Max.X - grip, window.Min.Y), new Vector2(grip, grip)),
-        ResizeCorner.BottomLeft => Rect.FromSize(new Vector2(window.Min.X, window.Max.Y - grip), new Vector2(grip, grip)),
-        ResizeCorner.BottomRight => Rect.FromSize(window.Max - new Vector2(grip, grip), new Vector2(grip, grip)),
-        _ => Rect.Empty,
+        ResizeCorner.TopLeft => cursor.X <= window.Min.X + reach && cursor.Y <= window.Min.Y + reach,
+        ResizeCorner.TopRight => cursor.X >= window.Max.X - reach && cursor.Y <= window.Min.Y + reach,
+        ResizeCorner.BottomLeft => cursor.X <= window.Min.X + reach && cursor.Y >= window.Max.Y - reach,
+        ResizeCorner.BottomRight => cursor.X >= window.Max.X - reach && cursor.Y >= window.Max.Y - reach,
+        _ => false,
     };
+
+    public static bool InsideRound(Rect window, float radius, Vector2 cursor)
+    {
+        if (!window.Contains(cursor))
+        {
+            return false;
+        }
+
+        var cap = MathF.Min(radius, MathF.Min(window.Width, window.Height) * 0.5f);
+        if (cap <= 0.5f)
+        {
+            return true;
+        }
+
+        var center = new Vector2(
+            Math.Clamp(cursor.X, window.Min.X + cap, window.Max.X - cap),
+            Math.Clamp(cursor.Y, window.Min.Y + cap, window.Max.Y - cap));
+        return Vector2.DistanceSquared(cursor, center) <= cap * cap + 0.25f;
+    }
 }

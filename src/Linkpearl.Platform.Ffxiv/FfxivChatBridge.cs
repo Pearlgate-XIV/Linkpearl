@@ -10,6 +10,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
+using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
 
 namespace Linkpearl.Platform.Ffxiv;
 
@@ -26,6 +27,9 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     private readonly IGameSession session;
     private readonly IFramework framework;
     private readonly IPluginLog log;
+    private readonly object friendGate = new();
+    private GameFriend[] friends = [];
+    private bool askedFriendList;
     private string pendingTellName = string.Empty;
     private string pendingTellWorld = string.Empty;
 
@@ -41,6 +45,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         this.framework = framework;
         this.log = log;
         chat.ChatMessage += HandleChatMessage;
+        framework.Update += HandleUpdate;
     }
 
     public event Action<GameChatLine>? LineReceived;
@@ -120,6 +125,17 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
     }
 
+    public IReadOnlyList<GameFriend> Friends
+    {
+        get
+        {
+            lock (friendGate)
+            {
+                return friends;
+            }
+        }
+    }
+
     public void Send(GameChannel channel, int channelIndex, string body)
     {
         var text = SanitizeBody(body);
@@ -137,6 +153,8 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             GameChannel.FreeCompany => "/fc " + text,
             GameChannel.Novice => "/n " + text,
             GameChannel.Say => "/s " + text,
+            GameChannel.Yell => "/y " + text,
+            GameChannel.Shout => "/sh " + text,
             _ => string.Empty,
         };
         Queue(command);
@@ -187,6 +205,57 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         chat.Print(body, "Linkpearl");
     }
 
+    public void OpenGameMenu(GameMenu menu)
+    {
+        if (!clientState.IsLoggedIn)
+        {
+            return;
+        }
+
+        var command = CommandOf(menu);
+        if (command.Length == 0)
+        {
+            return;
+        }
+
+        Queue(command);
+    }
+
+    private static string CommandOf(GameMenu menu) => menu switch
+    {
+        GameMenu.Character => "/character",
+        GameMenu.Inventory => "/inventory",
+        GameMenu.ArmouryChest => "/armourychest",
+        GameMenu.Saddlebag => "/saddlebag",
+        GameMenu.Currency => "/currency",
+        GameMenu.Achievements => "/achievements",
+        GameMenu.GoldSaucer => "/goldsaucer",
+        GameMenu.MountGuide => "/mountguide",
+        GameMenu.MinionGuide => "/minionguide",
+        GameMenu.Companion => "/companion",
+        GameMenu.PvpProfile => "/pvpprofile",
+        GameMenu.BlueSpellbook => "/bluespellbook",
+        GameMenu.Fashion => "/fashion",
+        GameMenu.Facewear => "/facewear",
+        GameMenu.AdventurerPlate => "/adventurerplate",
+        GameMenu.Portraits => "/portraitlist",
+        GameMenu.Actions => "/actions",
+        GameMenu.FriendList => "/friendlist",
+        GameMenu.Blacklist => "/blacklist",
+        GameMenu.Linkshell => "/linkshell",
+        GameMenu.CrossWorldLinkshell => "/cwls",
+        GameMenu.FreeCompany => "/freecompany",
+        GameMenu.Emotes => "/emotelist",
+        GameMenu.PlayerSearch => "/search",
+        GameMenu.PartyFinder => "/partyfinder",
+        GameMenu.DutyFinder => "/dutyfinder",
+        GameMenu.RaidFinder => "/raidfinder",
+        GameMenu.Journal => "/journal",
+        GameMenu.ChallengeLog => "/challengelog",
+        GameMenu.NoviceNetwork => "/novicenetwork",
+        _ => string.Empty,
+    };
+
     public IReadOnlyList<string> LinkshellNames(bool crossWorld)
     {
         var names = new string[LinkshellSlots];
@@ -206,6 +275,127 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     public void Dispose()
     {
         chat.ChatMessage -= HandleChatMessage;
+        framework.Update -= HandleUpdate;
+    }
+
+    private void HandleUpdate(IFramework running)
+    {
+        if (!clientState.IsLoggedIn)
+        {
+            lock (friendGate)
+            {
+                friends = [];
+                askedFriendList = false;
+            }
+
+            return;
+        }
+
+        RefreshFriends();
+    }
+
+    private unsafe void RefreshFriends()
+    {
+        var proxy = InfoProxyFriendList.Instance();
+        if (proxy is null)
+        {
+            return;
+        }
+
+        if (proxy->EntryCount == 0 && !askedFriendList)
+        {
+            askedFriendList = true;
+            proxy->RequestData();
+        }
+
+        var local = session.Character.Name;
+        var next = new List<GameFriend>((int)Math.Min(proxy->EntryCount, 200u));
+        var count = proxy->GetEntryCount();
+        for (uint index = 0; index < count; index++)
+        {
+            var entry = proxy->GetEntry(index);
+            if (entry is null || entry->ContentId == 0)
+            {
+                continue;
+            }
+
+            if ((entry->ExtraFlags & 0x20) != 0)
+            {
+                continue;
+            }
+
+            var name = entry->NameString.Trim();
+            if (name.Length == 0 || string.Equals(name, local, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var home = WorldName(entry->HomeWorld);
+            var current = WorldName(entry->CurrentWorld);
+            var online = FriendOnline(entry->State);
+            next.Add(new GameFriend(name, home, FriendPlace(entry, online, home, current), online));
+        }
+
+        lock (friendGate)
+        {
+            friends = next.ToArray();
+        }
+    }
+
+    private unsafe string FriendPlace(InfoProxyCommonList.CharacterData* entry, bool online, string home,
+        string current)
+    {
+        var zone = PlaceName(entry->Location);
+        if (zone.Length > 0)
+        {
+            return zone;
+        }
+
+        if (!online)
+        {
+            return home.Length > 0 ? home : "Offline";
+        }
+
+        if ((entry->State & InfoProxyCommonList.CharacterData.OnlineStatus.AnotherWorld) != 0 &&
+            current.Length > 0)
+        {
+            return current;
+        }
+
+        if (current.Length > 0)
+        {
+            return current;
+        }
+
+        return home.Length > 0 ? home : "Online";
+    }
+
+    private string PlaceName(uint rowId)
+    {
+        if (rowId != 0 && data.GetExcelSheet<TerritorySheet>().TryGetRow(rowId, out var territory))
+        {
+            var place = territory.PlaceName.ValueNullable;
+            if (place is { } named)
+            {
+                return named.Name.ExtractText();
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool FriendOnline(InfoProxyCommonList.CharacterData.OnlineStatus state)
+    {
+        if (state == 0)
+        {
+            return false;
+        }
+
+        const InfoProxyCommonList.CharacterData.OnlineStatus away =
+            InfoProxyCommonList.CharacterData.OnlineStatus.Disconnected |
+            InfoProxyCommonList.CharacterData.OnlineStatus.NotFound |
+            InfoProxyCommonList.CharacterData.OnlineStatus.OfflineExd;
+        return (state & away) == 0;
     }
 
     private void HandleChatMessage(IHandleableChatMessage message)
@@ -512,6 +702,15 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
                 return true;
             case XivChatType.TellIncoming:
                 channel = GameChannel.Tell;
+                return true;
+            case XivChatType.Say:
+                channel = GameChannel.Say;
+                return true;
+            case XivChatType.Shout:
+                channel = GameChannel.Shout;
+                return true;
+            case XivChatType.Yell:
+                channel = GameChannel.Yell;
                 return true;
             case XivChatType.Party:
             case XivChatType.CrossParty:

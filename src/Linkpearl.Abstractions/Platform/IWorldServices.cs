@@ -1,3 +1,4 @@
+using Linkpearl.Media;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Platform;
@@ -11,7 +12,7 @@ public readonly struct WeatherWindow
 
     public WeatherWindow(string name, uint iconId, DateTimeOffset starts, DateTimeOffset ends)
     {
-        Name = name;
+        Name = name ?? string.Empty;
         IconId = iconId;
         Starts = starts;
         Ends = ends;
@@ -59,11 +60,56 @@ public readonly struct AetheryteEntry
     }
 }
 
+public readonly struct JobFace
+{
+    public readonly uint Id;
+    public readonly string Name;
+    public readonly string Abbreviation;
+    public readonly uint IconId;
+    public readonly byte Role;
+
+    public JobFace(uint id, string name, string abbreviation, uint iconId, byte role)
+    {
+        Id = id;
+        Name = name ?? string.Empty;
+        Abbreviation = abbreviation ?? string.Empty;
+        IconId = iconId;
+        Role = role;
+    }
+}
+
+public interface IJobCatalog
+{
+    IReadOnlyList<JobFace> All { get; }
+
+    bool TryGet(uint id, out JobFace job);
+
+    bool TryGetByName(string name, out JobFace job);
+
+    uint IconFor(uint jobId);
+}
+
+public static class JobIconIds
+{
+    public const uint SheetBase = 62000;
+
+    public static uint FromJob(uint jobId) => jobId == 0 ? 0u : SheetBase + jobId;
+}
+
 public interface ITextureSource
 {
     ITextureHandle? GameIcon(uint iconId, bool highResolution = true);
 
     ITextureHandle? FromFile(string path);
 
+    ITextureHandle? FromFile(string path, Vector2 destPixels);
+
     ITextureHandle? FromBytes(ReadOnlySpan<byte> data, string cacheKey);
+
+    CoverUv FileOpaqueUv(string path) => CoverUv.Full;
+}
+
+public interface IFilePicker
+{
+    IReadOnlyList<string> PickImageFiles();
 }

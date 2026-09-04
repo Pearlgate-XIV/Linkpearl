@@ -29,6 +29,8 @@ public interface IInputProbe
 
     bool ConsumeClick(Rect area, PointerButton button = PointerButton.Primary);
 
+    bool PressedInside(Rect area, PointerButton button = PointerButton.Primary);
+
     void Claim(Rect area);
 
     bool IsClaimed(Rect area);
