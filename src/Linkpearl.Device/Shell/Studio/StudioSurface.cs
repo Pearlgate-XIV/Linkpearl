@@ -94,11 +94,16 @@ internal sealed class StudioSurface
         var musicH = StudioMusicDock.Height(frame);
         var huntH = StudioHunt.BarHeight(frame);
         var leftover = MathF.Max(0f, stack.Remaining.Height - musicH - gap - huntH - gap);
-        var band = MathF.Max(0f, (leftover - gap * 2f) / 3f);
+        var equal = MathF.Max(0f, (leftover - gap * 2f) / 3f);
+        var appsNeed = frame.Units(52f) * 2f + frame.Units(4f) * 3f +
+                       frame.Text.LineHeight(FontRole.Caption) * 2f;
+        var middleH = MathF.Min(MathF.Max(equal, appsNeed), leftover);
+        var rest = MathF.Max(0f, leftover - middleH - gap * 2f);
+        var sideBand = rest * 0.5f;
         var huntBar = stack.Take(huntH);
-        var calendar = stack.Take(band);
-        var middle = stack.Take(band);
-        var weather = stack.Take(band);
+        var calendar = stack.Take(sideBand);
+        var middle = stack.Take(middleH);
+        var weather = stack.Take(sideBand);
         var music = stack.TakeRemaining();
         var half = MathF.Max(0f, (middle.Width - gap) * 0.5f);
 
@@ -502,37 +507,49 @@ internal sealed class StudioSurface
 
     private void DrawApps(in AppletFrame frame, Rect area)
     {
-        var grid = new TileGrid(area, 3, 2, frame.Units(2f));
-        DrawApp(frame, grid.Cell(0, 0), "pearlchat", AppIconCatalog.HomeMessagesAsset, "Messages",
-            talk.UnreadTotal, () => hub.Open(DestinationTab.Social, SocialPane.Messages));
-        DrawApp(frame, grid.Cell(1, 0), "party", AppIconCatalog.HomePartyAsset, "Party", 0,
+        var grid = new TileGrid(area, 3, 2, frame.Units(4f));
+        DrawApp(frame, grid.Cell(0, 0), "pearlchat", "Messages", talk.UnreadTotal,
+            () => hub.Open(DestinationTab.Social, SocialPane.Messages));
+        DrawApp(frame, grid.Cell(1, 0), "party", "Party", 0,
             () => hub.Open(DestinationTab.Social, SocialPane.Linkshells));
-        DrawApp(frame, grid.Cell(2, 0), "friends", string.Empty, "Friends", 0,
+        DrawApp(frame, grid.Cell(2, 0), "friends", "Friends", 0,
             () => hub.Open(DestinationTab.Social, SocialPane.People));
-        DrawApp(frame, grid.Cell(0, 1), "retainer", string.Empty, "Retainer", 0,
-            () => hub.Open(DestinationTab.You));
-        DrawApp(frame, grid.Cell(1, 1), "market", string.Empty, "Market", 0,
+        DrawApp(frame, grid.Cell(0, 1), "retainer", "Retainer", 0, () => hub.Open(DestinationTab.You));
+        DrawApp(frame, grid.Cell(1, 1), "market", "Market", 0,
             () => hub.Open(DestinationTab.Explore, ExplorePane.Places));
-        DrawApp(frame, grid.Cell(2, 1), "events", string.Empty, "Events", 0,
+        DrawApp(frame, grid.Cell(2, 1), "events", "Events", 0,
             () => hub.Open(DestinationTab.Explore, ExplorePane.Events));
     }
 
-    private static void DrawApp(in AppletFrame frame, Rect cell, string appletId, string fallbackAsset, string label,
-        int badge, Action pressed)
+    private static void DrawApp(in AppletFrame frame, Rect cell, string appletId, string label, int badge,
+        Action pressed)
     {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var caption = cell.BottomSlice(frame.Units(11f));
-        var art = new Rect(cell.Min, new Vector2(cell.Max.X, caption.Min.Y - frame.Units(1f)));
-        var side = MathF.Min(art.Width, art.Height) * 0.85f;
+        if (cell.Width < 4f || cell.Height < 4f)
+        {
+            return;
+        }
+
+        var side = MathF.Min(frame.Units(52f), cell.Width);
+        var labelGap = frame.Units(4f);
+        var labelHeight = frame.Text.LineHeight(FontRole.Caption);
         var hover = frame.Input.IsHovering(cell);
         var drawn = hover ? side * 1.08f : side;
-        var disc = Rect.FromSize(new Vector2(art.Max.X - side, art.Center.Y - side * 0.5f), new Vector2(side));
-        var bubble = Rect.FromSize(disc.Center - new Vector2(drawn * 0.5f, drawn * 0.5f), new Vector2(drawn, drawn));
-        AppMarks.DrawRoundFace(frame, bubble, appletId, hover);
-        _ = fallbackAsset;
+        var icon = Rect.FromSize(new Vector2(cell.Center.X - side * 0.5f, cell.Min.Y), new Vector2(side, side));
+        var bubble = Rect.FromSize(icon.Center - new Vector2(drawn * 0.5f, drawn * 0.5f), new Vector2(drawn, drawn));
+        AppMarks.DrawFace(frame, bubble, appletId, hover);
+        var caption = new Rect(
+            new Vector2(cell.Min.X, icon.Max.Y + labelGap),
+            new Vector2(cell.Max.X, icon.Max.Y + labelGap + labelHeight));
+        var style = new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center);
+        if (frame.Text.Measure(label, FontRole.Caption).X <= caption.Width)
+        {
+            frame.Text.DrawIn(caption, label, style);
+        }
+        else
+        {
+            frame.Text.DrawWrapped(caption, label, style);
+        }
 
-        frame.Text.DrawEllipsized(caption.RightSlice(side), label,
-            new TextStyle(FontRole.Caption, gold, TextAlign.Center, 1f, 0.78f));
         if (badge > 0)
         {
             var radius = frame.Units(4.6f);

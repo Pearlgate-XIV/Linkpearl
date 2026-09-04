@@ -50,13 +50,33 @@ internal static class IcecastListen
         {
             UserName = string.Empty,
             Password = string.Empty,
-            Query = string.Empty,
         };
+        if (uri.IsDefaultPort)
+        {
+            builder.Port = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? 443
+                : 8000;
+        }
+
         yield return builder.Uri.ToString();
 
-        if (builder.Path.Length <= 1)
+        if (builder.Query.Length == 0)
+        {
+            builder.Query = "type=.mp3";
+            yield return builder.Uri.ToString();
+            builder.Query = string.Empty;
+        }
+
+        var path = builder.Path;
+        if (path.Length <= 1)
         {
             builder.Path = "/;stream.mp3";
+            yield return builder.Uri.ToString();
+            builder.Path = path;
+        }
+        else if (path.AsSpan().LastIndexOf('.') < 0)
+        {
+            builder.Path = path.TrimEnd('/') + ".mp3";
             yield return builder.Uri.ToString();
         }
     }
