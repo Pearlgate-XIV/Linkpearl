@@ -1,8 +1,8 @@
 [
   {
     "Author": "Alpha Channel",
-    "Name": "Linkpearl (rebuild dev)",
-    "Description": "In-development rebuild of the Linkpearl handset. Loaded as a separate dev plugin so it never collides with a real Linkpearl install.",
+    "Name": "Linkpearl",
+    "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
     "Punchline": "A pearl in your pocket.",
     "InternalName": "LinkpearlDev",
     "AssemblyVersion": "0.1.0.0",
@@ -14,7 +14,7 @@
     "DownloadLinkInstall": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/LinkpearlDev.zip",
     "DownloadLinkUpdate": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/LinkpearlDev.zip",
     "DownloadLinkTesting": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/LinkpearlDev.zip",
-    "LastUpdate": "1788514056",
+    "LastUpdate": "1788514800",
     "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/src/Linkpearl.Host/Images/Icon.png"
   }
 ]
