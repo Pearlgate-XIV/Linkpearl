@@ -68,19 +68,19 @@ public sealed partial class MusicApplet
                     state.StationMount, "your-mount"));
                 frame.Text.DrawIn(stack.Take(frame.Units(28f)),
                     state.StationMount.Length > 0
-                        ? "Pearlgate will create /" + state.StationMount + " when you save. Anyone can tune that mount."
-                        : "Pick a mount name. Save sends it to Pearlgate so Icecast can create the station.",
+                        ? "Pearlgate will list /" + state.StationMount + " for everyone. Icecast host below is only if you run your own relay."
+                        : "Name the mount. Save publishes the station so others can find it on LIVE.",
                     new TextStyle(FontRole.Caption, MusicChrome.Mute));
-                frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Icecast host",
+                frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Your Icecast (optional)",
                     new TextStyle(FontRole.Caption, MusicChrome.Mute));
                 state.IcecastHost = frame.TextField.Draw("music-ice-host", stack.Take(frame.Units(34f)),
-                    state.IcecastHost, "host:8000");
-                frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Icecast source password",
+                    state.IcecastHost, "leave blank for Pearlgate");
+                frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Source password (optional)",
                     new TextStyle(FontRole.Caption, MusicChrome.Mute));
                 state.IcecastPassword = frame.TextField.Draw("music-ice-pass", stack.Take(frame.Units(34f)),
                     state.IcecastPassword, "source password");
                 frame.Text.DrawIn(stack.Take(frame.Units(36f)),
-                    "The phone encodes like BUTT and pushes to this Icecast. Pick what to capture below — the same Listen / Talk devices as Settings.",
+                    "Leave Icecast blank to use Pearlgate's relay. Fill it in only if you host your own mount.",
                     new TextStyle(FontRole.Caption, MusicChrome.Mute));
                 DrawAudioSource(frame, ref stack);
                 frame.Text.DrawIn(stack.Take(frame.Units(14f)), "About the station",
@@ -219,7 +219,9 @@ public sealed partial class MusicApplet
             frame.Text.DrawIn(art, "♪", new TextStyle(FontRole.Display, MusicChrome.Purple, TextAlign.Center));
             MusicChrome.Title(frame, stack.Take(frame.Units(28f)), now.Title.Length > 0 ? now.Title : "Nothing playing");
             frame.Text.DrawIn(stack.Take(frame.Units(18f)),
-                now.Detail.Length > 0 ? now.Detail : "Pick Radio or a LIVE broadcast in Discover",
+                audio.Phase == HandsetAudioPhase.Failed && audio.Notice.Length > 0
+                    ? audio.Notice
+                    : now.Detail.Length > 0 ? now.Detail : "Pick Radio or a LIVE broadcast in Discover",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             if (now.Live && now.StreamUrl.Length == 0)
             {
@@ -387,7 +389,8 @@ public sealed partial class MusicApplet
 
             if (!pearl.Current.SignedIn)
             {
-                frame.Text.DrawIn(stack.Take(frame.Units(36f)), "Sign in on You so Pearlgate can create this Icecast mount.",
+                frame.Text.DrawIn(stack.Take(frame.Units(36f)),
+                    "Sign in on You so Pearlgate lists this station for everyone else.",
                     new TextStyle(FontRole.Caption, MusicChrome.Mute));
             }
 
@@ -399,13 +402,14 @@ public sealed partial class MusicApplet
                 {
                     community.EndLive();
                 }
-                else if (mount.Length == 0 || state.IcecastHost.Trim().Length == 0 ||
-                         state.IcecastPassword.Length == 0)
-                {
-                    state.Save(paths);
-                }
                 else
                 {
+                    if (mount.Length == 0)
+                    {
+                        state.StationMount = MusicState.SlugMount(
+                            state.StationName.Length > 0 ? state.StationName : state.DisplayName);
+                    }
+
                     community.UseIcecast(state.IcecastHost, "source", state.IcecastPassword);
                     PublishStation();
                     community.GoLive(
@@ -848,18 +852,20 @@ public sealed partial class MusicApplet
     {
         var host = state.IcecastHost;
         var password = state.IcecastPassword;
-        frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Icecast host",
+        frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Your Icecast (optional)",
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         state.IcecastHost = frame.TextField.Draw("music-dash-ice-host", stack.Take(frame.Units(34f)),
-            state.IcecastHost, "host:8000");
-        frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Icecast source password",
+            state.IcecastHost, "leave blank for Pearlgate");
+        frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Source password (optional)",
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         state.IcecastPassword = frame.TextField.Draw("music-dash-ice-pass", stack.Take(frame.Units(34f)),
             state.IcecastPassword, "source password");
-        if (state.IcecastHost.Trim().Length == 0 || state.IcecastPassword.Length == 0)
+        if (state.IcecastHost.Trim().Length == 0)
         {
             frame.Text.DrawIn(stack.Take(frame.Units(36f)),
-                "Pearlgate cannot create the mount yet. Host and source password are required so this phone can SOURCE like BUTT.",
+                pearl.Current.SignedIn
+                    ? "Pearlgate will hand this phone a listen URL when Icecast is configured on the API."
+                    : "Sign in on You so Pearlgate can list your station for everyone.",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
         }
 
@@ -1034,6 +1040,5 @@ public sealed partial class MusicApplet
         return tapId.StartsWith("wavein:", StringComparison.Ordinal) ? tapId : string.Empty;
     }
 
-    private static bool Tap(in AppletFrame frame, Rect area) =>
-        frame.Input.PressedInside(area) || frame.Input.ConsumeClick(area);
+    private static bool Tap(in AppletFrame frame, Rect area) => frame.Input.ConsumeClick(area);
 }

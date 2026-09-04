@@ -66,7 +66,7 @@ internal static class MusicChrome
         frame.Paint.Fill(area, on ? Purple : CardHi, frame.Units(12f));
         frame.Text.DrawIn(area, label,
             new TextStyle(FontRole.CaptionStrong, on ? Ink : Mute, TextAlign.Center));
-        return frame.Input.PressedInside(area) || frame.Input.ConsumeClick(area);
+        return frame.Input.ConsumeClick(area);
     }
 
     public static bool Row(in AppletFrame frame, Rect area, string title, string detail, bool live)
@@ -83,7 +83,7 @@ internal static class MusicChrome
             LiveMark(frame, inset.RightSlice(frame.Units(40f)).TopSlice(frame.Units(18f)));
         }
 
-        return frame.Input.PressedInside(area) || frame.Input.ConsumeClick(area);
+        return frame.Input.ConsumeClick(area);
     }
 
     public static void Kicker(in AppletFrame frame, Rect area, string label)

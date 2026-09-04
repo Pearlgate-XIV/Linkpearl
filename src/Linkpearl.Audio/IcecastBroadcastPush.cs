@@ -22,6 +22,11 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
     private int generation;
     private string notice = "Not sending to Icecast yet.";
 
+    public IcecastBroadcastPush(string? nativeDirectory = null)
+    {
+        LameNative.Bind(nativeDirectory);
+    }
+
     public bool Sending
     {
         get
@@ -68,6 +73,8 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             ticket = ++generation;
             notice = sending ? "Connecting to Icecast…" : "No ingest URL. Save a host or wait for Pearlgate.";
         }
+
+        LameNative.Bind();
 
         if (ingest.Length == 0)
         {
@@ -131,6 +138,7 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             {
                 try
                 {
+                    LameNative.Bind();
                     lame?.Dispose();
                     lame = new LameMP3FileWriter(wire, new WaveFormat(rate, 16, 2), 128);
                     sampleRate = rate;
@@ -139,8 +147,10 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
                 catch (Exception error)
                 {
                     sending = false;
+                    var extra = LameNative.Notice;
                     notice = "Could not encode for Icecast" +
-                             (error.Message.Length > 0 ? " (" + error.Message + ")" : ".");
+                             (error.Message.Length > 0 ? " (" + error.Message + ")" : ".") +
+                             (extra.Length > 0 ? " " + extra : "");
                     return;
                 }
             }

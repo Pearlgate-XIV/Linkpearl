@@ -1,3 +1,4 @@
+using System.Net.Http;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
@@ -10,6 +11,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
     private IWavePlayer? output;
     private WaveStream? reader;
     private HttpClient? streamHttp;
+    private HttpResponseMessage? streamResponse;
     private Stream? streamBody;
     private VolumeSampleProvider? gain;
     private float volume = 0.7f;
@@ -218,6 +220,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         lock (gate)
         {
             StopUnlocked();
+            now = default;
             phase = HandsetAudioPhase.Idle;
             notice = string.Empty;
         }
@@ -270,9 +273,17 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
                     return;
                 }
 
-                if (TryStart(url, ticket, out last))
+                foreach (var playable in Unwrap(url))
                 {
-                    return;
+                    if (ticket != Volatile.Read(ref generation))
+                    {
+                        return;
+                    }
+
+                    if (TryStart(playable, ticket, out last))
+                    {
+                        return;
+                    }
                 }
             }
         }
@@ -285,60 +296,132 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
             }
 
             phase = HandsetAudioPhase.Failed;
-            notice = last?.Message is { Length: > 0 } text
-                ? text
-                : "Could not start the stream.";
+            notice = Explain(last);
         }
     }
 
     private bool TryStart(string url, int ticket, out Exception? error)
     {
         error = null;
+        if (RadioPlaylist.LooksLikePlaylist(url))
+        {
+            error = new IOException("playlist");
+            return false;
+        }
+
+        // Native Windows: Media Foundation (AAC, HLS, Icecast). Wine usually fails this.
+        if (TryMediaFoundation(url, ticket, out error))
+        {
+            return true;
+        }
+
+        // Linux/Wine and MF misses: HTTP body decoded as MP3 without seeking.
+        return TryHttpMp3(url, ticket, out error);
+    }
+
+    private bool TryMediaFoundation(string url, int ticket, out Exception? error)
+    {
+        error = null;
         WaveStream? nextReader = null;
+        try
+        {
+            nextReader = new MediaFoundationReader(url);
+            if (Arm(nextReader, ticket, null, null, null, out error))
+            {
+                return true;
+            }
+
+            nextReader.Dispose();
+            nextReader = null;
+            return false;
+        }
+        catch (Exception caught)
+        {
+            error = caught;
+            nextReader?.Dispose();
+            return false;
+        }
+    }
+
+    private bool TryHttpMp3(string url, int ticket, out Exception? error)
+    {
+        error = null;
         HttpClient? http = null;
+        HttpResponseMessage? response = null;
         Stream? body = null;
+        WaveStream? nextReader = null;
+        try
+        {
+            http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            http.DefaultRequestHeaders.TryAddWithoutValidation("Icy-MetaData", "0");
+            http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Linkpearl/0.1");
+            response = HttpWire.Get(http, url, TimeSpan.FromSeconds(12));
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException("offline", null, response.StatusCode);
+            }
+
+            body = new PlainReadStream(HttpWire.Body(response));
+            nextReader = new ForwardMp3Stream(body);
+            if (Arm(nextReader, ticket, http, response, body, out error))
+            {
+                return true;
+            }
+
+            nextReader.Dispose();
+            nextReader = null;
+            body.Dispose();
+            body = null;
+            response.Dispose();
+            response = null;
+            http.Dispose();
+            http = null;
+            return false;
+        }
+        catch (Exception caught)
+        {
+            error = caught;
+            nextReader?.Dispose();
+            body?.Dispose();
+            response?.Dispose();
+            http?.Dispose();
+            return false;
+        }
+    }
+
+    private bool Arm(WaveStream nextReader, int ticket, HttpClient? http, HttpResponseMessage? response,
+        Stream? body, out Exception? error)
+    {
+        error = null;
         IWavePlayer? nextOut = null;
         try
         {
-            try
-            {
-                nextReader = new MediaFoundationReader(url);
-            }
-            catch (Exception first)
-            {
-                http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-                http.DefaultRequestHeaders.TryAddWithoutValidation("Icy-MetaData", "0");
-                http.DefaultRequestHeaders.UserAgent.ParseAdd("Linkpearl/0.1");
-                body = http.GetStreamAsync(url).GetAwaiter().GetResult();
-                try
-                {
-                    nextReader = new StreamMediaFoundationReader(body);
-                }
-                catch (Exception)
-                {
-                    nextReader = new Mp3FileReader(body);
-                }
-
-                _ = first;
-            }
-
             var nextGain = new VolumeSampleProvider(nextReader.ToSampleProvider()) { Volume = Volume };
             nextOut = WasapiEndpoint.OpenPlayback(SpeakerId);
-            nextOut.Init(nextGain);
+            try
+            {
+                nextOut.Init(nextGain);
+            }
+            catch (Exception)
+            {
+                nextOut.Dispose();
+                nextOut = WasapiEndpoint.OpenPlayback(SpeakerId);
+                nextOut.Init(new SampleToWaveProvider16(nextGain));
+            }
+
             lock (gate)
             {
                 if (ticket != generation)
                 {
                     nextOut.Dispose();
-                    nextReader.Dispose();
-                    body?.Dispose();
-                    http?.Dispose();
                     return false;
                 }
 
                 output = nextOut;
                 reader = nextReader;
                 streamHttp = http;
+                streamResponse = response;
                 streamBody = body;
                 gain = nextGain;
                 phase = HandsetAudioPhase.Playing;
@@ -352,9 +435,6 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         {
             error = caught;
             nextOut?.Dispose();
-            nextReader?.Dispose();
-            body?.Dispose();
-            http?.Dispose();
             return false;
         }
     }
@@ -373,12 +453,48 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         output?.Dispose();
         reader?.Dispose();
         streamBody?.Dispose();
+        streamResponse?.Dispose();
         streamHttp?.Dispose();
         output = null;
         reader = null;
         streamBody = null;
+        streamResponse = null;
         streamHttp = null;
         gain = null;
-        now = default;
+    }
+
+    private static IEnumerable<string> Unwrap(string url)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Linkpearl/0.1");
+        foreach (var item in RadioPlaylist.Unwrap(url, http))
+        {
+            yield return item;
+        }
+    }
+
+    private static string Explain(Exception? error)
+    {
+        if (error is HttpRequestException http &&
+            (http.StatusCode == System.Net.HttpStatusCode.NotFound ||
+             http.StatusCode == System.Net.HttpStatusCode.Gone))
+        {
+            return "This station is offline. Try another.";
+        }
+
+        var text = error?.Message ?? string.Empty;
+        if (text.Contains("404", StringComparison.Ordinal) ||
+            text.Contains("Not Available", StringComparison.OrdinalIgnoreCase))
+        {
+            return "This station is offline. Try another.";
+        }
+
+        if (text.Contains("403", StringComparison.Ordinal) ||
+            text.Contains("401", StringComparison.Ordinal))
+        {
+            return "This station blocked the phone. Try another.";
+        }
+
+        return text.Length > 0 && text.Length < 90 ? text : "Could not start the stream.";
     }
 }

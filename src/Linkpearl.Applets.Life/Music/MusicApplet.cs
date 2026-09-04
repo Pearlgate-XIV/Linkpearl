@@ -40,6 +40,7 @@ public sealed partial class MusicApplet : IApplet
     private readonly MusicState state;
     private long lastCaptureTry;
     private long lastPushTry;
+    private long lastCommunityRefresh;
 
     public MusicApplet(IGameSession game, HostPaths paths, DisplayPreferences display, IHandsetAudio audio,
         IPublicRadio publicRadio, ICommunityRadio community, IPearlHub pearl, IFilePicker files, IBroadcastSense sense,
@@ -144,9 +145,22 @@ public sealed partial class MusicApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
-        publicRadio.Ensure(state.Genre);
-        SyncBroadcastTap();
         frame.Paint.Fill(frame.Content, MusicChrome.Bg);
+        try
+        {
+            publicRadio.Ensure(state.Genre);
+            SyncBroadcastTap();
+            PullOwnedStation();
+            if (Environment.TickCount64 - lastCommunityRefresh > 8000)
+            {
+                lastCommunityRefresh = Environment.TickCount64;
+                community.Refresh();
+            }
+        }
+        catch (Exception)
+        {
+        }
+
         try
         {
             if (state.Page == MusicPage.Onboard)
@@ -169,7 +183,7 @@ public sealed partial class MusicApplet : IApplet
 
             DrawTabs(frame);
         }
-        catch
+        catch (Exception)
         {
             frame.Text.DrawIn(frame.Content.Inset(frame.Units(16f)), "Music hit a layout error. Back out and open it again.",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
@@ -424,11 +438,12 @@ public sealed partial class MusicApplet : IApplet
         else
         {
             MusicChrome.Plate(frame, go, frame.Units(12f));
-            frame.Text.DrawIn(go, "Create a station on Profile",
+            frame.Text.DrawIn(go, "Create your station",
                 new TextStyle(FontRole.BodyStrong, MusicChrome.Purple, TextAlign.Center));
             if (frame.Input.ConsumeClick(go))
             {
-                OpenTab(MusicTab.Profile);
+                state.Dj = true;
+                state.Open(MusicPage.SetupDj);
             }
         }
 
@@ -451,8 +466,14 @@ public sealed partial class MusicApplet : IApplet
             frame.Text.DrawIn(copy.Inset(new Edges(0f, frame.Units(26f), 0f, 0f)),
                 community.Notice.Length > 0
                     ? community.Notice
-                    : "Create a station on your profile. It lists here as offline until you hit Go live.",
+                    : "Create your station, then Go live. Everyone on LIVE can tune it.",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
+            if (frame.Input.ConsumeClick(empty) && state.StationName.Length == 0)
+            {
+                state.Dj = true;
+                state.Open(MusicPage.SetupDj);
+            }
+
             return;
         }
 
@@ -930,9 +951,61 @@ public sealed partial class MusicApplet : IApplet
         }
     }
 
-    private void TunePublic(PublicStation station) =>
-        audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, station.StreamUrl,
-            false, station.ArtUrl));
+    private void TunePublic(PublicStation station)
+    {
+        var packed = PackUrls(station.StreamUrl, station.AlternateUrl);
+        audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, packed, false,
+            station.ArtUrl));
+        _ = Task.Run(() =>
+        {
+            var urls = publicRadio.PlayUrls(station);
+            if (urls.Count == 0 || !string.Equals(audio.Now.Id, station.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var next = PackUrls(urls);
+            if (next.Length == 0 || string.Equals(next, packed, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, next, false,
+                station.ArtUrl));
+        });
+    }
+
+    private static string PackUrls(params string[] urls) => PackUrls((IReadOnlyList<string>)urls);
+
+    private static string PackUrls(IReadOnlyList<string> urls)
+    {
+        var packed = new List<string>();
+        for (var index = 0; index < urls.Count; index++)
+        {
+            var url = urls[index].Trim();
+            if (url.Length == 0)
+            {
+                continue;
+            }
+
+            var seen = false;
+            for (var prior = 0; prior < packed.Count; prior++)
+            {
+                if (string.Equals(packed[prior], url, StringComparison.OrdinalIgnoreCase))
+                {
+                    seen = true;
+                    break;
+                }
+            }
+
+            if (!seen)
+            {
+                packed.Add(url);
+            }
+        }
+
+        return string.Join('\n', packed);
+    }
 
     private void TuneCommunity(CommunityStation station) =>
         audio.Play(new HandsetTune(station.Id, station.Name, station.Host, station.ListenUrl, station.Live,
@@ -1119,14 +1192,60 @@ public sealed partial class MusicApplet : IApplet
         state.Save(paths);
     }
 
-    private void PublishStation()
+    private void PullOwnedStation()
     {
-        if (state.StationName.Length == 0)
+        CommunityStation owned = default;
+        foreach (var row in community.Mine)
+        {
+            owned = row;
+            break;
+        }
+
+        if (owned.Id.Length == 0)
         {
             return;
         }
 
+        state.StationId = owned.Id;
+        if (owned.Mount.Length > 0)
+        {
+            state.StationMount = owned.Mount;
+        }
+
+        if (owned.Name.Length > 0 && state.StationName.Length == 0)
+        {
+            state.StationName = owned.Name;
+        }
+
+        if (owned.Host.Length > 0 && state.DjName.Length == 0)
+        {
+            state.DjName = owned.Host;
+        }
+    }
+
+    private void PublishStation()
+    {
+        if (state.StationName.Length == 0)
+        {
+            if (state.DisplayName.Length == 0 && game.Character.Name.Length > 0)
+            {
+                state.DisplayName = game.Character.Name;
+            }
+
+            return;
+        }
+
         state.Dj = true;
+        if (state.DisplayName.Length == 0 && game.Character.Name.Length > 0)
+        {
+            state.DisplayName = game.Character.Name;
+        }
+
+        if (state.DjName.Length == 0)
+        {
+            state.DjName = state.DisplayName;
+        }
+
         if (state.StationMount.Length == 0)
         {
             state.StationMount = MusicState.SlugMount(state.StationName);
@@ -1134,7 +1253,7 @@ public sealed partial class MusicApplet : IApplet
 
         community.EnsureStation(
             state.StationName,
-            state.DjName.Length > 0 ? state.DjName : state.DisplayName,
+            state.DjName,
             state.Genre,
             state.StationBio,
             state.StationArtPath,

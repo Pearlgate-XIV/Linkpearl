@@ -469,9 +469,12 @@ public sealed class HandsetShell
             {
                 applet.Compose(overlayOpen ? frame.WithContent(rest) : outerFrame.WithContent(rest));
             }
-            catch
+            catch (Exception)
             {
-                // A broken applet must not skip the case, gasket, or soft keys.
+                outerFrame.Paint.Fill(rest, outerFrame.Theme.Palette.Surface);
+                outerFrame.Text.DrawIn(rest.Inset(outerFrame.Units(16f)),
+                    "This app hit an error. Back out and open it again.",
+                    new TextStyle(FontRole.Caption, outerFrame.Theme.Palette.InkMuted));
             }
 
             return;
