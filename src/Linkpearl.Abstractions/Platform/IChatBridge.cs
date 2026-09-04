@@ -30,6 +30,22 @@ public readonly struct GamePeer
     }
 }
 
+public readonly struct GameFriend
+{
+    public readonly string Name;
+    public readonly string World;
+    public readonly string Place;
+    public readonly bool Online;
+
+    public GameFriend(string name, string world, string place, bool online)
+    {
+        Name = name;
+        World = world;
+        Place = place;
+        Online = online;
+    }
+}
+
 public readonly struct GameChatLine
 {
     public readonly GameChannel Channel;
@@ -67,11 +83,15 @@ public interface IChatBridge
 
     IReadOnlyList<GamePeer> NearbyPlayers { get; }
 
+    IReadOnlyList<GameFriend> Friends { get; }
+
     void Send(GameChannel channel, int channelIndex, string body);
 
     void SendTell(string characterName, string world, string body);
 
     void Print(string body);
+
+    void OpenGameMenu(GameMenu menu);
 
     IReadOnlyList<string> LinkshellNames(bool crossWorld);
 }

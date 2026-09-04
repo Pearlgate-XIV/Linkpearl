@@ -12,15 +12,19 @@ public static class ModuleDiscovery
     public static IReadOnlyList<ILinkpearlModule> Discover() => new ILinkpearlModule[]
     {
         new SettingsModule(),
+        new FeedbackModule(),
         new ClockModule(),
         new AlarmsModule(),
         new NotesModule(),
         new CalendarModule(),
+        new MusicModule(),
+        new AfterDarkModule(),
         new CalculatorModule(),
         new TimerModule(),
         new StopwatchModule(),
         new WeatherModule(),
         new PlaceModule(),
+        new EorzeaModule(),
         new CameraModule(),
         new WalletModule(),
     };

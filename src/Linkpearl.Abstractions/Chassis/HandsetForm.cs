@@ -16,3 +16,9 @@ public enum HandsetFinish : byte
     // Etched art panel: wider bezel to frame artwork on the back plate.
     Etched = 1,
 }
+
+public enum HandsetCase : byte
+{
+    Pearl = 0,
+    Android = 1,
+}

@@ -84,6 +84,26 @@ visible-field warnings on small geometry value-types, one `CA1711` naming nit on
 one `IDE0005` doc-file nag). Don't chase these down as a project unless asked — they're known and
 accepted, not regressions to fix reflexively.
 
+## What to tell the agent
+
+Two different asks. Use the matching line.
+
+**Will it compile?** Paste: *Build Debug and tell me if it succeeds.* That should run
+`DALAMUD_HOME=~/.xlcore/dalamud/Hooks/dev` and `dotnet build src/Linkpearl.Host -c Debug`.
+You want 0 errors; existing style warnings are known.
+
+For the shippable assembly (`Linkpearl.dll`): *Build Release and tell me if it succeeds.*
+
+**Rebuild the phone you load in-game?** Paste: *Build Debug so I can reload LinkpearlDev in
+/xlplugins.* That writes `src/Linkpearl.Host/bin/Debug/LinkpearlDev.dll`. Then in-game:
+`/xlplugins` → **Linkpearl (rebuild dev)** → disable → enable.
+
+The agent cannot see the handset in FFXIV. “Check the build on the phone” here means compile
+Debug, not click through the UI. After a reload, you look at it in-game.
+
+**First message on another PC** (no history): *Read docs/HANDOFF.md then docs/STATUS.md. Build
+Debug and tell me if it succeeds.*
+
 ## Loading it in-game (dev plugin)
 
 Dalamud's Dev Plugin Locations entry for this rebuild is the Debug host output (Wine `Z:` is

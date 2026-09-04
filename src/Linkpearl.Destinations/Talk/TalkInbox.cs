@@ -7,7 +7,7 @@ namespace Linkpearl.Talk;
 
 public sealed class TalkInbox : ITalk, IDisposable
 {
-    private const int MaxLiveLines = 80;
+    private const int MaxLiveLines = 500;
     private const int MaxTellLines = 400;
 
     private readonly IChatBridge chat;
@@ -20,6 +20,8 @@ public sealed class TalkInbox : ITalk, IDisposable
     private readonly Dictionary<string, string> extraNotes = new(StringComparer.OrdinalIgnoreCase);
     private ulong boundId;
     private int generation;
+
+    public event Action<string, TalkLine>? LinePosted;
 
     public TalkInbox(IChatBridge chat, IPearlHub pearl, IClock clock, IGameSession game, string talkDirectory)
     {
@@ -72,6 +74,11 @@ public sealed class TalkInbox : ITalk, IDisposable
             var list = new List<TalkThread>(rooms.Count + snapshot.Chats.Length + 4);
             foreach (var pair in rooms)
             {
+                if (pair.Value.Kind == TalkKind.Live)
+                {
+                    continue;
+                }
+
                 list.Add(ToThread(pair.Value));
             }
 
@@ -83,6 +90,21 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     public IReadOnlyList<TalkLine> Lines(string threadId)
     {
+        if (threadId.StartsWith("pearl:", StringComparison.Ordinal))
+        {
+            var chatId = threadId["pearl:".Length..];
+            pearl.WatchChat(chatId);
+            var rows = pearl.LinesFor(chatId);
+            var mapped = new TalkLine[rows.Count];
+            for (var index = 0; index < rows.Count; index++)
+            {
+                var row = rows[index];
+                mapped[index] = new TalkLine(row.Author, row.Body, clock.Now, row.Mine);
+            }
+
+            return mapped;
+        }
+
         lock (gate)
         {
             BindCharacter();
@@ -112,7 +134,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         {
             if (string.Equals(TalkIds.Pearl(chats[index].Id), threadId, StringComparison.Ordinal))
             {
-                return PearlThread(chats[index]);
+                return PearlThread(chats[index], true);
             }
         }
 
@@ -228,8 +250,22 @@ public sealed class TalkInbox : ITalk, IDisposable
             added++;
         }
 
+        var roster = chat.Friends;
+        for (var index = 0; index < roster.Count; index++)
+        {
+            var friend = roster[index];
+            if (AlreadyHinted(hints, friend.Name, friend.World))
+            {
+                continue;
+            }
+
+            hints.Add(new GamePeerHint(friend.Name, friend.World, friend.Online ? "Friend · Online" : "Friend"));
+        }
+
         return hints;
     }
+
+    public IReadOnlyList<GameFriend> Friends() => chat.Friends;
 
     public IReadOnlyList<GamePeerHint> SearchNearby(string query)
     {
@@ -268,10 +304,33 @@ public sealed class TalkInbox : ITalk, IDisposable
             hits.Add(new GamePeerHint(peer.Name, peer.World, reason));
         }
 
-        hits.Sort((left, right) => CompareNearby(left, right, nameQuery));
-        if (hits.Count > 8)
+        var roster = chat.Friends;
+        for (var index = 0; index < roster.Count; index++)
         {
-            hits.RemoveRange(8, hits.Count - 8);
+            var friend = roster[index];
+            if (!friend.Name.Contains(nameQuery, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (worldQuery.Length > 0 &&
+                !friend.World.Contains(worldQuery, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (AlreadyHinted(hits, friend.Name, friend.World))
+            {
+                continue;
+            }
+
+            hits.Add(new GamePeerHint(friend.Name, friend.World, friend.Online ? "Friend · Online" : "Friend"));
+        }
+
+        hits.Sort((left, right) => CompareNearby(left, right, nameQuery));
+        if (hits.Count > 12)
+        {
+            hits.RemoveRange(12, hits.Count - 12);
         }
 
         return hits;
@@ -301,14 +360,31 @@ public sealed class TalkInbox : ITalk, IDisposable
             return;
         }
 
+        if (threadId.StartsWith("pearl:", StringComparison.Ordinal))
+        {
+            pearl.SendChat(threadId["pearl:".Length..], trimmed);
+            lock (gate)
+            {
+                generation++;
+            }
+
+            return;
+        }
+
         if (!chat.CanSend)
         {
             chat.Print("Chat is not available right now.");
             return;
         }
 
-        if (threadId == TalkIds.Party)
+        if (threadId is TalkIds.Party or TalkIds.LiveParty)
         {
+            if (!chat.InParty)
+            {
+                chat.Print("You are not in a party.");
+                return;
+            }
+
             chat.Send(GameChannel.Party, 0, trimmed);
             RememberOutgoing(game.Character.Name, game.Character.WorldName, trimmed, GameChannel.Party);
             return;
@@ -335,6 +411,27 @@ public sealed class TalkInbox : ITalk, IDisposable
             return;
         }
 
+        if (threadId is TalkIds.Live or TalkIds.LiveSay)
+        {
+            chat.Send(GameChannel.Say, 0, trimmed);
+            RememberOutgoing(game.Character.Name, game.Character.WorldName, trimmed, GameChannel.Say);
+            return;
+        }
+
+        if (threadId == TalkIds.LiveShout)
+        {
+            chat.Send(GameChannel.Shout, 0, trimmed);
+            RememberOutgoing(game.Character.Name, game.Character.WorldName, trimmed, GameChannel.Shout);
+            return;
+        }
+
+        if (threadId == TalkIds.LiveYell)
+        {
+            chat.Send(GameChannel.Yell, 0, trimmed);
+            RememberOutgoing(game.Character.Name, game.Character.WorldName, trimmed, GameChannel.Yell);
+            return;
+        }
+
         if (TalkIds.TryParseSlot(threadId, "ls:", out var ls))
         {
             chat.Send(GameChannel.Linkshell, ls, trimmed);
@@ -354,12 +451,6 @@ public sealed class TalkInbox : ITalk, IDisposable
         {
             chat.SendTell(name, world, trimmed);
             RememberOutgoing(name, world, trimmed);
-            return;
-        }
-
-        if (threadId.StartsWith("pearl:", StringComparison.Ordinal))
-        {
-            chat.Print("Pearlgate send is not wired yet.");
         }
     }
 
@@ -475,6 +566,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         }
 
         ForgetTells();
+        ForgetLive();
         extraNotes.Clear();
         boundId = id;
         if (id == 0UL)
@@ -571,6 +663,19 @@ public sealed class TalkInbox : ITalk, IDisposable
         }
     }
 
+    private void ForgetLive()
+    {
+        if (!rooms.TryGetValue(TalkIds.Live, out var live))
+        {
+            return;
+        }
+
+        live.Lines.Clear();
+        live.Preview = string.Empty;
+        live.LastAt = DateTimeOffset.MinValue;
+        live.Unread = 0;
+    }
+
     private void ForgetTells()
     {
         var drop = new List<string>();
@@ -618,6 +723,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             return;
         }
 
+        TalkLine? posted = null;
         lock (gate)
         {
             BindCharacter();
@@ -633,7 +739,8 @@ public sealed class TalkInbox : ITalk, IDisposable
                 return;
             }
 
-            room.Lines.Add(new TalkLine(line.Sender, line.Body, line.Received, line.Mine));
+            var added = new TalkLine(line.Sender, line.Body, line.Received, line.Mine, TagOf(line.Channel));
+            room.Lines.Add(added);
             var cap = room.Kind == TalkKind.Tell ? MaxTellLines : MaxLiveLines;
             if (room.Lines.Count > cap)
             {
@@ -647,7 +754,7 @@ public sealed class TalkInbox : ITalk, IDisposable
                 RememberTellPeer(room, line);
             }
 
-            if (!line.Mine)
+            if (!line.Mine && room.Kind != TalkKind.Live)
             {
                 room.Unread++;
             }
@@ -657,7 +764,42 @@ public sealed class TalkInbox : ITalk, IDisposable
             {
                 Flush();
             }
+
+            posted = added;
+            if (line.Channel == GameChannel.Party)
+            {
+                MirrorLive(line, added);
+            }
         }
+
+        if (posted is { } arrived)
+        {
+            LinePosted?.Invoke(id, arrived);
+        }
+    }
+
+    private void MirrorLive(GameChatLine line, TalkLine added)
+    {
+        if (!rooms.TryGetValue(TalkIds.Live, out var live))
+        {
+            EnsureChannel(TalkIds.Live, TalkKind.Live, 0, "Feed",
+                game.ZoneName.Length > 0 ? game.ZoneName : "Say · Shout · Yell");
+            live = rooms[TalkIds.Live];
+        }
+
+        if (IsDuplicate(live, line))
+        {
+            return;
+        }
+
+        live.Lines.Add(added);
+        if (live.Lines.Count > MaxLiveLines)
+        {
+            live.Lines.RemoveRange(0, live.Lines.Count - MaxLiveLines);
+        }
+
+        live.LastAt = line.Received;
+        live.Preview = line.Body;
     }
 
     private void RememberOutgoing(string sender, string world, string body, GameChannel channel = GameChannel.Tell,
@@ -672,7 +814,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         }
 
         var last = room.Lines[^1];
-        return last.Mine == line.Mine && last.Body == line.Body &&
+        return last.Mine == line.Mine && last.Body == line.Body && last.Tag == TagOf(line.Channel) &&
                Math.Abs((line.Received - last.At).TotalSeconds) < 4d;
     }
 
@@ -704,6 +846,8 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     private void EnsureRooms()
     {
+        EnsureChannel(TalkIds.Live, TalkKind.Live, 0, "Feed",
+            game.ZoneName.Length > 0 ? game.ZoneName : "Say · Shout · Yell");
         EnsureChannel(TalkIds.Party, TalkKind.Party, 0, "Party",
             chat.InParty ? PartySubtitle() : "Not in a party");
         EnsureChannel(TalkIds.FreeCompany, TalkKind.FreeCompany, 0, "Free Company", "Company chat");
@@ -797,6 +941,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         TalkKind.CrossWorldLinkshell => true,
         TalkKind.FreeCompany => true,
         TalkKind.Novice => true,
+        TalkKind.Live => true,
         _ => false,
     };
 
@@ -924,18 +1069,18 @@ public sealed class TalkInbox : ITalk, IDisposable
     {
         for (var index = 0; index < snapshot.Chats.Length; index++)
         {
-            list.Add(PearlThread(snapshot.Chats[index]));
+            list.Add(PearlThread(snapshot.Chats[index], snapshot.SignedIn));
         }
     }
 
-    private static TalkThread PearlThread(PearlChat chat)
+    private static TalkThread PearlThread(PearlChat chat, bool canSend)
     {
         var last = chat.LastMessageAtUnix > 0
             ? DateTimeOffset.FromUnixTimeSeconds(chat.LastMessageAtUnix)
             : DateTimeOffset.MinValue;
-        var preview = chat.Preview.Length > 0 ? chat.Preview : "Pearlgate chat";
+        var preview = chat.Preview.Length > 0 ? chat.Preview : "No messages yet";
         return new TalkThread(TalkIds.Pearl(chat.Id), TalkKind.Pearl, 0, chat.Title, "Pearlgate", preview, last,
-            chat.UnreadCount, false, false);
+            chat.UnreadCount, false, canSend);
     }
 
     private static Room NewRoom(string id, GameChatLine line)
@@ -973,6 +1118,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         GameChannel.Tell => TalkIds.Tell(line.Sender, line.SenderWorld),
         GameChannel.Linkshell => TalkIds.Linkshell(line.ChannelIndex),
         GameChannel.CrossWorldLinkshell => TalkIds.CrossWorld(line.ChannelIndex),
+        GameChannel.Say or GameChannel.Shout or GameChannel.Yell => TalkIds.Live,
         _ => string.Empty,
     };
 
@@ -985,6 +1131,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         GameChannel.Tell => TalkKind.Tell,
         GameChannel.Linkshell => TalkKind.Linkshell,
         GameChannel.CrossWorldLinkshell => TalkKind.CrossWorldLinkshell,
+        GameChannel.Say or GameChannel.Shout or GameChannel.Yell => TalkKind.Live,
         _ => TalkKind.Party,
     };
 
@@ -996,6 +1143,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         TalkKind.Novice => "Novice",
         TalkKind.Linkshell => "Linkshell " + slot.ToString(CultureInfo.InvariantCulture),
         TalkKind.CrossWorldLinkshell => "Cross-world " + slot.ToString(CultureInfo.InvariantCulture),
+        TalkKind.Live => "Feed",
         _ => "Chat",
     };
 
@@ -1007,6 +1155,16 @@ public sealed class TalkInbox : ITalk, IDisposable
         TalkKind.Novice => "Novice network",
         TalkKind.Linkshell => "LS" + slot.ToString(CultureInfo.InvariantCulture),
         TalkKind.CrossWorldLinkshell => "CWLS" + slot.ToString(CultureInfo.InvariantCulture),
+        TalkKind.Live => "Say · Shout · Yell",
+        _ => string.Empty,
+    };
+
+    private static string TagOf(GameChannel channel) => channel switch
+    {
+        GameChannel.Say => "SAY",
+        GameChannel.Shout => "SHOUT",
+        GameChannel.Yell => "YELL",
+        GameChannel.Party => "PARTY",
         _ => string.Empty,
     };
 

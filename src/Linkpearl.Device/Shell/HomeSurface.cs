@@ -29,8 +29,7 @@ public sealed class HomeSurface
     public void Draw(in AppletFrame frame, Rect area, bool hush = false)
     {
         var usable = area.Inset(frame.Units(8f));
-        var count = Math.Min(apps.Count, Columns * Rows);
-        if (count == 0 || usable.IsEmpty)
+        if (usable.IsEmpty)
         {
             return;
         }
@@ -55,13 +54,65 @@ public sealed class HomeSurface
 
         var grid = new TileGrid(Rect.FromSize(usable.Min, new Vector2(usable.Width, packedHeight)), Columns, Rows,
             gap);
-        for (var index = 0; index < count; index++)
+        var slot = 0;
+        var capacity = Columns * Rows;
+        for (var index = 0; index < apps.Count && slot < capacity; index++)
         {
-            DrawTile(frame, grid.CellAt(index), apps[index], icon, labelGap, labelHeight, hush);
+            if (IsDocked(apps[index].Manifest.Id))
+            {
+                continue;
+            }
+
+            DrawTile(frame, grid.CellAt(slot), apps[index], icon, labelGap, labelHeight, hush);
+            slot++;
         }
     }
 
-    private static void DrawTile(in AppletFrame frame, Rect cell, IApplet applet, float icon, float labelGap,
+    internal static float DockRowHeight(in AppletFrame frame)
+    {
+        var icon = frame.Units(IconUnits);
+        return frame.Units(TopPadUnits) + icon + frame.Units(LabelGapUnits) +
+            frame.Text.LineHeight(FontRole.Caption) + frame.Units(UnderLabelUnits);
+    }
+
+    internal static void DrawShortcut(in AppletFrame frame, Rect cell, string id, string name, float icon,
+        float labelGap, float labelHeight, bool hush, AppletBadge badge, Action pressed)
+    {
+        if (cell.IsEmpty)
+        {
+            return;
+        }
+
+        icon = MathF.Min(icon, MathF.Max(MathF.Min(cell.Width, cell.Height) * 0.72f, 1f));
+        var topPad = frame.Units(TopPadUnits);
+        var hover = frame.Input.IsHovering(cell);
+        var drawn = hover ? icon * 1.08f : icon;
+        var iconArea = Rect.FromSize(new Vector2(cell.Center.X - icon * 0.5f, cell.Min.Y + topPad),
+            new Vector2(icon, icon));
+        var drawArea = Rect.FromSize(iconArea.Center - new Vector2(drawn * 0.5f, drawn * 0.5f),
+            new Vector2(drawn, drawn));
+        AppMarks.DrawFace(frame, drawArea, id, hover);
+
+        if (badge.IsVisible && !hush)
+        {
+            DrawBadge(frame, drawArea, badge);
+        }
+
+        var labelArea = new Rect(
+            new Vector2(cell.Min.X + frame.Units(2f), iconArea.Max.Y + labelGap),
+            new Vector2(cell.Max.X - frame.Units(2f), iconArea.Max.Y + labelGap + labelHeight));
+        DrawLabel(frame, labelArea, name);
+
+        if (frame.Input.ConsumeClick(cell))
+        {
+            pressed();
+        }
+    }
+
+    internal static bool IsDocked(string appletId) =>
+        string.Equals(appletId, "camera", StringComparison.Ordinal);
+
+    internal static void DrawTile(in AppletFrame frame, Rect cell, IApplet applet, float icon, float labelGap,
         float labelHeight, bool hush)
     {
         if (cell.IsEmpty)
@@ -76,17 +127,17 @@ public sealed class HomeSurface
             labelHeight = MathF.Max(cell.Height - icon - labelGap - topPad, frame.Text.LineHeight(FontRole.Caption));
         }
 
+        var hover = frame.Input.IsHovering(cell);
+        var drawn = hover ? icon * 1.08f : icon;
         var iconArea = Rect.FromSize(new Vector2(cell.Center.X - icon * 0.5f, cell.Min.Y + topPad),
             new Vector2(icon, icon));
-        var accent = frame.Theme.AccentFor(applet.Manifest.Id);
-
-        frame.Paint.FillCircle(iconArea.Center, icon * 0.5f, accent);
-        frame.Text.DrawIn(iconArea, applet.Manifest.Glyph,
-            new TextStyle(FontRole.Body, frame.Theme.Palette.AccentInk, TextAlign.Center));
+        var drawArea = Rect.FromSize(iconArea.Center - new Vector2(drawn * 0.5f, drawn * 0.5f),
+            new Vector2(drawn, drawn));
+        AppMarks.DrawFace(frame, drawArea, applet.Manifest.Id, hover);
 
         if (applet.Badge.IsVisible && !hush)
         {
-            DrawBadge(frame, iconArea, applet.Badge);
+            DrawBadge(frame, drawArea, applet.Badge);
         }
 
         var labelArea = new Rect(

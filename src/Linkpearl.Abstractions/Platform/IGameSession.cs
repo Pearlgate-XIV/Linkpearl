@@ -32,6 +32,23 @@ public readonly struct CharacterIdentity : IEquatable<CharacterIdentity>
     public static bool operator !=(CharacterIdentity left, CharacterIdentity right) => !left.Equals(right);
 }
 
+public readonly record struct GameRetainer(
+    int Slot,
+    string Name,
+    uint Gil,
+    int ItemsOnSale,
+    long VentureUntilUnix);
+
+public readonly record struct GameCurrency(
+    string Group,
+    uint ItemId,
+    string Name,
+    uint IconId,
+    uint Held,
+    uint Cap,
+    uint WeeklyHeld,
+    uint WeeklyCap);
+
 public interface IGameSession
 {
     bool IsLoggedIn { get; }
@@ -40,13 +57,21 @@ public interface IGameSession
 
     uint TerritoryId { get; }
 
+    uint JobId { get; }
+
+    uint JobIconId { get; }
+
     string JobName { get; }
 
     string ZoneName { get; }
 
+    string MapPlace { get; }
+
     string WeatherName { get; }
 
     uint Gil { get; }
+
+    IReadOnlyList<GameCurrency> Currencies { get; }
 
     int PartySize { get; }
 
@@ -61,6 +86,12 @@ public interface IGameSession
     bool IsInGpose { get; }
 
     bool IsOccupied { get; }
+
+    IReadOnlyList<GameRetainer> Retainers { get; }
+
+    bool RetainersReady { get; }
+
+    string ItemName(uint itemId);
 
     event Action? LoggedIn;
 

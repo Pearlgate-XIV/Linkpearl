@@ -34,6 +34,7 @@ public static class HomePane
 {
     public const int Dashboard = 0;
     public const int Announcements = 1;
+    public const int Profile = 2;
 }
 
 public static class SettingsPane
@@ -148,4 +149,9 @@ public interface IDestinationScreen
     // implementation gets this for free from how far a Stack's Remaining shrank, not from any
     // extra bookkeeping.
     float Compose(in AppletFrame frame);
+
+    // Soft-key Back. Return true when an inner page was closed so the shell stays on this tab.
+    bool CanGoBack => false;
+
+    bool Back() => false;
 }

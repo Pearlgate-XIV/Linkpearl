@@ -16,6 +16,7 @@ public sealed class DalamudTextField : ITextField
     private int backHold;
     private bool primed;
     private string ownerId = string.Empty;
+    private string pendingFocus = string.Empty;
 
     public DalamudTextField(HandsetFontService fonts)
     {
@@ -29,6 +30,7 @@ public sealed class DalamudTextField : ITextField
     public void Release()
     {
         ownerId = string.Empty;
+        pendingFocus = string.Empty;
         Capturing = false;
         primed = false;
         backHold = 0;
@@ -46,6 +48,7 @@ public sealed class DalamudTextField : ITextField
         primed = false;
         backHold = 0;
         ownerId = string.Empty;
+        pendingFocus = string.Empty;
         strokes.Clear();
         held.Clear();
     }
@@ -62,6 +65,7 @@ public sealed class DalamudTextField : ITextField
                       Pressed(keys, VirtualKey.RCONTROL);
         var shift = Pressed(keys, VirtualKey.SHIFT) || Pressed(keys, VirtualKey.LSHIFT) ||
                     Pressed(keys, VirtualKey.RSHIFT);
+        var caps = Pressed(keys, VirtualKey.CAPITAL);
 
         if (control)
         {
@@ -102,7 +106,7 @@ public sealed class DalamudTextField : ITextField
             backHold = 0;
         }
 
-        foreach (var (key, glyph) in Glyphs(shift))
+        foreach (var (key, glyph) in Glyphs(shift, caps))
         {
             if (Edge(keys, key))
             {
@@ -113,10 +117,22 @@ public sealed class DalamudTextField : ITextField
         RememberHeld(keys);
     }
 
-    public string Draw(string id, Rect area, string value, string placeholder) =>
-        Draw(id, area, value, placeholder, 128, out _);
+    public bool Owns(string id) => ownerId == id;
 
-    public string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted)
+    public void Focus(string id)
+    {
+        ownerId = id;
+        Capturing = true;
+    }
+
+    public string Draw(string id, Rect area, string value, string placeholder) =>
+        Draw(id, area, value, placeholder, 128, out _, false);
+
+    public string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted) =>
+        Draw(id, area, value, placeholder, maxLength, out submitted, false);
+
+    public string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted,
+        bool retainFocus)
     {
         submitted = false;
         if (area.Width < 1f || area.Height < 1f)
@@ -124,10 +140,25 @@ public sealed class DalamudTextField : ITextField
             return value;
         }
 
+        if (retainFocus && ownerId != id && ImGui.IsKeyPressed(ImGuiKey.Enter) &&
+            !ImGui.GetIO().WantTextInput)
+        {
+            ownerId = id;
+            pendingFocus = id;
+        }
+
         using var font = fonts.Handle(FontRole.Body).Push();
         var line = ImGui.GetTextLineHeight();
         var padY = MathF.Max((area.Height - line) * 0.5f, 0f);
         var padX = MathF.Max(area.Height * 0.18f, 8f);
+        var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
+        var native = ownerId == id;
+
+        if (pendingFocus == id)
+        {
+            ImGui.SetKeyboardFocusHere();
+            pendingFocus = string.Empty;
+        }
 
         ImGui.PushClipRect(area.Min, area.Max, true);
         ImGui.SetCursorScreenPos(area.Min);
@@ -135,8 +166,8 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Text, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.TextDisabled, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Text, native ? ink : Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.TextDisabled, native ? ink with { W = 0.42f } : Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.Border, Vector4.Zero);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, MathF.Min(area.Height * 0.35f, 12f));
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
@@ -146,36 +177,49 @@ public sealed class DalamudTextField : ITextField
         var enter = ImGui.InputTextWithHint($"##{id}", placeholder, ref current, Math.Max(maxLength, 1),
             ImGuiInputTextFlags.EnterReturnsTrue);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
+        var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(6);
         ImGui.PopClipRect();
 
-        if (ownerId == id && strokes.Count > 0)
+        if (itemActive)
+        {
+            ownerId = id;
+            strokes.Clear();
+        }
+        else if (ownerId == id && strokes.Count > 0)
         {
             current = Apply(value, strokes, Math.Max(maxLength, 1), out var harvestedEnter);
             enter = enter || harvestedEnter;
             strokes.Clear();
         }
 
-        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !DalamudInputProbe.OtherWindowAbove())
         {
             if (overField)
             {
                 ownerId = id;
+                pendingFocus = id;
             }
             else if (ownerId == id)
             {
                 ownerId = string.Empty;
+                pendingFocus = string.Empty;
                 ImGui.SetCursorScreenPos(new Vector2(-10000f, -10000f));
                 ImGui.SetKeyboardFocusHere();
                 ImGui.InvisibleButton("##linkpearl-blur", new Vector2(1f, 1f));
             }
         }
 
-        if (enter)
+        if (enter && !retainFocus)
         {
             ownerId = string.Empty;
+        }
+        else if (enter && retainFocus)
+        {
+            ownerId = id;
+            pendingFocus = id;
         }
 
         var focused = ownerId == id;
@@ -185,14 +229,194 @@ public sealed class DalamudTextField : ITextField
         }
 
         submitted = enter;
-        Paint(area, current, placeholder, focused, padX, padY, line);
+        if (!native || !itemActive)
+        {
+            Paint(area, current, placeholder, focused, padX, padY, line);
+        }
+
         return current;
+    }
+
+    public string Write(string id, Rect area, string value, string placeholder, int maxLength)
+    {
+        if (area.Width < 1f || area.Height < 1f)
+        {
+            return value;
+        }
+
+        using var font = fonts.Handle(FontRole.Body).Push();
+        var pad = MathF.Max(area.Height * 0.04f, 8f);
+        var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
+        var native = ownerId == id;
+
+        if (pendingFocus == id)
+        {
+            ImGui.SetKeyboardFocusHere();
+            pendingFocus = string.Empty;
+        }
+
+        ImGui.PushClipRect(area.Min, area.Max, true);
+        ImGui.SetCursorScreenPos(area.Min);
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Text, ink);
+        ImGui.PushStyleColor(ImGuiCol.TextDisabled, ink with { W = 0.42f });
+        ImGui.PushStyleColor(ImGuiCol.Border, Vector4.Zero);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(pad * 0.35f, pad * 0.25f));
+
+        var current = value;
+        ImGui.InputTextMultiline("##" + id, ref current, Math.Max(maxLength, 1),
+            new Vector2(area.Width, area.Height), ImGuiInputTextFlags.AllowTabInput);
+        var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
+        var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
+
+        ImGui.PopStyleVar(3);
+        ImGui.PopStyleColor(6);
+        ImGui.PopClipRect();
+
+        if (itemActive)
+        {
+            ownerId = id;
+            strokes.Clear();
+            Capturing = true;
+        }
+
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !DalamudInputProbe.OtherWindowAbove())
+        {
+            if (overField)
+            {
+                ownerId = id;
+                pendingFocus = id;
+            }
+            else if (ownerId == id)
+            {
+                ownerId = string.Empty;
+                pendingFocus = string.Empty;
+            }
+        }
+
+        if (current.Length == 0 && !itemActive)
+        {
+            var draw = ImGui.GetWindowDrawList();
+            draw.AddText(area.Min + new Vector2(pad * 0.35f, pad * 0.25f),
+                ImGui.GetColorU32(ink with { W = 0.42f }), placeholder);
+        }
+
+        _ = native;
+        return current.Length <= maxLength ? current : current[..Math.Max(maxLength, 0)];
+    }
+
+    public int Pick(string id, Rect area, IReadOnlyList<string> labels, int selected)
+    {
+        if (area.Width < 8f || area.Height < 8f || labels.Count == 0)
+        {
+            return selected;
+        }
+
+        selected = Math.Clamp(selected, 0, labels.Count - 1);
+        ImGui.SetCursorScreenPos(area.Min);
+        ImGui.PushClipRect(area.Min, area.Max, false);
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.071f, 0.071f, 0.094f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, new Vector4(0.102f, 0.102f, 0.133f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, new Vector4(0.102f, 0.102f, 0.133f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Header, new Vector4(0.659f, 0.333f, 0.969f, 0.55f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, new Vector4(0.659f, 0.333f, 0.969f, 0.75f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderActive, new Vector4(0.659f, 0.333f, 0.969f, 0.95f));
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 1f, 1f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.659f, 0.333f, 0.969f, 0.55f));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 10f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
+        using (fonts.Handle(FontRole.CaptionStrong).Push())
+        {
+            if (ImGui.BeginListBox("##" + id, new Vector2(area.Width, area.Height)))
+            {
+                for (var index = 0; index < labels.Count; index++)
+                {
+                    var on = index == selected;
+                    var label = labels[index] + "###" + id + index;
+                    if (ImGui.Selectable(label, on, ImGuiSelectableFlags.SpanAllColumns,
+                            new Vector2(0f, 28f)))
+                    {
+                        selected = index;
+                        ownerId = string.Empty;
+                        Capturing = false;
+                    }
+
+                    if (on)
+                    {
+                        ImGui.SetItemDefaultFocus();
+                    }
+                }
+
+                ImGui.EndListBox();
+            }
+        }
+
+        ImGui.PopStyleVar(2);
+        ImGui.PopStyleColor(8);
+        ImGui.PopClipRect();
+        return selected;
+    }
+
+    public int Combo(string id, Rect area, IReadOnlyList<string> labels, int selected)
+    {
+        if (area.Width < 8f || area.Height < 8f || labels.Count == 0)
+        {
+            return selected;
+        }
+
+        selected = Math.Clamp(selected, 0, labels.Count - 1);
+        ImGui.SetCursorScreenPos(area.Min);
+        ImGui.SetNextItemWidth(area.Width);
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.071f, 0.071f, 0.094f, 0.92f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, new Vector4(0.12f, 0.10f, 0.07f, 0.96f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, new Vector4(0.14f, 0.11f, 0.06f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.071f, 0.071f, 0.094f, 0.92f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.12f, 0.10f, 0.07f, 0.96f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.14f, 0.11f, 0.06f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.PopupBg, new Vector4(0.06f, 0.06f, 0.08f, 0.98f));
+        ImGui.PushStyleColor(ImGuiCol.Header, new Vector4(0.92f, 0.78f, 0.42f, 0.28f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, new Vector4(0.92f, 0.78f, 0.42f, 0.42f));
+        ImGui.PushStyleColor(ImGuiCol.HeaderActive, new Vector4(0.92f, 0.78f, 0.42f, 0.58f));
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 1f, 1f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(0.92f, 0.78f, 0.42f, 0.55f));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, MathF.Min(area.Height * 0.5f, 12f));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
+        ImGui.PushStyleVar(ImGuiStyleVar.PopupRounding, 10f);
+        using (fonts.Handle(FontRole.CaptionStrong).Push())
+        {
+            if (ImGui.BeginCombo("##" + id, labels[selected], ImGuiComboFlags.HeightLarge))
+            {
+                for (var index = 0; index < labels.Count; index++)
+                {
+                    var on = index == selected;
+                    if (ImGui.Selectable(labels[index] + "###" + id + index, on))
+                    {
+                        selected = index;
+                    }
+
+                    if (on)
+                    {
+                        ImGui.SetItemDefaultFocus();
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+        }
+
+        ImGui.PopStyleVar(3);
+        ImGui.PopStyleColor(12);
+        return selected;
     }
 
     private static void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
         float line)
     {
-        var draw = ImGui.GetForegroundDrawList();
+        var draw = ImGui.GetWindowDrawList();
         draw.PushClipRect(area.Min, area.Max, true);
         var empty = current.Length == 0;
         var shown = empty ? placeholder : current;
@@ -264,12 +488,13 @@ public sealed class DalamudTextField : ITextField
         }
     }
 
-    private static IEnumerable<(VirtualKey Key, char Glyph)> Glyphs(bool shift)
+    private static IEnumerable<(VirtualKey Key, char Glyph)> Glyphs(bool shift, bool caps)
     {
         yield return (VirtualKey.SPACE, ' ');
         for (var index = 0; index < 26; index++)
         {
-            var letter = (char)((shift ? 'A' : 'a') + index);
+            var upper = shift ^ caps;
+            var letter = (char)((upper ? 'A' : 'a') + index);
             yield return ((VirtualKey)((int)VirtualKey.A + index), letter);
         }
 

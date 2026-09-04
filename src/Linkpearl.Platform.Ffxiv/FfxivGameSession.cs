@@ -1,8 +1,12 @@
+using System.Globalization;
 using Dalamud.Plugin.Services;
+using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using Linkpearl.Platform;
 using ClassJobSheet = Lumina.Excel.Sheets.ClassJob;
+using ItemSheet = Lumina.Excel.Sheets.Item;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
 using WeatherSheet = Lumina.Excel.Sheets.Weather;
 using WorldSheet = Lumina.Excel.Sheets.World;
@@ -18,16 +22,21 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private readonly IPartyList party;
     private readonly IFramework framework;
     private readonly IDataManager data;
+    private readonly IJobCatalog jobs;
     private CharacterIdentity character = CharacterIdentity.Unknown;
     private uint cachedJobId;
     private uint cachedTerritoryId;
     private byte cachedWeatherId;
+    private uint jobIconId;
     private string jobName = string.Empty;
     private string zoneName = string.Empty;
     private string weatherName = string.Empty;
+    private readonly object retainerGate = new();
+    private GameRetainer[] retainers = [];
+    private bool retainersReady;
 
     public FfxivGameSession(IClientState clientState, IObjectTable objectTable, ICondition condition,
-        IDutyState dutyState, IPartyList party, IFramework framework, IDataManager data)
+        IDutyState dutyState, IPartyList party, IFramework framework, IDataManager data, IJobCatalog jobs)
     {
         this.clientState = clientState;
         this.objectTable = objectTable;
@@ -36,6 +45,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         this.party = party;
         this.framework = framework;
         this.data = data;
+        this.jobs = jobs;
         clientState.Login += HandleLogin;
         clientState.Logout += HandleLogout;
         clientState.TerritoryChanged += HandleTerritoryChanged;
@@ -61,13 +71,21 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     public uint TerritoryId => clientState.TerritoryType;
 
+    public uint JobId => cachedJobId;
+
+    public uint JobIconId => jobIconId;
+
     public string JobName => jobName;
 
     public string ZoneName => zoneName;
 
+    public string MapPlace => ReadMapPlace();
+
     public string WeatherName => weatherName;
 
     public uint Gil => ReadGil();
+
+    public IReadOnlyList<GameCurrency> Currencies => ReadCurrencies();
 
     public int PartySize => party.Length;
 
@@ -90,10 +108,158 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Occupied38] ||
         condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Occupied39];
 
+    public IReadOnlyList<GameRetainer> Retainers
+    {
+        get
+        {
+            lock (retainerGate)
+            {
+                return retainers;
+            }
+        }
+    }
+
+    public bool RetainersReady
+    {
+        get
+        {
+            lock (retainerGate)
+            {
+                return retainersReady;
+            }
+        }
+    }
+
+    public string ItemName(uint itemId)
+    {
+        if (itemId != 0 && data.GetExcelSheet<ItemSheet>().TryGetRow(itemId, out var item))
+        {
+            return item.Name.ExtractText();
+        }
+
+        return string.Empty;
+    }
+
     private static unsafe uint ReadGil()
     {
         var inventory = InventoryManager.Instance();
         return inventory is null ? 0u : inventory->GetGil();
+    }
+
+    private unsafe IReadOnlyList<GameCurrency> ReadCurrencies()
+    {
+        if (!clientState.IsLoggedIn)
+        {
+            return [];
+        }
+
+        var inventory = InventoryManager.Instance();
+        var purse = CurrencyManager.Instance();
+        var state = PlayerState.Instance();
+        var rows = new List<GameCurrency>(20);
+        Add(rows, inventory, purse, string.Empty, 1u, inventory is null ? 0u : inventory->GetGil(), 0u);
+        Add(rows, inventory, purse, string.Empty, 29u, inventory is null ? 0u : inventory->GetGoldSaucerCoin(),
+            CapOf(purse, 29u, 9_999_999u));
+        Add(rows, inventory, purse, string.Empty, 21072u, CountOf(inventory, purse, 21072u),
+            CapOf(purse, 21072u, 65_000u));
+        var company = state is null ? (byte)0 : state->GrandCompany;
+        if (company is 1 or 2 or 3 && inventory is not null)
+        {
+            var seal = company == 1 ? 20u : company == 2 ? 21u : 22u;
+            Add(rows, inventory, purse, string.Empty, seal, inventory->GetCompanySeals(company),
+                inventory->GetMaxCompanySeals(company));
+        }
+
+        Add(rows, inventory, purse, "The Hunt", 27u, inventory is null ? 0u : inventory->GetAlliedSeals(),
+            CapOf(purse, 27u, 4_000u));
+        Add(rows, inventory, purse, "The Hunt", 10307u, CountOf(inventory, purse, 10307u),
+            CapOf(purse, 10307u, 4_000u));
+        Add(rows, inventory, purse, "The Hunt", 26533u, CountOf(inventory, purse, 26533u),
+            CapOf(purse, 26533u, 4_000u));
+
+        var weekly = inventory is null ? 0 : inventory->GetWeeklyAcquiredTomestoneCount();
+        var weeklyCap = InventoryManager.GetLimitedTomestoneWeeklyLimit();
+        AddTomestone(rows, inventory, purse, 49u, weekly, weeklyCap);
+        AddTomestone(rows, inventory, purse, 48u, 0, 0);
+        AddTomestone(rows, inventory, purse, 28u, 0, 0);
+
+        Add(rows, inventory, purse, "PvP", 25u, inventory is null ? 0u : inventory->GetWolfMarks(),
+            CapOf(purse, 25u, 20_000u));
+        Add(rows, inventory, purse, "PvP", 36656u, CountOf(inventory, purse, 36656u),
+            CapOf(purse, 36656u, 20_000u));
+
+        Add(rows, inventory, purse, "Crafting & Gathering", 33913u, CountOf(inventory, purse, 33913u),
+            CapOf(purse, 33913u, 4_000u));
+        Add(rows, inventory, purse, "Crafting & Gathering", 33914u, CountOf(inventory, purse, 33914u),
+            CapOf(purse, 33914u, 4_000u));
+        Add(rows, inventory, purse, "Crafting & Gathering", 41784u, CountOf(inventory, purse, 41784u),
+            CapOf(purse, 41784u, 4_000u));
+        Add(rows, inventory, purse, "Crafting & Gathering", 41785u, CountOf(inventory, purse, 41785u),
+            CapOf(purse, 41785u, 4_000u));
+        Add(rows, inventory, purse, "Crafting & Gathering", 28063u, CountOf(inventory, purse, 28063u),
+            CapOf(purse, 28063u, 10_000u));
+
+        Add(rows, inventory, purse, "Miscellaneous", 4868u, CountOf(inventory, purse, 4868u),
+            CapOf(purse, 4868u, 999u));
+        Add(rows, inventory, purse, "Miscellaneous", 26807u, CountOf(inventory, purse, 26807u),
+            CapOf(purse, 26807u, 1_500u));
+        return rows;
+    }
+
+    private unsafe void AddTomestone(List<GameCurrency> rows, InventoryManager* inventory, CurrencyManager* purse,
+        uint itemId, int weekly, int weeklyCap)
+    {
+        var held = inventory is null ? 0u : inventory->GetTomestoneCount(itemId);
+        Add(rows, inventory, purse, "Tomestones", itemId, held, CapOf(purse, itemId, 2_000u),
+            weeklyCap > 0 ? (uint)Math.Max(0, weekly) : 0u, weeklyCap > 0 ? (uint)weeklyCap : 0u);
+    }
+
+    private unsafe void Add(List<GameCurrency> rows, InventoryManager* inventory, CurrencyManager* purse, string group,
+        uint itemId, uint held, uint cap, uint weeklyHeld = 0, uint weeklyCap = 0)
+    {
+        _ = inventory;
+        var name = ItemName(itemId);
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        rows.Add(new GameCurrency(group, itemId, name, IconOf(itemId), held, cap, weeklyHeld, weeklyCap));
+        _ = purse;
+    }
+
+    private uint IconOf(uint itemId)
+    {
+        if (itemId != 0 && data.GetExcelSheet<ItemSheet>().TryGetRow(itemId, out var item))
+        {
+            return item.Icon;
+        }
+
+        return 0u;
+    }
+
+    private static unsafe uint CountOf(InventoryManager* inventory, CurrencyManager* purse, uint itemId)
+    {
+        if (purse is not null && purse->HasItem(itemId))
+        {
+            return purse->GetItemCount(itemId);
+        }
+
+        return inventory is null ? 0u : (uint)Math.Max(0, inventory->GetInventoryItemCount(itemId));
+    }
+
+    private static unsafe uint CapOf(CurrencyManager* purse, uint itemId, uint fallback)
+    {
+        if (purse is not null && purse->HasItem(itemId))
+        {
+            var max = purse->GetItemMaxCount(itemId);
+            if (max > 0)
+            {
+                return max;
+            }
+        }
+
+        return fallback;
     }
 
     public void Dispose()
@@ -110,10 +276,16 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         {
             cachedJobId = 0;
             cachedTerritoryId = 0;
+            jobIconId = 0;
             jobName = string.Empty;
             zoneName = string.Empty;
             weatherName = string.Empty;
             cachedWeatherId = 0;
+            lock (retainerGate)
+            {
+                retainers = [];
+                retainersReady = false;
+            }
             return;
         }
 
@@ -134,12 +306,14 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         }
 
         RefreshLabels();
+        RefreshRetainers();
     }
 
     private void HandleLogin()
     {
         character = ReadCharacter();
         RefreshLabels();
+        RefreshRetainers();
         LoggedIn?.Invoke();
         CharacterChanged?.Invoke(character);
     }
@@ -149,10 +323,16 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         character = CharacterIdentity.Unknown;
         cachedJobId = 0;
         cachedTerritoryId = 0;
+        jobIconId = 0;
         jobName = string.Empty;
         zoneName = string.Empty;
         weatherName = string.Empty;
         cachedWeatherId = 0;
+        lock (retainerGate)
+        {
+            retainers = [];
+            retainersReady = false;
+        }
         LoggedOut?.Invoke();
     }
 
@@ -172,6 +352,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             {
                 cachedJobId = jobId;
                 jobName = JobTitle(jobId);
+                jobIconId = jobs.IconFor(jobId);
             }
         }
 
@@ -182,6 +363,39 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         }
 
         RememberWeather(territoryId);
+    }
+
+    private unsafe void RefreshRetainers()
+    {
+        var manager = RetainerManager.Instance();
+        if (manager is null || !manager->IsReady)
+        {
+            return;
+        }
+
+        var next = new List<GameRetainer>(10);
+        for (byte index = 0; index < 10; index++)
+        {
+            var row = manager->GetRetainerBySortedIndex(index);
+            if (row is null || row->RetainerId == 0)
+            {
+                continue;
+            }
+
+            var name = row->NameString;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            next.Add(new GameRetainer(index, name.Trim(), row->Gil, row->MarketItemCount, row->VentureComplete));
+        }
+
+        lock (retainerGate)
+        {
+            retainers = next.ToArray();
+            retainersReady = true;
+        }
     }
 
     private void RememberZone(uint territoryId)
@@ -241,6 +455,25 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         return string.Empty;
     }
 
+    private string ReadMapPlace()
+    {
+        var player = objectTable.LocalPlayer;
+        if (player is null || !clientState.IsLoggedIn)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var map = player.GetMapCoordinates(true);
+            return string.Create(CultureInfo.InvariantCulture, $"X: {map.X:0.0}  Y: {map.Y:0.0}");
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private string PlaceName(uint rowId)
     {
         if (rowId != 0 && data.GetExcelSheet<TerritorySheet>().TryGetRow(rowId, out var territory))
@@ -280,7 +513,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             return 0;
         }
 
-        return manager->GetWeatherForHour((ushort)territoryId, 0);
+        return manager->GetCurrentWeather();
     }
 
     private string WeatherTitle(byte weatherId)
