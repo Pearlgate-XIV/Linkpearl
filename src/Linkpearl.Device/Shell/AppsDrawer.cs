@@ -641,6 +641,20 @@ public sealed class AppsDrawer
         var needle = query.Trim();
         foreach (var id in source)
         {
+            if (display.TryFolder(id, out _, out var children) &&
+                chip is not AppChip.All and not AppChip.Favorites)
+            {
+                foreach (var child in children)
+                {
+                    if (Matches(child, needle) && !visible.Contains(child))
+                    {
+                        visible.Add(child);
+                    }
+                }
+
+                continue;
+            }
+
             if (!Matches(id, needle))
             {
                 continue;

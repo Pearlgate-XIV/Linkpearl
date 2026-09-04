@@ -93,7 +93,7 @@ internal sealed class MusicState
 
     public float Scroll { get; set; }
 
-    public float SheetHeight { get; set; } = 1600f;
+    public float SheetHeight { get; set; }
 
     public static readonly string[] Genres =
     {
@@ -267,7 +267,7 @@ internal sealed class MusicState
         ReturnTo = Page;
         Page = page;
         Scroll = 0f;
-        SheetHeight = 1600f;
+        SheetHeight = 0f;
     }
 
     public void Back()
@@ -275,7 +275,7 @@ internal sealed class MusicState
         Page = ReturnTo == Page ? MusicPage.Tabs : ReturnTo;
         ReturnTo = MusicPage.Tabs;
         Scroll = 0f;
-        SheetHeight = 1600f;
+        SheetHeight = 0f;
     }
 
     public void OpenProfile(string id)

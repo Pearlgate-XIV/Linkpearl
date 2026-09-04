@@ -19,10 +19,14 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         WriteIndented = false,
     };
 
-    private readonly HttpClient http;
     private readonly Func<string> token;
     private readonly Func<bool> signedIn;
     private readonly string bookPath;
+    private readonly string defaultIceListenBase;
+    private readonly string defaultIceUser;
+    private readonly string defaultIcePassword;
+    private readonly SemaphoreSlim writeLock = new(1, 1);
+    private readonly HttpClient http;
     private readonly object gate = new();
     private List<StationRow> rows = new();
     private string ownedId = string.Empty;
@@ -37,9 +41,12 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
     {
         this.token = token;
         this.signedIn = signedIn;
-        this.iceListenBase = iceListenBase?.Trim() ?? string.Empty;
-        this.iceUser = string.IsNullOrWhiteSpace(iceUser) ? "source" : iceUser.Trim();
-        this.icePassword = icePassword?.Trim() ?? string.Empty;
+        defaultIceListenBase = iceListenBase?.Trim() ?? string.Empty;
+        defaultIceUser = string.IsNullOrWhiteSpace(iceUser) ? "source" : iceUser.Trim();
+        defaultIcePassword = icePassword?.Trim() ?? string.Empty;
+        this.iceListenBase = defaultIceListenBase;
+        this.iceUser = defaultIceUser;
+        this.icePassword = defaultIcePassword;
         bookPath = paths is null ? string.Empty : paths.State("community-radio.json");
         http = new HttpClient
         {
@@ -49,6 +56,11 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Linkpearl/0.1.0");
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         LoadBook();
+        lock (gate)
+        {
+            DropMockLocked();
+            SaveBookLocked();
+        }
     }
 
     public IReadOnlyList<CommunityStation> Directory
@@ -161,7 +173,14 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             var pass = sourcePassword ?? string.Empty;
             if (host.Length == 0)
             {
-                ApplyRelayLocked(FindOwnedLocked());
+                iceListenBase = defaultIceListenBase;
+                iceUser = defaultIceUser;
+                icePassword = defaultIcePassword;
+                if (iceListenBase.Length > 0)
+                {
+                    ApplyRelayLocked(FindOwnedLocked());
+                }
+
                 return;
             }
 
@@ -183,14 +202,21 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
 
     public void Refresh() => _ = Task.Run(RefreshAsync);
 
-    public void EnsureStation(string name, string host, string genre, string bio, string artPath, string mount) =>
-        _ = Task.Run(() => EnsureStationAsync(name, host, genre, bio, artPath, mount));
+    public void EnsureStation(string name, string host, string genre, string bio, string artPath, string mount)
+    {
+        UpsertOwnedLocal(name, host, genre, bio, artPath, mount);
+        _ = Task.Run(() => PushOwnedAsync());
+    }
 
     public void GoLive(string name, string genre) => _ = Task.Run(() => GoLiveAsync(name, genre));
 
     public void EndLive() => _ = Task.Run(EndLiveAsync);
 
-    public void Dispose() => http.Dispose();
+    public void Dispose()
+    {
+        writeLock.Dispose();
+        http.Dispose();
+    }
 
     private async Task RefreshAsync()
     {
@@ -201,6 +227,7 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             var owned = SignedIn ? await GetList("radio/mine").ConfigureAwait(false) : [];
             lock (gate)
             {
+                var keepLive = broadcasting;
                 MergeRemote(community, owned: false);
                 MergeRemote(owned, owned: true);
                 if (ownedId.Length == 0)
@@ -212,8 +239,27 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
                     }
                 }
 
-                broadcasting = rows.Any(row => row.Live && (row.Owned || string.Equals(row.Id, ownedId, StringComparison.Ordinal)));
-                notice = string.Empty;
+                if (keepLive)
+                {
+                    broadcasting = true;
+                    var mine = FindOwnedLocked();
+                    if (mine is not null)
+                    {
+                        mine.Live = true;
+                    }
+                }
+                else
+                {
+                    broadcasting = rows.Any(row =>
+                        row.Live && (row.Owned || string.Equals(row.Id, ownedId, StringComparison.Ordinal)));
+                }
+
+                if (!keepLive)
+                {
+                    notice = string.Empty;
+                }
+
+                DropMockLocked();
                 SaveBookLocked();
             }
         }
@@ -221,25 +267,32 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         {
             lock (gate)
             {
+                DropMockLocked();
                 notice = rows.Count > 0
                     ? string.Empty
                     : SignedIn
                         ? "Pearlgate radio is not up yet. Your station still lists here."
                         : "Sign in to publish a community station. You can still create one on this phone.";
+                SaveBookLocked();
             }
         }
     }
 
-    private async Task EnsureStationAsync(string name, string host, string genre, string bio, string artPath,
-        string mount)
+    private void DropMockLocked()
+    {
+        rows.RemoveAll(static row =>
+            string.Equals(row.Id, "pearlgate-test", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(row.Mount, "pearlgate-test", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private StationRow UpsertOwnedLocal(string name, string host, string genre, string bio, string artPath, string mount)
     {
         var station = name.Trim().Length > 0 ? name.Trim() : "My Station";
         var dj = host.Trim().Length > 0 ? host.Trim() : "DJ";
         var slug = NormalizeMount(mount, station);
-        StationRow row;
         lock (gate)
         {
-            row = FindOwnedLocked() ?? new StationRow
+            var row = FindOwnedLocked() ?? new StationRow
             {
                 Id = "lp:" + Guid.NewGuid().ToString("N")[..10],
                 Owned = true,
@@ -255,11 +308,46 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             ownedId = row.Id;
             ApplyRelayLocked(row);
             notice = SignedIn
-                ? "Saving your station and Icecast mount to Pearlgate."
+                ? "Publishing your station to Pearlgate so others can find it."
                 : iceListenBase.Length > 0
-                    ? "Station saved. Sign in so Pearlgate can list it. Icecast host is already set on this phone."
-                    : "Sign in on You so Pearlgate can create this Icecast mount.";
+                    ? "Station saved on this phone. Sign in so everyone else can see it."
+                    : "Station saved. Sign in on You so Pearlgate lists it for the community.";
             SaveBookLocked();
+            return row;
+        }
+    }
+
+    private Task EnsureStationAsync(string name, string host, string genre, string bio, string artPath, string mount)
+    {
+        UpsertOwnedLocal(name, host, genre, bio, artPath, mount);
+        return PushOwnedAsync();
+    }
+
+    private async Task PushOwnedAsync()
+    {
+        await writeLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await PushOwnedUnlockedAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
+    }
+
+    private async Task PushOwnedUnlockedAsync()
+    {
+        StationRow row;
+        lock (gate)
+        {
+            var owned = FindOwnedLocked();
+            if (owned is null)
+            {
+                return;
+            }
+
+            row = owned;
         }
 
         if (!SignedIn)
@@ -279,10 +367,8 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
                 {
                     ApplyRelayLocked(FindOwnedLocked());
                     notice = created.StatusCode == System.Net.HttpStatusCode.NotFound
-                        ? (FindOwnedLocked()?.ListenUrl.Length > 0
-                            ? "Pearlgate has no radio API yet. Using the Icecast host saved on this phone."
-                            : "Pearlgate has no /radio/stations route yet. Add Icecast host on DJ setup so the phone can push.")
-                        : "Pearlgate did not create the mount (" + (int)created.StatusCode + ").";
+                        ? "Pearlgate radio is not on this API yet. Your station is on this phone until the server is updated."
+                        : "Pearlgate did not save the station (" + (int)created.StatusCode + ").";
                     SaveBookLocked();
                 }
 
@@ -383,8 +469,8 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
                     ApplyRelayLocked(FindOwnedLocked());
                     notice = start.StatusCode == System.Net.HttpStatusCode.NotFound
                         ? (FindOwnedLocked()?.IngestUrl.Length > 0
-                            ? "Pearlgate has no live API. Pushing to Icecast from this phone."
-                            : "Icecast host or source password is still empty on this dashboard.")
+                            ? "Pearlgate live route is down. Pushing to the Icecast URL we already have."
+                            : "Pearlgate did not open the mount. Sign in, or set Icecast on DJ setup as a fallback.")
                         : "Pearlgate did not open the mount (" + (int)start.StatusCode + ").";
                     SaveBookLocked();
                 }
@@ -474,7 +560,9 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         {
             var body = remote[index];
             var id = body.Id ?? string.Empty;
-            if (id.Length == 0)
+            if (id.Length == 0 ||
+                string.Equals(id, "pearlgate-test", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(body.Mount, "pearlgate-test", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

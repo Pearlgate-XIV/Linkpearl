@@ -356,9 +356,30 @@ internal sealed class StudioMusicDock
         return t * t * (3f - 2f * t);
     }
 
-    private void Tune(PublicStation station) =>
-        audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, station.StreamUrl,
-            false, station.ArtUrl ?? string.Empty));
+    private void Tune(PublicStation station)
+    {
+        var packed = station.StreamUrl;
+        if (station.AlternateUrl.Length > 0 &&
+            !string.Equals(station.AlternateUrl, station.StreamUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            packed += "\n" + station.AlternateUrl;
+        }
+
+        audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, packed, false,
+            station.ArtUrl ?? string.Empty));
+        _ = Task.Run(() =>
+        {
+            var urls = radio.PlayUrls(station);
+            if (urls.Count == 0 || !string.Equals(audio.Now.Id, station.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var next = string.Join('\n', urls);
+            audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, next, false,
+                station.ArtUrl ?? string.Empty));
+        });
+    }
 
     private void DrawArt(in AppletFrame frame, Rect area, string path, Vector4 gold)
     {

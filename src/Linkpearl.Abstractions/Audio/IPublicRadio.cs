@@ -7,7 +7,8 @@ public readonly record struct PublicStation(
     string Place,
     string StreamUrl,
     int Bitrate,
-    string ArtUrl = "");
+    string ArtUrl = "",
+    string AlternateUrl = "");
 
 public interface IPublicRadio
 {
@@ -20,4 +21,6 @@ public interface IPublicRadio
     IReadOnlyList<PublicStation> Stations(string genre);
 
     void Ensure(string genre);
+
+    IReadOnlyList<string> PlayUrls(PublicStation station);
 }

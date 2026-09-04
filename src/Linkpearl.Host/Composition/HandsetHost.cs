@@ -148,7 +148,7 @@ public sealed class HandsetHost : IDisposable
             iceListenBase: config.IcecastListenBase, iceUser: config.IcecastSourceUser,
             icePassword: config.IcecastSourcePassword);
         broadcastSense = new WasapiBroadcastSense();
-        broadcastPush = new IcecastBroadcastPush();
+        broadcastPush = new IcecastBroadcastPush(paths.AssemblyDirectory);
         services.AddSingleton<IHandsetAudio>(audio);
         ApplyAudioRoute();
         preferences.Changed += ApplyAudioRoute;

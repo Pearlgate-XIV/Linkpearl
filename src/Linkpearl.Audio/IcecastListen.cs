@@ -5,12 +5,29 @@ internal static class IcecastListen
     public static IEnumerable<string> Candidates(string streamUrl)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var url in Expand(streamUrl))
+        foreach (var seed in Split(streamUrl))
         {
-            if (url.Length > 0 && seen.Add(url))
+            foreach (var url in Expand(seed))
             {
-                yield return url;
+                if (url.Length > 0 && seen.Add(url))
+                {
+                    yield return url;
+                }
             }
+        }
+    }
+
+    private static IEnumerable<string> Split(string streamUrl)
+    {
+        var raw = streamUrl.Trim();
+        if (raw.Length == 0)
+        {
+            yield break;
+        }
+
+        foreach (var part in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            yield return part;
         }
     }
 
@@ -33,27 +50,13 @@ internal static class IcecastListen
         {
             UserName = string.Empty,
             Password = string.Empty,
+            Query = string.Empty,
         };
-        if (uri.IsDefaultPort)
-        {
-            builder.Port = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-                ? 443
-                : 8000;
-        }
-
         yield return builder.Uri.ToString();
 
-        if (builder.Query.Length == 0)
+        if (builder.Path.Length <= 1)
         {
-            builder.Query = "type=.mp3";
-            yield return builder.Uri.ToString();
-            builder.Query = string.Empty;
-        }
-
-        var path = builder.Path;
-        if (path.Length > 1 && path.AsSpan().LastIndexOf('.') < 0)
-        {
-            builder.Path = path.TrimEnd('/') + ".mp3";
+            builder.Path = "/;stream.mp3";
             yield return builder.Uri.ToString();
         }
     }

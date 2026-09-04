@@ -94,6 +94,20 @@
           "NAudio.Core": "2.2.1"
         }
       },
+      "NLayer": {
+        "type": "Transitive",
+        "resolved": "1.16.0",
+        "contentHash": "G/AexTjdl6cm0wYlkCkQgtpPLBc5vOWyOTIQpeC6p8V8fb7kbCYA+fEHFPJiU+KeRHH4Q1RGqTFyf9uqVALnkQ=="
+      },
+      "NLayer.NAudioSupport": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "XV+xFJlHgjZT1Z/dLbLg9t0ZLW3iUa+bv/zp/xr5AYt1WEOqYS7akpYSYf6Ia0+Rh4N0DWPLveU+RRTX4rKGyQ==",
+        "dependencies": {
+          "NAudio.Core": "2.0.0",
+          "NLayer": "1.15.0"
+        }
+      },
       "linkpearl.abstractions": {
         "type": "Project",
         "dependencies": {
@@ -119,7 +133,9 @@
         "dependencies": {
           "Linkpearl.Abstractions": "[0.1.0, )",
           "NAudio": "[2.2.1, )",
-          "NAudio.Lame": "[2.1.0, )"
+          "NAudio.Lame": "[2.1.0, )",
+          "NLayer": "[1.16.0, )",
+          "NLayer.NAudioSupport": "[1.4.0, )"
         }
       },
       "linkpearl.canvas": {

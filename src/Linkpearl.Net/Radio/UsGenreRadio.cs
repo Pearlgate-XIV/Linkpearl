@@ -105,6 +105,15 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
         _ = Task.Run(() => Load(genre));
     }
 
+    public IReadOnlyList<string> PlayUrls(PublicStation station)
+    {
+        var urls = new List<string>();
+        AddUrl(urls, ResolvePlayUrl(station.Id));
+        AddUrl(urls, station.StreamUrl);
+        AddUrl(urls, station.AlternateUrl);
+        return urls;
+    }
+
     public void Dispose() => http.Dispose();
 
     private async Task Load(string genre)
@@ -118,15 +127,28 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
                 var rows = await Fetch(tags[index]).ConfigureAwait(false);
                 foreach (var row in rows)
                 {
-                    var url = (row.UrlResolved ?? row.Url ?? string.Empty).Trim();
-                    if (url.Length == 0)
+                    var resolved = (row.UrlResolved ?? string.Empty).Trim();
+                    var original = (row.Url ?? string.Empty).Trim();
+                    if (IsDirectoryProxy(resolved))
+                    {
+                        resolved = string.Empty;
+                    }
+
+                    if (IsDirectoryProxy(original))
+                    {
+                        original = string.Empty;
+                    }
+
+                    var url = resolved.Length > 0 ? resolved : original;
+                    if (url.Length == 0 || row.Hls == 1 || row.LastCheckOk == 0)
                     {
                         continue;
                     }
 
                     var id = row.StationUuid ?? url;
                     merged[id] = new PublicStation(id, Clean(row.Name), genre, PlaceOf(row), url, row.Bitrate,
-                        (row.Favicon ?? string.Empty).Trim());
+                        (row.Favicon ?? string.Empty).Trim(),
+                        string.Equals(original, url, StringComparison.Ordinal) ? string.Empty : original);
                 }
             }
 
@@ -203,6 +225,76 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
         return [];
     }
 
+    private string ResolvePlayUrl(string id)
+    {
+        if (id.Length < 8 || id.Contains("://", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        for (var attempt = 0; attempt < Hosts.Length; attempt++)
+        {
+            var host = Hosts[(hostIndex + attempt) % Hosts.Length];
+            try
+            {
+                using var response = http.GetAsync(host + "json/url/" + Uri.EscapeDataString(id)).GetAwaiter()
+                    .GetResult();
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var click = response.Content.ReadFromJsonAsync<ClickRow>(Json).GetAwaiter().GetResult();
+                var url = (click?.Url ?? string.Empty).Trim();
+                if (url.Length > 0 && !IsDirectoryProxy(url))
+                {
+                    hostIndex = (hostIndex + attempt) % Hosts.Length;
+                    return url;
+                }
+            }
+            catch (HttpRequestException)
+            {
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static void AddUrl(List<string> urls, string url)
+    {
+        var trimmed = url.Trim();
+        if (trimmed.Length == 0 || IsDirectoryProxy(trimmed))
+        {
+            return;
+        }
+
+        foreach (var existing in urls)
+        {
+            if (string.Equals(existing, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        urls.Add(trimmed);
+    }
+
+    private static bool IsDirectoryProxy(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Host.Contains("radio-browser.info", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string[] TagsFor(string genre)
     {
         for (var index = 0; index < Map.Length; index++)
@@ -270,5 +362,17 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
 
         [JsonPropertyName("favicon")]
         public string? Favicon { get; set; }
+
+        [JsonPropertyName("lastcheckok")]
+        public int? LastCheckOk { get; set; }
+
+        [JsonPropertyName("hls")]
+        public int Hls { get; set; }
+    }
+
+    private sealed class ClickRow
+    {
+        [JsonPropertyName("url")]
+        public string? Url { get; set; }
     }
 }
