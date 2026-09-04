@@ -32,11 +32,48 @@ internal sealed class GateClient : IDisposable
         CancellationToken token) =>
         SendAsync(HttpMethod.Post, path, content, info, token);
 
+    public async Task<int> PostAsync(string path, HttpContent? content, CancellationToken token)
+    {
+        using var request = Build(HttpMethod.Post, path, content);
+        using var response = await http.SendAsync(request, token).ConfigureAwait(false);
+        return (int)response.StatusCode;
+    }
+
+    public async Task<int> PutAsync(string path, HttpContent? content, CancellationToken token)
+    {
+        using var request = Build(HttpMethod.Put, path, content);
+        using var response = await http.SendAsync(request, token).ConfigureAwait(false);
+        return (int)response.StatusCode;
+    }
+
     public async Task<int> DeleteAsync(string path, CancellationToken token)
     {
         using var request = Build(HttpMethod.Delete, path, null);
         using var response = await http.SendAsync(request, token).ConfigureAwait(false);
         return (int)response.StatusCode;
+    }
+
+    public async Task<(byte[]? Body, int Status)> GetBytesAsync(string path, CancellationToken token)
+    {
+        using var request = Build(HttpMethod.Get, path, null);
+        using var response = await http.SendAsync(request, token).ConfigureAwait(false);
+        var status = (int)response.StatusCode;
+        if (status < 200 || status >= 300)
+        {
+            return (null, status);
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
+        return (bytes, status);
+    }
+
+    public Task<(T? Body, int Status)> PostFileAsync<T>(string path, string field, string fileName, byte[] bytes,
+        string contentType, JsonTypeInfo<T> info, CancellationToken token)
+    {
+        var part = new ByteArrayContent(bytes);
+        part.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        var form = new MultipartFormDataContent { { part, field, fileName } };
+        return SendAsync(HttpMethod.Post, path, form, info, token);
     }
 
     public static StringContent JsonBody<T>(T value, JsonTypeInfo<T> info) =>
@@ -62,7 +99,9 @@ internal sealed class GateClient : IDisposable
 
     private HttpRequestMessage Build(HttpMethod method, string path, HttpContent? content)
     {
-        var request = new HttpRequestMessage(method, path.TrimStart('/'));
+        var request = path.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? new HttpRequestMessage(method, new Uri(path, UriKind.Absolute))
+            : new HttpRequestMessage(method, path.TrimStart('/'));
         if (content is not null)
         {
             request.Content = content;

@@ -1,6 +1,8 @@
 using Linkpearl.Geometry;
 using Linkpearl.Input;
+using Linkpearl.Modules;
 using Linkpearl.Painting;
+using Linkpearl.Platform;
 using Linkpearl.Shell;
 using Linkpearl.Theming;
 
@@ -15,11 +17,13 @@ public readonly struct AppletFrame
     public readonly ITheme Theme;
     public readonly IRouter Router;
     public readonly ITextField TextField;
+    public readonly ITextureSource Textures;
+    public readonly HostPaths Paths;
     public readonly float Scale;
     public readonly float DeltaSeconds;
 
     public AppletFrame(Rect content, IPaintSurface paint, ITextPainter text, IInputProbe input, ITheme theme,
-        IRouter router, ITextField textField, float scale, float deltaSeconds)
+        IRouter router, ITextField textField, ITextureSource textures, HostPaths paths, float scale, float deltaSeconds)
     {
         Content = content;
         Paint = paint;
@@ -28,15 +32,17 @@ public readonly struct AppletFrame
         Theme = theme;
         Router = router;
         TextField = textField;
+        Textures = textures;
+        Paths = paths;
         Scale = scale;
         DeltaSeconds = deltaSeconds;
     }
 
     public AppletFrame WithContent(Rect content) =>
-        new(content, Paint, Text, Input, Theme, Router, TextField, Scale, DeltaSeconds);
+        new(content, Paint, Text, Input, Theme, Router, TextField, Textures, Paths, Scale, DeltaSeconds);
 
     public AppletFrame WithInput(IInputProbe input) =>
-        new(Content, Paint, Text, input, Theme, Router, TextField, Scale, DeltaSeconds);
+        new(Content, Paint, Text, input, Theme, Router, TextField, Textures, Paths, Scale, DeltaSeconds);
 
     public float Units(float designUnits) => designUnits * Scale;
 }

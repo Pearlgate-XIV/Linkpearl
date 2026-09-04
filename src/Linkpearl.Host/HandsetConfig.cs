@@ -17,11 +17,31 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public HandsetFinish Finish { get; set; } = HandsetFinish.Crystal;
 
+    public HandsetCase Case { get; set; } = HandsetCase.Pearl;
+
     public string SessionToken { get; set; } = string.Empty;
+
+    public string IcecastListenBase { get; set; } = string.Empty;
+
+    public string IcecastSourceUser { get; set; } = "source";
+
+    public string IcecastSourcePassword { get; set; } = string.Empty;
 
     public bool HandsetOpen { get; set; }
 
     public bool HandsetMinimized { get; set; }
+
+    public bool HasOpenPos { get; set; }
+
+    public float OpenX { get; set; }
+
+    public float OpenY { get; set; }
+
+    public bool HasPocketPos { get; set; }
+
+    public float PocketX { get; set; }
+
+    public float PocketY { get; set; }
 
     public bool PositionLocked { get; set; }
 
@@ -35,6 +55,8 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string CustomPlateFile { get; set; } = string.Empty;
 
+    public string[] CustomPlateFiles { get; set; } = [];
+
     public string CustomBannerFile { get; set; } = string.Empty;
 
     public string Colorway { get; set; } = ColorwayId.Crystal;
@@ -47,9 +69,69 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public int Lettering { get; set; } = (int)LetteringSize.Medium;
 
+    public int NameStyle { get; set; }
+
+    public bool TestingAccount { get; set; } = true;
+
+    public string OwnName { get; set; } = string.Empty;
+
+    public string OwnTitle { get; set; } = string.Empty;
+
+    public int TitleMotion { get; set; }
+
+    public bool TitleGlow { get; set; } = true;
+
+    public int TitleGlowWeight { get; set; } = 1;
+
+    public float TitleInkR { get; set; } = 1f;
+
+    public float TitleInkG { get; set; } = 1f;
+
+    public float TitleInkB { get; set; } = 1f;
+
+    public float TitleGlowR { get; set; } = 0.92f;
+
+    public float TitleGlowG { get; set; } = 0.78f;
+
+    public float TitleGlowB { get; set; } = 0.42f;
+
+    public int NameMotion { get; set; }
+
+    public bool NameGlow { get; set; }
+
+    public float NameGlowR { get; set; } = 0.92f;
+
+    public float NameGlowG { get; set; } = 0.78f;
+
+    public float NameGlowB { get; set; } = 0.42f;
+
+    public int NameGlowWeight { get; set; } = 1;
+
+    public bool NameInkCustom { get; set; }
+
+    public float NameInkR { get; set; } = 1f;
+
+    public float NameInkG { get; set; } = 1f;
+
+    public float NameInkB { get; set; } = 1f;
+
+    public string DisplayFace { get; set; } = FounderFaces.Inter;
+
+    public bool FounderFacesGranted { get; set; }
+
     public bool ShowWorld { get; set; } = true;
 
     public bool ShowMarks { get; set; } = true;
+
+    public bool FeedShowSay { get; set; } = true;
+
+    public bool FeedShowShout { get; set; } = true;
+
+    public bool FeedShowYell { get; set; } = true;
+
+    public bool FeedShowParty { get; set; } = true;
+
+    public int ExtraHomeScreens { get; set; }
 
     public bool ReduceMotion { get; set; }
 
@@ -67,11 +149,43 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public int TuneLayout { get; set; }
 
+    public float Brightness { get; set; } = 1f;
+
+    public float Volume { get; set; } = 0.70f;
+
+    public float MusicVolume { get; set; } = 0.70f;
+
+    public float MicVolume { get; set; } = 0.80f;
+
+    public string SpeakerDeviceId { get; set; } = string.Empty;
+
+    public string MicrophoneDeviceId { get; set; } = string.Empty;
+
+    public bool AutoRotate { get; set; }
+
     public string[] Replies { get; set; } = [];
+
+    public string[]? InstalledApps { get; set; }
+
+    public string[] FavoriteApps { get; set; } = [];
+
+    public string[] AppFolders { get; set; } = [];
+
+    public string[] QuickApps { get; set; } = [];
+
+    public string[] RecentAppIds { get; set; } = [];
+
+    public string[] RecentAppPlaces { get; set; } = [];
+
+    public string[] SeenShelfApps { get; set; } = [];
+
+    public string[] PopoutTalkIds { get; set; } = [];
+
+    public string[] PopoutTalkPlaces { get; set; } = [];
 
     public void Sanitize()
     {
-        ScaleStep = HandsetSizeCatalog.SnapToStep(ScaleStep);
+        ScaleStep = HandsetSizeCatalog.ClampFree(ScaleStep, HandsetSizeCatalog.FreeCeiling);
         PocketScale = HandsetShapePreference.SnapPocket(PocketScale);
         if (Form is not (HandsetForm.Phone or HandsetForm.Tablet))
         {
@@ -83,9 +197,29 @@ public sealed class HandsetConfig : IPluginConfiguration
             Finish = HandsetFinish.Crystal;
         }
 
+        if (Case is not (HandsetCase.Pearl or HandsetCase.Android))
+        {
+            Case = HandsetCase.Pearl;
+        }
+
         SessionToken = SessionToken?.Trim() ?? string.Empty;
+        IcecastListenBase = IcecastListenBase?.Trim() ?? string.Empty;
+        IcecastSourceUser = string.IsNullOrWhiteSpace(IcecastSourceUser) ? "source" : IcecastSourceUser.Trim();
+        IcecastSourcePassword = IcecastSourcePassword ?? string.Empty;
         WallpaperId = string.IsNullOrWhiteSpace(WallpaperId) ? WallpaperCatalog.DefaultId : WallpaperId.Trim();
         CustomPlateFile = Path.GetFileName(CustomPlateFile ?? string.Empty);
+        var plates = CustomPlateFiles ?? [];
+        if (plates.Length > PlateFiles.MaxSlots)
+        {
+            Array.Resize(ref plates, PlateFiles.MaxSlots);
+        }
+
+        for (var index = 0; index < plates.Length; index++)
+        {
+            plates[index] = Path.GetFileName(plates[index] ?? string.Empty);
+        }
+
+        CustomPlateFiles = plates;
         CustomBannerFile = Path.GetFileName(CustomBannerFile ?? string.Empty);
         Colorway = ColorwayId.Sanitize(Colorway);
         Core = CoreId.Sanitize(Core);
@@ -93,8 +227,43 @@ public sealed class HandsetConfig : IPluginConfiguration
         Shade = Math.Clamp(Shade, 0, 2);
         ClockFace = Math.Clamp(ClockFace, 0, 2);
         Lettering = Math.Clamp(Lettering, 0, 2);
+        NameStyle = Math.Clamp(NameStyle, 0, 1);
+        OwnName = ShownName.Sanitize(OwnName ?? string.Empty);
+        OwnTitle = ShownName.ClampTitle(OwnTitle ?? string.Empty).Trim();
+        TitleMotion = Math.Clamp(TitleMotion, 0, 2);
+        TitleGlowWeight = Math.Clamp(TitleGlowWeight, 0, 2);
+        TitleInkR = Math.Clamp(TitleInkR, 0f, 1f);
+        TitleInkG = Math.Clamp(TitleInkG, 0f, 1f);
+        TitleInkB = Math.Clamp(TitleInkB, 0f, 1f);
+        TitleGlowR = Math.Clamp(TitleGlowR, 0f, 1f);
+        TitleGlowG = Math.Clamp(TitleGlowG, 0f, 1f);
+        TitleGlowB = Math.Clamp(TitleGlowB, 0f, 1f);
+        NameMotion = Math.Clamp(NameMotion, 0, 2);
+        NameGlowR = Math.Clamp(NameGlowR, 0f, 1f);
+        NameGlowG = Math.Clamp(NameGlowG, 0f, 1f);
+        NameGlowB = Math.Clamp(NameGlowB, 0f, 1f);
+        NameGlowWeight = Math.Clamp(NameGlowWeight, 0, 2);
+        NameInkR = Math.Clamp(NameInkR, 0f, 1f);
+        NameInkG = Math.Clamp(NameInkG, 0f, 1f);
+        NameInkB = Math.Clamp(NameInkB, 0f, 1f);
+        DisplayFace = FounderFaces.Sanitize(DisplayFace ?? string.Empty);
+        ExtraHomeScreens = Math.Clamp(ExtraHomeScreens, 0, 5);
         Fight = Math.Clamp(Fight, 0, 2);
         TuneLayout = Math.Clamp(TuneLayout, 0, 1);
+        Brightness = Math.Clamp(Brightness, 0.20f, 1f);
+        Volume = Math.Clamp(Volume, 0f, 1f);
+        MusicVolume = Math.Clamp(MusicVolume, 0f, 1f);
+        MicVolume = Math.Clamp(MicVolume, 0f, 1f);
+        SpeakerDeviceId = SpeakerDeviceId?.Trim() ?? string.Empty;
+        MicrophoneDeviceId = MicrophoneDeviceId?.Trim() ?? string.Empty;
         Replies ??= [];
+        FavoriteApps ??= [];
+        AppFolders ??= [];
+        QuickApps ??= [];
+        RecentAppIds ??= [];
+        RecentAppPlaces ??= [];
+        SeenShelfApps ??= [];
+        PopoutTalkIds ??= [];
+        PopoutTalkPlaces ??= [];
     }
 }

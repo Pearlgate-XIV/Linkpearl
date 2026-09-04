@@ -8,6 +8,11 @@ public static class TalkIds
     public const string Alliance = "alliance";
     public const string FreeCompany = "fc";
     public const string Novice = "novice";
+    public const string Live = "live";
+    public const string LiveSay = "live:say";
+    public const string LiveShout = "live:shout";
+    public const string LiveYell = "live:yell";
+    public const string LiveParty = "live:party";
 
     public static string Linkshell(int slot) => "ls:" + slot.ToString(CultureInfo.InvariantCulture);
 

@@ -11,13 +11,27 @@ public enum ShellMotion : byte
     Dismissing = 2,
 }
 
+public readonly struct RecentTask
+{
+    public readonly string Id;
+    public readonly string Place;
+
+    public RecentTask(string id, string place)
+    {
+        Id = id;
+        Place = place;
+    }
+}
+
 // Owns the applet back-stack and the single in-flight transition. Applets never see this type:
 // they see IRouter. Presentation animation lives on the shell layer that draws Current/Motion*.
 public sealed class RouteStack : IRouter
 {
+    private const int RecentCap = 12;
+
     private readonly IReadOnlyDictionary<string, IApplet> applets;
-    private readonly Stack<IApplet> history = new();
-    private readonly List<string> recents = new();
+    private readonly List<RecentTask> recents = new();
+    private readonly HashSet<string> living = new(StringComparer.Ordinal);
     private IApplet? current;
     private IApplet? motionEntering;
     private IApplet? motionLeaving;
@@ -35,11 +49,41 @@ public sealed class RouteStack : IRouter
 
     public event Action? ReturnedHome;
 
+    public event Action? RecentsChanged;
+
     public IApplet? Current => current;
 
     public string? CurrentAppletId => current?.Manifest.Id;
 
-    public IReadOnlyList<string> RecentIds => recents;
+    public IReadOnlyList<string> RecentIds
+    {
+        get
+        {
+            var ids = new string[recents.Count];
+            for (var index = 0; index < recents.Count; index++)
+            {
+                ids[index] = recents[index].Id;
+            }
+
+            return ids;
+        }
+    }
+
+    public IReadOnlyList<string> RecentPlaces
+    {
+        get
+        {
+            var places = new string[recents.Count];
+            for (var index = 0; index < recents.Count; index++)
+            {
+                places[index] = recents[index].Place;
+            }
+
+            return places;
+        }
+    }
+
+    public IReadOnlyList<RecentTask> Tasks => recents;
 
     public bool AtHome => current is null && motion == ShellMotion.None;
 
@@ -63,32 +107,26 @@ public sealed class RouteStack : IRouter
 
     public void OpenFrom(string appletId, Rect originTile) => Open(appletId, null, originTile);
 
+    public void OpenFrom(string appletId, Rect originTile, string routeHint) =>
+        Open(appletId, routeHint, originTile);
+
     public void Back()
     {
         CancelMotion();
-        if (history.Count == 0)
+        if (current is null)
         {
             return;
         }
 
-        var leaving = history.Pop();
-        current = history.Count > 0 ? history.Peek() : null;
-        leaving.Leave();
-        current?.Enter(AppletEntry.Plain);
-        if (current is null)
-        {
-            ReturnedHome?.Invoke();
-        }
+        CaptureCurrent();
+        current = null;
+        ReturnedHome?.Invoke();
     }
 
     public void Home()
     {
         CancelMotion();
-        while (history.Count > 0)
-        {
-            history.Pop().Leave();
-        }
-
+        CaptureCurrent();
         current = null;
         ReturnedHome?.Invoke();
     }
@@ -104,6 +142,95 @@ public sealed class RouteStack : IRouter
 
         recentsWanted = false;
         return true;
+    }
+
+    public void CapturePlaces() => CaptureCurrent();
+
+    public void RememberVisit(string id, string place)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.StartsWith("folder:", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        RememberRecent(id, place ?? string.Empty);
+        RecentsChanged?.Invoke();
+    }
+
+    public string PlaceOf(string appletId)
+    {
+        if (applets.TryGetValue(appletId, out var applet) && living.Contains(appletId))
+        {
+            var live = applet.Place;
+            if (live.Length > 0)
+            {
+                return live;
+            }
+        }
+
+        for (var index = 0; index < recents.Count; index++)
+        {
+            if (string.Equals(recents[index].Id, appletId, StringComparison.Ordinal))
+            {
+                return recents[index].Place;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    public void Dismiss(string appletId)
+    {
+        CancelMotion();
+        if (applets.TryGetValue(appletId, out var applet) && living.Remove(appletId))
+        {
+            applet.Leave();
+        }
+
+        if (ReferenceEquals(current, applet) ||
+            (current is not null && string.Equals(current.Manifest.Id, appletId, StringComparison.Ordinal)))
+        {
+            current = null;
+            ReturnedHome?.Invoke();
+        }
+
+        DropRecent(appletId);
+        RecentsChanged?.Invoke();
+    }
+
+    public void DismissAll()
+    {
+        CancelMotion();
+        var ids = living.ToArray();
+        living.Clear();
+        for (var index = 0; index < ids.Length; index++)
+        {
+            if (applets.TryGetValue(ids[index], out var applet))
+            {
+                applet.Leave();
+            }
+        }
+        recents.Clear();
+        current = null;
+        ReturnedHome?.Invoke();
+        RecentsChanged?.Invoke();
+    }
+
+    public void Restore(IReadOnlyList<string> ids, IReadOnlyList<string> places)
+    {
+        recents.Clear();
+        var count = Math.Min(ids.Count, RecentCap);
+        for (var index = 0; index < count; index++)
+        {
+            var id = ids[index];
+            if (string.IsNullOrWhiteSpace(id) || id.StartsWith("folder:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var place = index < places.Count ? places[index] ?? string.Empty : string.Empty;
+            recents.Add(new RecentTask(id, place));
+        }
     }
 
     public void Advance(float deltaSeconds, float durationSeconds)
@@ -142,26 +269,54 @@ public sealed class RouteStack : IRouter
             return;
         }
 
+        CancelMotion();
+        CaptureCurrent();
+        var saved = routeHint is { Length: > 0 } ? routeHint : PlaceOf(appletId);
+        var entry = new AppletEntry(saved.Length > 0 ? saved : routeHint, originTile);
         if (ReferenceEquals(applet, current))
+        {
+            RememberRecent(appletId, saved);
+            if (routeHint is { Length: > 0 })
+            {
+                applet.Enter(entry);
+            }
+
+            RecentsChanged?.Invoke();
+            return;
+        }
+
+        current = applet;
+        RememberRecent(appletId, saved);
+        if (living.Add(appletId) || routeHint is { Length: > 0 })
+        {
+            applet.Enter(entry);
+        }
+
+        Opened?.Invoke(appletId);
+        RecentsChanged?.Invoke();
+    }
+
+    private void CaptureCurrent()
+    {
+        if (current is null)
         {
             return;
         }
 
-        CancelMotion();
-        history.Push(applet);
-        current = applet;
-        RememberRecent(appletId);
-        applet.Enter(new AppletEntry(routeHint, originTile));
-        Opened?.Invoke(appletId);
+        RememberRecent(current.Manifest.Id, current.Place);
+        RecentsChanged?.Invoke();
     }
 
-    private void RememberRecent(string appletId)
+    private void RememberRecent(string appletId, string place)
     {
-        recents.Remove(appletId);
-        recents.Insert(0, appletId);
-        if (recents.Count > 8)
+        recents.RemoveAll(task => string.Equals(task.Id, appletId, StringComparison.Ordinal));
+        recents.Insert(0, new RecentTask(appletId, place ?? string.Empty));
+        if (recents.Count > RecentCap)
         {
             recents.RemoveAt(recents.Count - 1);
         }
     }
+
+    private void DropRecent(string appletId) =>
+        recents.RemoveAll(task => string.Equals(task.Id, appletId, StringComparison.Ordinal));
 }

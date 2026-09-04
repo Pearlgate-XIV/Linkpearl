@@ -6,11 +6,12 @@ public static class PlateFiles
 {
     public const string Folder = "plates";
     public const string CustomId = "custom";
+    public const int MaxSlots = 4;
 
     public static string DirectoryOf(HostPaths paths) => Path.Combine(paths.ConfigDirectory, Folder);
 
     public static string Absolute(HostPaths paths, string fileName) =>
-        Path.Combine(DirectoryOf(paths), fileName);
+        Path.Combine(DirectoryOf(paths), Path.GetFileName(fileName));
 
     public static bool TryImport(HostPaths paths, string sourcePath, out string fileName)
     {
@@ -28,36 +29,51 @@ public static class PlateFiles
         }
 
         Directory.CreateDirectory(DirectoryOf(paths));
-        fileName = "yours" + ext.ToLowerInvariant();
-        File.Copy(source, Absolute(paths, fileName), overwrite: true);
-        return true;
+        fileName = "yours-" + Guid.NewGuid().ToString("N") + ext.ToLowerInvariant();
+        try
+        {
+            File.Copy(source, Absolute(paths, fileName), overwrite: false);
+            return true;
+        }
+        catch (IOException)
+        {
+            fileName = string.Empty;
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            fileName = string.Empty;
+            return false;
+        }
     }
 
-    public static void Clear(HostPaths paths)
+    public static void Delete(HostPaths paths, string fileName)
     {
-        var folder = DirectoryOf(paths);
-        if (!Directory.Exists(folder))
+        var name = Path.GetFileName(fileName);
+        if (name.Length == 0)
         {
             return;
         }
 
-        foreach (var file in Directory.GetFiles(folder))
+        try
         {
-            try
-            {
-                File.Delete(file);
-            }
-            catch (IOException)
-            {
-            }
+            File.Delete(Absolute(paths, name));
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
-    private static bool IsImage(string ext)
+    public static bool IsImage(string ext)
     {
         return ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
                ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
                ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
-               ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+               ext.Equals(".webp", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".gif", StringComparison.OrdinalIgnoreCase);
     }
 }

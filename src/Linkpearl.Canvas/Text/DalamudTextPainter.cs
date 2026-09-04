@@ -36,17 +36,17 @@ public sealed class DalamudTextPainter : ITextPainter
     public void Draw(Vector2 origin, ReadOnlySpan<char> text, in TextStyle style)
     {
         using var pushed = fonts.Handle(style.Role).Push();
-        var size = ImGui.CalcTextSize(text);
+        var size = MeasureScaled(text, style.Scale);
         var aligned = AlignedOrigin(origin, size, style.Align, origin.X);
-        drawList.AddText(aligned, ImGui.GetColorU32(style.Color), text);
+        DrawGlyphs(aligned, text, style);
     }
 
     public void DrawIn(Rect area, ReadOnlySpan<char> text, in TextStyle style)
     {
         using var pushed = fonts.Handle(style.Role).Push();
-        var size = ImGui.CalcTextSize(text);
+        var size = MeasureScaled(text, style.Scale);
         var origin = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
-        drawList.AddText(origin, ImGui.GetColorU32(style.Color), text);
+        DrawGlyphs(origin, text, style);
     }
 
     public void DrawWrapped(Rect area, ReadOnlySpan<char> text, in TextStyle style)
@@ -58,18 +58,28 @@ public sealed class DalamudTextPainter : ITextPainter
 
         using var pushed = fonts.Handle(style.Role).Push();
         drawList.PushClipRect(area.Min, area.Max, true);
-        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), area.Min, ImGui.GetColorU32(style.Color), text,
-            area.Width);
+        if (style.Scale == 1f)
+        {
+            drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), area.Min, ImGui.GetColorU32(style.Color), text,
+                area.Width);
+        }
+        else
+        {
+            drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize() * style.Scale, area.Min,
+                ImGui.GetColorU32(style.Color), text, area.Width);
+        }
+
         drawList.PopClipRect();
     }
 
     public void DrawEllipsized(Rect area, ReadOnlySpan<char> text, in TextStyle style)
     {
         using var pushed = fonts.Handle(style.Role).Push();
-        var size = ImGui.CalcTextSize(text);
+        var size = MeasureScaled(text, style.Scale);
         if (size.X <= area.Width)
         {
-            DrawIn(area, text, style);
+            var fit = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
+            DrawGlyphs(fit, text, style);
             return;
         }
 
@@ -79,7 +89,7 @@ public sealed class DalamudTextPainter : ITextPainter
         while (low < high)
         {
             var mid = (low + high + 1) / 2;
-            var candidateSize = ImGui.CalcTextSize(string.Concat(text[..mid], ellipsis));
+            var candidateSize = MeasureScaled(string.Concat(text[..mid], ellipsis), style.Scale);
             if (candidateSize.X <= area.Width)
             {
                 low = mid;
@@ -91,9 +101,79 @@ public sealed class DalamudTextPainter : ITextPainter
         }
 
         var truncated = string.Concat(text[..low], ellipsis);
-        var truncatedSize = ImGui.CalcTextSize(truncated);
+        var truncatedSize = MeasureScaled(truncated, style.Scale);
         var origin = new Vector2(AlignedX(area, truncatedSize.X, style.Align), area.Center.Y - truncatedSize.Y * 0.5f);
-        drawList.AddText(origin, ImGui.GetColorU32(style.Color), truncated);
+        DrawGlyphs(origin, truncated, style);
+    }
+
+    public void DrawFitted(Rect area, ReadOnlySpan<char> text, in TextStyle style)
+    {
+        if (area.Width < 1f || area.Height < 1f || text.Length == 0)
+        {
+            return;
+        }
+
+        using var pushed = fonts.Handle(style.Role).Push();
+        var measured = ImGui.CalcTextSize(text);
+        if (measured.X < 1f || measured.Y < 1f)
+        {
+            return;
+        }
+
+        var fit = MathF.Min(area.Width / measured.X, area.Height / measured.Y);
+        var scale = MathF.Min(1f, fit) * (style.Scale > 0f ? style.Scale : 1f);
+
+        var size = measured * scale;
+        var origin = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
+        var fitted = new TextStyle(style.Role, style.Color, style.Align, style.LineSpacing, scale, style.Glow,
+            style.GlowSpread);
+        DrawGlyphs(origin, text, fitted);
+    }
+
+    private void DrawGlyphs(Vector2 origin, ReadOnlySpan<char> text, in TextStyle style)
+    {
+        DrawHalo(origin, text, style);
+        var color = ImGui.GetColorU32(style.Color);
+        if (style.Scale == 1f)
+        {
+            drawList.AddText(origin, color, text);
+            return;
+        }
+
+        drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize() * style.Scale, origin, color, text);
+    }
+
+    private void DrawHalo(Vector2 origin, ReadOnlySpan<char> text, in TextStyle style)
+    {
+        if (style.GlowSpread <= 0.15f || style.Glow.W <= 0.02f || text.Length == 0)
+        {
+            return;
+        }
+
+        var font = ImGui.GetFont();
+        var size = ImGui.GetFontSize() * (style.Scale > 0f ? style.Scale : 1f);
+        var spread = MathF.Max(style.GlowSpread, 1.6f);
+        var strength = Math.Clamp(style.Glow.W, 0f, 1f);
+        var measured = ImGui.CalcTextSize(text);
+        var bloomSize = size + spread * 1.35f;
+        var grow = bloomSize / MathF.Max(size, 1f) - 1f;
+        var bloomOrigin = origin - measured * (style.Scale > 0f ? style.Scale : 1f) * grow * 0.5f;
+        drawList.AddText(font, bloomSize, bloomOrigin, ImGui.GetColorU32(style.Glow with { W = strength * 0.28f }),
+            text);
+
+        const int spokes = 16;
+        var rim = ImGui.GetColorU32(style.Glow with { W = strength * 0.42f });
+        for (var spoke = 0; spoke < spokes; spoke++)
+        {
+            var angle = spoke * (MathF.PI * 2f / spokes);
+            var stamp = origin + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * spread;
+            drawList.AddText(font, size, stamp, rim, text);
+        }
+    }
+
+    private static Vector2 MeasureScaled(ReadOnlySpan<char> text, float scale)
+    {
+        return ImGui.CalcTextSize(text) * (scale > 0f ? scale : 1f);
     }
 
     private static Vector2 AlignedOrigin(Vector2 anchor, Vector2 size, TextAlign align, float left) => align switch

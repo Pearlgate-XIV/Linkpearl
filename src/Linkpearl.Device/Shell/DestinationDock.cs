@@ -11,11 +11,11 @@ public readonly record struct DestinationDockResult(
 
 public sealed class DestinationDock
 {
-    private const float TriggerWidthUnits = 18f;
-    private const float TriggerHeightUnits = 72f;
-    private const float DrawerWidthFraction = 0.40f;
-    private const float RowUnits = 36f;
-    private const float PadUnits = 14f;
+    private const float DrawerWidthFraction = 0.36f;
+    private const float RowUnits = 46f;
+    private const float RowGapUnits = 10f;
+    private const float PadXUnits = 20f;
+    private const float PadYUnits = 18f;
     private const float SlideSeconds = 0.22f;
 
     private static readonly MenuItem[] Items =
@@ -52,17 +52,15 @@ public sealed class DestinationDock
         var rest = DrawerArea(screen, scale);
         var shown = Ease(slide);
         var drawer = rest.Translate(new Vector2(-(1f - shown) * rest.Width, 0f));
-        var trigger = TriggerOnDrawer(drawer, scale);
         var interactive = shown > 0.92f;
-        var radius = scale * 14f;
+        var gold = theme.Palette.WarmAccent;
 
         if (slide > 0.004f)
         {
             paint.Fill(screen, theme.Palette.SurfaceSunken with { W = 0.28f * shown });
             paint.PushClip(screen);
-            paint.Fill(drawer, theme.Palette.SurfaceRaised with { W = 1f }, radius, Corner.Right);
-            paint.Stroke(drawer, theme.Palette.WarmAccent with { W = 0.32f }, theme.Metrics.Hairline, radius,
-                Corner.Right);
+            paint.Fill(drawer, theme.Palette.SurfaceOverlay with { W = 0.88f * shown });
+            paint.Stroke(drawer, gold with { W = 0.32f * shown }, theme.Metrics.Hairline);
             var pressed = DrawMenu(paint, text, input, theme, drawer, scale, current, interactive);
             paint.PopClip();
             if (pressed is { } item)
@@ -72,19 +70,7 @@ public sealed class DestinationDock
             }
         }
 
-        var handleFill = theme.Palette.SurfaceOverlay with { W = expanded ? 0.86f : 0.50f };
-        var handleInk = (expanded ? theme.Palette.Accent : theme.Palette.Ink) with { W = expanded ? 1f : 0.50f };
-        paint.Fill(trigger, handleFill, trigger.Height * 0.5f, Corner.Right);
-        DrawDrawerGlyph(paint, trigger, handleInk, expanded);
-
-        if (input.ConsumeClick(trigger))
-        {
-            expanded = !expanded;
-            return new DestinationDockResult(null, 0);
-        }
-
-        if (interactive && input.WasClicked(screen) && !drawer.Contains(input.Pointer) &&
-            !trigger.Contains(input.Pointer))
+        if (interactive && input.WasClicked(screen) && !drawer.Contains(input.Pointer))
         {
             expanded = false;
         }
@@ -108,21 +94,13 @@ public sealed class DestinationDock
 
     private static float Ease(float value) => value * value * (3f - 2f * value);
 
-    private static Rect TriggerOnDrawer(Rect drawer, float scale)
-    {
-        var width = TriggerWidthUnits * scale;
-        var height = TriggerHeightUnits * scale;
-        var origin = new Vector2(drawer.Max.X, drawer.Center.Y - height * 0.5f);
-        return Rect.FromSize(origin, new Vector2(width, height));
-    }
-
     private static Rect DrawerArea(Rect screen, float scale)
     {
         var width = screen.Width * DrawerWidthFraction;
         var topLimit = screen.Min.Y + scale * 10f;
         var bottomLimit = screen.Max.Y - Height(scale);
         var available = MathF.Max(bottomLimit - topLimit, 0f);
-        var compact = (PadUnits * 2f + RowUnits * Items.Length) * scale;
+        var compact = (PadYUnits * 2f + RowUnits * Items.Length + RowGapUnits * (Items.Length - 1)) * scale;
         var height = MathF.Min(compact, available);
         var slack = MathF.Max(available - height, 0f);
         return Rect.FromSize(new Vector2(screen.Min.X, topLimit + slack * 0.5f), new Vector2(width, height));
@@ -131,26 +109,35 @@ public sealed class DestinationDock
     private static MenuItem? DrawMenu(IPaintSurface paint, ITextPainter text, IInputProbe input, ITheme theme,
         Rect drawer, float scale, DestinationTab current, bool interactive)
     {
-        var inner = drawer.Inset(new Edges(scale * 14f, PadUnits * scale));
-        var rowHeight = inner.Height / Items.Length;
+        var gold = theme.Palette.WarmAccent;
+        var inner = drawer.Inset(new Edges(PadXUnits * scale, PadYUnits * scale));
+        var rowHeight = RowUnits * scale;
+        var gap = RowGapUnits * scale;
+        var markWidth = scale * 32f;
         MenuItem? pressed = null;
         for (var index = 0; index < Items.Length; index++)
         {
             var item = Items[index];
-            var top = inner.Min.Y + index * rowHeight;
-            var cell = new Rect(new Vector2(inner.Min.X, top), new Vector2(inner.Max.X, top + rowHeight));
+            var top = inner.Min.Y + index * (rowHeight + gap);
+            var cell = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, rowHeight));
             var isActive = item.Tab == current;
-            if (isActive)
+            var hovering = input.IsHovering(cell);
+            var ink = theme.Palette.Ink;
+            var glyphInk = hovering
+                ? ink
+                : isActive ? gold : theme.Palette.InkFaint with { W = 0.38f };
+            var labelInk = hovering || isActive ? ink : theme.Palette.InkFaint with { W = 0.40f };
+            var mark = cell.LeftSlice(markWidth);
+            if (isActive && !hovering)
             {
-                paint.Fill(cell.Inset(new Edges(0f, scale * 2f)), theme.Palette.WarmAccent with { W = 0.16f },
-                    cell.Height * 0.35f);
+                paint.Glow(mark.Inset(scale * 4f), gold with { W = 0.42f }, scale * 10f, scale * 12f);
+                paint.Glow(cell.Inset(new Edges(markWidth, scale * 8f, scale * 12f, scale * 8f)),
+                    gold with { W = 0.18f }, scale * 6f, scale * 8f);
             }
 
-            var glyphInk = isActive ? theme.Palette.WarmAccent : theme.Palette.InkFaint;
-            var labelInk = isActive ? theme.Palette.Ink : theme.Palette.InkMuted;
-            DrawItemMark(paint, cell.LeftSlice(scale * 32f), item.Tab, glyphInk);
-            text.DrawIn(cell.Inset(new Edges(scale * 38f, 0f, 0f, 0f)), item.Label,
-                new TextStyle(FontRole.CaptionStrong, labelInk));
+            DrawItemMark(paint, mark, item.Tab, glyphInk);
+            text.DrawIn(cell.Inset(new Edges(markWidth + scale * 10f, 0f, 0f, 0f)), item.Label,
+                new TextStyle(FontRole.BodyStrong, labelInk));
             if (interactive && input.ConsumeClick(cell))
             {
                 pressed = item;
@@ -168,8 +155,8 @@ public sealed class DestinationDock
         switch (tab)
         {
             case DestinationTab.Social:
-                DrawBubble(paint, center + new Vector2(-size * 0.18f, -size * 0.12f), size * 0.78f, color, stroke);
-                DrawBubble(paint, center + new Vector2(size * 0.22f, size * 0.18f), size * 0.62f, color, stroke);
+                DrawBubble(paint, center + new Vector2(-size * 0.18f, -size * 0.12f), size * 0.94f, color, stroke);
+                DrawBubble(paint, center + new Vector2(size * 0.22f, size * 0.18f), size * 0.74f, color, stroke);
                 break;
             case DestinationTab.You:
                 paint.StrokeCircle(center + new Vector2(0f, -size * 0.28f), size * 0.32f, color, stroke);
@@ -208,20 +195,6 @@ public sealed class DestinationDock
     {
         paint.Stroke(Rect.FromSize(center - new Vector2(size, size * 0.7f), new Vector2(size * 2f, size * 1.4f)),
             color, stroke, size * 0.55f);
-    }
-
-    private static void DrawDrawerGlyph(IPaintSurface paint, Rect trigger, Vector4 color, bool expanded)
-    {
-        var center = trigger.Center;
-        var wing = trigger.Width * 0.16f;
-        var rise = trigger.Height * 0.14f;
-        var thickness = MathF.Max(1.4f, trigger.Height * 0.05f);
-        var dir = expanded ? -1f : 1f;
-        var tip = new Vector2(center.X + wing * dir, center.Y);
-        var top = new Vector2(center.X - wing * dir, center.Y - rise);
-        var bottom = new Vector2(center.X - wing * dir, center.Y + rise);
-        paint.Line(top, tip, color, thickness);
-        paint.Line(bottom, tip, color, thickness);
     }
 
     private readonly record struct MenuItem(string Label, DestinationTab Tab, int Section, string TalkId = "");
