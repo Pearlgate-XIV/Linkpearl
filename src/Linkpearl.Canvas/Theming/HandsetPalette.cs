@@ -93,25 +93,17 @@ public static class HandsetPalette
 
     public static Palette Resolve(string colorway, string core)
     {
-        var palette = ColorwayId.Sanitize(colorway) switch
-        {
-            ColorwayId.Pearl => Pearl,
-            ColorwayId.Ember => Ember,
-            ColorwayId.Night => Night,
-            _ => Crystal,
-        };
-
-        var tint = CoreId.Sanitize(core) switch
-        {
-            CoreId.Violet => new Vector4(0.54f, 0.40f, 0.97f, 1f),
-            CoreId.Rose => new Vector4(0.91f, 0.36f, 0.52f, 1f),
-            CoreId.Sage => new Vector4(0.36f, 0.75f, 0.48f, 1f),
-            _ => palette.WarmAccent,
-        };
-
-        return palette with { Accent = tint, WarmAccent = tint };
+        _ = colorway;
+        var tint = CoreId.Swatch(core);
+        var ink = tint.X * 0.299f + tint.Y * 0.587f + tint.Z * 0.114f > 0.62f
+            ? new Vector4(0.04f, 0.06f, 0.10f, 1f)
+            : new Vector4(1f, 1f, 1f, 1f);
+        return Night with { Accent = tint, WarmAccent = tint, AccentInk = ink };
     }
 
-    public static bool IsDark(string colorway) =>
-        !string.Equals(ColorwayId.Sanitize(colorway), ColorwayId.Pearl, StringComparison.Ordinal);
+    public static bool IsDark(string colorway)
+    {
+        _ = colorway;
+        return true;
+    }
 }

@@ -1,3 +1,4 @@
+using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
@@ -33,16 +34,22 @@ public sealed class HandsetShell
     private readonly DestinationHub hub;
     private readonly RouteStack router;
     private bool pocketRequest;
+    private bool powerOffRequest;
     private readonly IReadOnlyList<IApplet> apps;
+    private readonly GlassEdit glass = new();
     private readonly AppsDrawer appsDrawer;
     private readonly QuickAppsTray quickApps = new();
     private readonly UniversalSearchOverlay search;
     private readonly ControlCenter control;
+    private readonly NoticeLedger notices;
+    private readonly NoticeBanner banner = new();
     private readonly RecentsOverlay recents = new();
     private readonly DestinationDock dock = new();
     private readonly AppsDock appsDock = new();
     private readonly StudioSurface studio;
     private readonly ScrollState studioScroll = new();
+    private readonly List<ShellSeat> trail = [];
+    private ShellSeat? launchSeat;
     private DestinationTab currentTab = DestinationTab.Home;
 
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
@@ -60,8 +67,9 @@ public sealed class HandsetShell
         this.hub = hub;
         this.router = router;
         apps = LifeApps(applets);
-        appsDrawer = new AppsDrawer(apps, hub, preferences);
+        appsDrawer = new AppsDrawer(apps, hub, preferences, glass, talk, RememberLaunchSeat);
         search = new UniversalSearchOverlay(pearl, talk, hub);
+        this.notices = notices;
         control = new ControlCenter(notices);
 
         var byTab = new Dictionary<DestinationTab, IDestinationScreen>();
@@ -85,7 +93,7 @@ public sealed class HandsetShell
         }
 
         studio = new StudioSurface(clock, game, pearl, talk, hub, weather, preferences, development, badges, notices,
-            profile, LaunchStudioApplet, origin => LaunchStudioApplet("music", origin, "radio"), audio, radio);
+            profile, LaunchStudioApplet, (origin, hint) => LaunchStudioApplet("music", origin, hint), audio, radio, glass);
     }
 
     public bool ConsumePocket()
@@ -95,11 +103,23 @@ public sealed class HandsetShell
         return ready;
     }
 
-    public bool DrawMinimized(IPaintSurface paint, ITextPainter text, ITheme theme, IInputProbe input, Rect screen,
-        float scale, PocketUnlock unlock, float deltaSeconds, bool allowSlide)
+    public bool ConsumePowerOff()
     {
-        return MinimizedFace.Draw(paint, text, theme, input, screen, scale,
-            HandsetClockText.Format(clock, preferences), unlock, deltaSeconds, allowSlide);
+        var ready = powerOffRequest;
+        powerOffRequest = false;
+        return ready;
+    }
+
+    public bool HoldsWindow => recents.IsOpen || recents.HoldsPointer;
+
+    public int PocketNoticeCount() => notices.Count(pearl.Current, talk, clock);
+
+    public bool DrawMinimized(in AppletFrame frame, Rect screen, PocketUnlock unlock, bool allowSlide)
+    {
+        var tray = notices.Visible(pearl.Current, talk, clock);
+        var mark = tray.Count > 0 ? NoticeMarks.For(tray[0].Kind) : "pearlchat";
+        return MinimizedFace.Draw(frame, screen, unlock, allowSlide, HandsetClockText.Format(clock, preferences),
+            HandsetClockText.FormatDate(clock), tray.Count, mark);
     }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
@@ -110,38 +130,56 @@ public sealed class HandsetShell
         StatusStrip.Draw(outerFrame, screen, HandsetClockText.Format(clock, preferences),
             game.Character.WorldName, preferences.ShowWorld, preferences.ShowMarks);
 
-        var strip = StatusStrip.StripArea(screen, scale);
         var canGoBack = CanGoBack();
         var softKey = SoftKeyBar.Consume(outerFrame.Input, screen, scale, canGoBack);
-        if (softKey == SoftKey.None && !search.IsOpen && !control.IsOpen && !recents.IsOpen &&
-            outerFrame.Input.ConsumeClick(strip))
+        var stripHandle = ControlCenter.HandleOn(screen, scale, control.IsOpen);
+        if (softKey == SoftKey.None && !search.IsOpen && !recents.IsOpen && !control.IsPulling &&
+            outerFrame.Input.ConsumeClick(stripHandle))
         {
             quickApps.Close();
-            control.Open();
+            if (control.IsOpen)
+            {
+                control.Close();
+            }
+            else
+            {
+                control.Open();
+            }
         }
 
-        var dockHeight = SoftKeyBar.Height(scale);
-        var content = screen.Inset(new Edges(0f, statusHeight, 0f, dockHeight));
         var appletOpen = CurrentApplet(router.CurrentAppletId) is not null;
+        var dockHeight = appletOpen ? SoftKeyBar.AppLift(scale) : SoftKeyBar.Height(scale);
+        var content = screen.Inset(new Edges(0f, statusHeight, 0f, dockHeight));
         var swipe = content.Inset(new Edges(EdgeHandles.WidthUnits * scale, 0f));
         var awayFromHomeDash = destinationsByTab.TryGetValue(DestinationTab.Home, out var homeScreen) &&
                                homeScreen is ISectionedDestination homePanes &&
                                homePanes.CurrentSection != HomePane.Dashboard;
         var destLane = currentTab != DestinationTab.Home || awayFromHomeDash;
         appsDock.SetExtraScreens(preferences.ExtraHomeScreens);
+        appsDock.SetAppScreens(preferences.AppScreenCount);
         appsDock.SetDestLane(destLane);
         var showPager = !appletOpen && !destLane && !search.IsOpen && !dock.IsOpen && !control.IsOpen &&
                         !recents.IsOpen && !quickApps.IsOpen;
-        var canSwipe = showPager && !awayFromHomeDash && !studio.BlocksPager;
+        var canSwipe = showPager && !awayFromHomeDash &&
+                       !studio.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld()) &&
+                       !appsDrawer.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld());
         var swiped = appsDock.CaptureSwipe(outerFrame.Input, swipe, scale, canSwipe);
         var handleTapped = showPager && appsDock.ConsumeHandle(outerFrame.Input, screen, scale);
         appsDock.Advance(outerFrame.DeltaSeconds, preferences.ReduceMotion);
 
         var studioArea = appsDock.PageArea(content, appsDock.StudioPage);
-        var appsArea = appsDock.PageArea(content, appsDock.AppsPage);
         var destArea = destLane ? appsDock.PageArea(content, 0) : content;
         var onStudio = studioArea.Intersect(content).Width > 8f;
-        var onApps = appsArea.Intersect(content).Width > 8f;
+        var onApps = false;
+        for (var appScreen = 0; appScreen < appsDock.AppScreenCount; appScreen++)
+        {
+            var area = appsDock.PageArea(content, appsDock.FirstAppsPage + appScreen);
+            if (area.Intersect(content).Width > 8f)
+            {
+                onApps = true;
+                break;
+            }
+        }
         var onDest = destLane && destArea.Intersect(content).Width > 8f;
         var overlayOpen = search.IsOpen || dock.IsOpen || appsDock.IsPaging || control.IsOpen || recents.IsOpen ||
             appsDock.IsDragging || quickApps.IsOpen;
@@ -178,12 +216,14 @@ public sealed class HandsetShell
                     continue;
                 }
 
-                var extraFrame = overlayOpen
+                var extraMute = overlayOpen && studio.FlyingId is null;
+                var extraFrame = extraMute
                     ? outerFrame.WithContent(extraArea).WithInput(SilentInput.Instance)
                     : outerFrame.WithContent(extraArea);
                 ExtraHomeSurface.Draw(extraFrame, extraArea, extra, preferences.ExtraHomeScreens,
                     () => AddHomeScreen(extra),
-                    () => RemoveHomeScreen(extra));
+                    () => RemoveHomeScreen(extra),
+                    (page, _) => studio.ComposeExtra(page, extra));
                 outerFrame.Paint.PopClip();
             }
         }
@@ -200,9 +240,10 @@ public sealed class HandsetShell
             var camera = CurrentApplet("camera");
             var dockFrame = overlayOpen ? outerFrame.WithInput(SilentInput.Instance) : outerFrame;
             HomeDock.Draw(dockFrame, destArea.BottomSlice(homeDock), camera, hush,
-                () => hub.Open(DestinationTab.Social, SocialPane.Phone),
+                () => LaunchQuickApp("phone"),
                 () =>
                 {
+                    RememberLaunchSeat();
                     appsDock.Open();
                     if (camera is not null)
                     {
@@ -211,10 +252,21 @@ public sealed class HandsetShell
                 });
         }
 
-        if (onApps && BeginPageClip(outerFrame, content, appsArea))
+        if (onApps)
         {
-            DrawAppsPage(outerFrame, appsArea, overlayOpen, hush);
-            outerFrame.Paint.PopClip();
+            for (var appScreen = 0; appScreen < appsDock.AppScreenCount; appScreen++)
+            {
+                var appsArea = appsDock.PageArea(content, appsDock.FirstAppsPage + appScreen);
+                if (!BeginPageClip(outerFrame, content, appsArea))
+                {
+                    continue;
+                }
+
+                var mute = appScreen != appsDock.AppScreenIndex ||
+                           (overlayOpen && appsDrawer.FlyingId is null);
+                DrawAppsPage(outerFrame, appsArea, mute, hush, appScreen);
+                outerFrame.Paint.PopClip();
+            }
         }
         }
         finally
@@ -225,9 +277,14 @@ public sealed class HandsetShell
             }
         }
 
+        ApplyStudioNudge();
+        ApplyAppPageNudge();
+
+        banner.Observe(pearl.Current, talk, clock, notices, hush);
         search.Draw(outerFrame.Paint, outerFrame.Text, textField, outerFrame.Input, outerFrame.Theme, screen, scale);
-        recents.Draw(outerFrame, screen, router, apps, ResumeRecent);
-        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, talk, clock, wife);
+        recents.Draw(outerFrame, screen, router, apps, preferences, clock, ResumeRecent);
+        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, talk, clock, wife,
+            allowStrip: !search.IsOpen && !recents.IsOpen);
         if (controlResult.Recents || router.TakeRecents())
         {
             quickApps.Close();
@@ -240,16 +297,22 @@ public sealed class HandsetShell
             pocketRequest = true;
         }
 
+        if (controlResult.PowerOff)
+        {
+            powerOffRequest = true;
+        }
+
         if (controlResult.Tab is { } openedTab)
         {
             quickApps.Close();
-            OpenDestination(openedTab, controlResult.Section);
+            OpenDestination(openedTab, controlResult.Section, controlResult.TalkId, controlResult.ProfileId,
+                controlResult.NoticeId);
         }
 
         if (!string.IsNullOrEmpty(controlResult.AppletId))
         {
             quickApps.Close();
-            LaunchQuickApp(controlResult.AppletId);
+            LaunchQuickApp(controlResult.AppletId, controlResult.RouteHint);
         }
 
         var dockResult = dock.Draw(outerFrame.Paint, outerFrame.Text, outerFrame.Input, outerFrame.Theme, screen,
@@ -259,6 +322,7 @@ public sealed class HandsetShell
             appsDock.DrawHandle(outerFrame.Paint, outerFrame.Input, outerFrame.Theme, screen, scale);
         }
         SoftKeyBar.Paint(outerFrame.Paint, outerFrame.Theme, outerFrame.Input, screen, scale, canGoBack);
+        banner.Draw(outerFrame, screen, hub, notices);
         quickApps.Draw(outerFrame, screen, preferences, preferences.ReduceMotion, LaunchQuickApp, OpenQuickCustomize);
 
         if (handleTapped || swiped)
@@ -270,7 +334,16 @@ public sealed class HandsetShell
             quickApps.Close();
             if (!appsDock.OnApps)
             {
-                appsDrawer.CloseInner();
+                if (appsDrawer.FlyingId is { Length: > 0 } flying)
+                {
+                    studio.AdoptDrag(flying);
+                    appsDrawer.ReleaseDrag();
+                }
+                else
+                {
+                    appsDrawer.CloseInner();
+                }
+
                 outerFrame.Router.Home();
             }
         }
@@ -286,15 +359,11 @@ public sealed class HandsetShell
 
         if (softKey == SoftKey.Home)
         {
-            if (OnHomeDashboard())
+            if (appletOpen)
             {
-                search.Close();
-                dock.Close();
-                control.Close();
-                recents.Close();
-                quickApps.Toggle();
+                ReturnFromApp(outerFrame);
             }
-            else
+            else if (!OnHomeDashboard())
             {
                 quickApps.Close();
                 GoHome(outerFrame);
@@ -324,7 +393,19 @@ public sealed class HandsetShell
             GoBack(outerFrame);
         }
 
-        if (hub.TryTake(out var opened, out var section, out var talkId, out var profileId))
+        if (hub.TryTakeApplet(out var appletId, out var appletHint))
+        {
+            dock.Close();
+            appsDock.Close();
+            appsDrawer.CloseInner();
+            search.Close();
+            control.Close();
+            recents.Close();
+            quickApps.Close();
+            LaunchQuickApp(appletId, appletHint);
+        }
+
+        if (hub.TryTake(out var opened, out var section, out var talkId, out var profileId, out var noticeId))
         {
             dock.Close();
             appsDock.Close();
@@ -334,7 +415,7 @@ public sealed class HandsetShell
             recents.Close();
             quickApps.Close();
             outerFrame.Router.Home();
-            OpenDestination(opened, section, talkId, profileId);
+            OpenDestination(opened, section, talkId, profileId, noticeId);
         }
 
         if (hub.TryTakeSearch())
@@ -387,7 +468,8 @@ public sealed class HandsetShell
         }
 
         var page = sheet ? studioArea.Translate(new Vector2(0f, -studioScroll.Offset)) : studioArea;
-        var frame = overlayOpen
+        var mute = overlayOpen && studio.FlyingId is null;
+        var frame = mute
             ? outerFrame.WithContent(page).WithInput(SilentInput.Instance)
             : outerFrame.WithContent(page);
         var height = studio.Compose(frame, CurrentApplet("camera"));
@@ -444,7 +526,7 @@ public sealed class HandsetShell
         appsDock.ShowExtra(Math.Clamp(index, 0, preferences.ExtraHomeScreens - 1));
     }
 
-    private void DrawAppsPage(in AppletFrame outerFrame, Rect appsArea, bool overlayOpen, bool hush)
+    private void DrawAppsPage(in AppletFrame outerFrame, Rect appsArea, bool overlayOpen, bool hush, int screenIndex)
     {
         var applet = CurrentApplet(outerFrame.Router.CurrentAppletId);
         var frame = overlayOpen
@@ -453,26 +535,21 @@ public sealed class HandsetShell
 
         if (applet is not null)
         {
-            var back = appsArea.TopSlice(outerFrame.Units(32f));
-            outerFrame.Text.DrawIn(back.LeftSlice(outerFrame.Units(28f)), "‹",
-                new TextStyle(FontRole.Title, outerFrame.Theme.Palette.Accent, TextAlign.Center));
-            outerFrame.Text.DrawIn(back.Inset(new Edges(outerFrame.Units(28f), 0f, 0f, 0f)), "Apps",
-                new TextStyle(FontRole.BodyStrong, outerFrame.Theme.Palette.Ink));
-            if (!overlayOpen && outerFrame.Input.ConsumeClick(back))
+            if (screenIndex != appsDock.AppScreenIndex)
             {
-                outerFrame.Router.Home();
                 return;
             }
 
-            var rest = appsArea.Inset(new Edges(0f, outerFrame.Units(32f), 0f, 0f));
+            AppGround.Paint(outerFrame, appsArea, applet.Manifest.Id);
+
             try
             {
-                applet.Compose(overlayOpen ? frame.WithContent(rest) : outerFrame.WithContent(rest));
+                applet.Compose(overlayOpen ? frame.WithContent(appsArea) : outerFrame.WithContent(appsArea));
             }
             catch (Exception)
             {
-                outerFrame.Paint.Fill(rest, outerFrame.Theme.Palette.Surface);
-                outerFrame.Text.DrawIn(rest.Inset(outerFrame.Units(16f)),
+                AppGround.Paint(outerFrame, appsArea, applet.Manifest.Id);
+                outerFrame.Text.DrawIn(appsArea.Inset(outerFrame.Units(16f)),
                     "This app hit an error. Back out and open it again.",
                     new TextStyle(FontRole.Caption, outerFrame.Theme.Palette.InkMuted));
             }
@@ -480,7 +557,159 @@ public sealed class HandsetShell
             return;
         }
 
-        appsDrawer.Draw(frame, appsArea, hush);
+        appsDrawer.Draw(frame, appsArea, hush, screenIndex, interact: !overlayOpen);
+    }
+
+    private void ApplyStudioNudge()
+    {
+        var nudge = studio.PageNudge;
+        if (nudge == 0)
+        {
+            return;
+        }
+
+        studio.ClearNudge();
+        if (studio.FlyingId is { Length: > 2 } flying &&
+            flying.StartsWith("w:", StringComparison.Ordinal) &&
+            ContainsDefaultDock(flying[2..]))
+        {
+            ParkFlyingDock(nudge, flying[2..]);
+            return;
+        }
+
+        if (nudge > 0)
+        {
+            appsDock.ShowAppScreen(0);
+            if (studio.FlyingId is { Length: > 0 } app && ShelfIdOf(app) is { } shelf)
+            {
+                appsDrawer.AdoptDrag(shelf);
+                studio.ReleaseDrag();
+            }
+
+            return;
+        }
+
+        if (appsDock.ExtraCount > 0)
+        {
+            appsDock.Step(-1);
+        }
+    }
+
+    private void ParkFlyingDock(int nudge, string widget)
+    {
+        if (nudge < 0)
+        {
+            if (appsDock.ExtraCount <= 0)
+            {
+                return;
+            }
+
+            appsDock.Step(-1);
+        }
+        else
+        {
+            if (appsDock.OnStudio)
+            {
+                return;
+            }
+
+            appsDock.Step(1);
+        }
+
+        preferences.SetStudioWidgetSeat(widget, appsDock.OnExtra ? appsDock.ExtraIndex : -1);
+    }
+
+    private static string? ShelfIdOf(string dragId)
+    {
+        var id = dragId.StartsWith("w:", StringComparison.Ordinal) ||
+                 dragId.StartsWith("a:", StringComparison.Ordinal)
+            ? dragId[2..]
+            : dragId;
+        if (id.Length == 0 || ContainsDefaultDock(id))
+        {
+            return null;
+        }
+
+        return id;
+    }
+
+    private static bool ContainsDefaultDock(string id)
+    {
+        for (var index = 0; index < DisplayPreferences.DefaultStudioWidgets.Length; index++)
+        {
+            if (string.Equals(DisplayPreferences.DefaultStudioWidgets[index], id, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ApplyAppPageNudge()
+    {
+        var nudge = appsDrawer.PageNudge;
+        if (nudge == 0)
+        {
+            return;
+        }
+
+        appsDrawer.ClearNudge();
+        var from = appsDock.AppScreenIndex;
+        var flying = appsDrawer.FlyingId;
+        if (nudge == 2)
+        {
+            if (!preferences.TryAddAppScreen())
+            {
+                return;
+            }
+
+            appsDock.SetAppScreens(preferences.AppScreenCount);
+            appsDock.ShowAppScreen(preferences.AppScreenCount - 1);
+            return;
+        }
+
+        if (nudge == 3)
+        {
+            if (from <= 0 || !preferences.RemoveAppScreen(from))
+            {
+                return;
+            }
+
+            appsDock.SetAppScreens(preferences.AppScreenCount);
+            appsDock.ShowAppScreen(Math.Max(0, from - 1));
+            return;
+        }
+
+        if (nudge > 0)
+        {
+            if (from >= preferences.AppScreenCount - 1 && !preferences.TryAddAppScreen())
+            {
+                return;
+            }
+
+            appsDock.SetAppScreens(preferences.AppScreenCount);
+            appsDock.Step(1);
+        }
+        else if (from > 0)
+        {
+            appsDock.Step(-1);
+        }
+        else
+        {
+            appsDock.ShowStudio();
+            if (flying is { Length: > 0 })
+            {
+                studio.AdoptDrag(flying);
+                appsDrawer.ReleaseDrag();
+            }
+        }
+
+        if (appsDrawer.FlyingId is null && studio.FlyingId is null)
+        {
+            preferences.PruneEmptyAppScreens(appsDock.AppScreenIndex);
+            appsDock.SetAppScreens(preferences.AppScreenCount);
+        }
     }
 
     private IApplet? CurrentApplet(string? id)
@@ -520,12 +749,13 @@ public sealed class HandsetShell
 
     private bool CanGoBack()
     {
-        if (studio.OverlayOpen)
+        if (studio.OverlayOpen || studio.Editing)
         {
             return true;
         }
 
-        if (quickApps.IsOpen || recents.IsOpen || search.IsOpen || control.IsOpen || dock.IsOpen || appsDock.OnApps)
+        if (quickApps.IsOpen || recents.IsOpen || search.IsOpen || control.IsOpen || dock.IsOpen ||
+            appsDock.OnApps || appsDock.OnExtra || trail.Count > 0)
         {
             return true;
         }
@@ -553,6 +783,8 @@ public sealed class HandsetShell
     private void GoHome(in AppletFrame outerFrame)
     {
         RememberOpenSurface();
+        trail.Clear();
+        launchSeat = null;
         search.Close();
         dock.Close();
         control.Close();
@@ -561,7 +793,23 @@ public sealed class HandsetShell
         appsDock.Close();
         appsDrawer.CloseInner();
         outerFrame.Router.Home();
-        OpenDestination(DestinationTab.Home, 0);
+        OpenDestination(DestinationTab.Home, 0, remember: false);
+    }
+
+    private void ReturnFromApp(in AppletFrame outerFrame)
+    {
+        RememberOpenSurface();
+        search.Close();
+        dock.Close();
+        control.Close();
+        recents.Close();
+        quickApps.Close();
+        appsDrawer.CloseInner();
+        outerFrame.Router.Home();
+        var seat = launchSeat;
+        launchSeat = null;
+        trail.Clear();
+        ApplySeat(seat ?? new ShellSeat(ShellKind.Studio, 0, DestinationTab.Home));
     }
 
     private void GoBack(in AppletFrame outerFrame)
@@ -610,6 +858,7 @@ public sealed class HandsetShell
             }
 
             outerFrame.Router.Back();
+            RestoreSeat();
             return;
         }
 
@@ -620,8 +869,22 @@ public sealed class HandsetShell
                 return;
             }
 
+            if (appsDock.AppScreenIndex > 0)
+            {
+                appsDock.Step(-1);
+                preferences.PruneEmptyAppScreens(appsDock.AppScreenIndex);
+                appsDock.SetAppScreens(preferences.AppScreenCount);
+                return;
+            }
+
             appsDrawer.CloseInner();
             appsDock.Close();
+            return;
+        }
+
+        if (appsDock.OnExtra)
+        {
+            appsDock.ShowStudio();
             return;
         }
 
@@ -632,6 +895,12 @@ public sealed class HandsetShell
 
         if (CurrentDestination() is { } dest && dest.Back())
         {
+            return;
+        }
+
+        if (trail.Count > 0)
+        {
+            RestoreSeat();
             return;
         }
 
@@ -672,7 +941,8 @@ public sealed class HandsetShell
             return;
         }
 
-        appsDock.Open();
+        RememberLaunchSeat();
+        appsDock.CoverWithApp();
         if (place is { Length: > 0 })
         {
             router.OpenFrom(id, origin, place);
@@ -687,7 +957,8 @@ public sealed class HandsetShell
         recents.Close();
         if (router.CanOpen(id))
         {
-            appsDock.Open();
+            RememberLaunchSeat();
+            appsDock.CoverWithApp();
             router.Open(id);
             return;
         }
@@ -704,7 +975,9 @@ public sealed class HandsetShell
         }
     }
 
-    private void LaunchQuickApp(string id)
+    private void LaunchQuickApp(string id) => LaunchQuickApp(id, "");
+
+    private void LaunchQuickApp(string id, string routeHint)
     {
         if (AppShelf.Find(id) is not AppSpec spec)
         {
@@ -717,18 +990,61 @@ public sealed class HandsetShell
             return;
         }
 
-        appsDock.Open();
-        router.Open(id);
+        RememberLaunchSeat();
+        appsDock.CoverWithApp();
+        if (routeHint.Length > 0)
+        {
+            router.Open(id, routeHint);
+        }
+        else
+        {
+            router.Open(id);
+        }
     }
 
     private void OpenQuickCustomize()
     {
-        appsDock.Open();
-        appsDrawer.ShowManage();
+        RememberLaunchSeat();
+        appsDock.CoverWithApp();
+        router.Open("appstore");
     }
 
-    private void OpenDestination(DestinationTab tab, int section, string talkId = "", string profileId = "")
+    private void OpenDestination(DestinationTab tab, int section, string talkId = "", string profileId = "",
+        string noticeId = "", bool remember = true)
     {
+        if (remember)
+        {
+            RememberSeat();
+        }
+
+        if (tab == DestinationTab.Social)
+        {
+            if (section == SocialPane.Phone)
+            {
+                LaunchQuickApp("phone");
+                return;
+            }
+
+            LaunchQuickApp(section == SocialPane.People ? "friends" : "pearlchat");
+            if (destinationsByTab.TryGetValue(DestinationTab.Social, out var social) &&
+                social is ISectionedDestination socialPanes)
+            {
+                socialPanes.ShowSection(section);
+            }
+
+            if (talkId.Length > 0)
+            {
+                OpenTalk(talkId);
+            }
+
+            if (profileId.Length > 0)
+            {
+                OpenProfile(profileId);
+            }
+
+            return;
+        }
+
         if (tab == DestinationTab.Home && section == HomePane.Dashboard)
         {
             appsDock.ShowStudio();
@@ -749,6 +1065,12 @@ public sealed class HandsetShell
             destination is ISectionedDestination panes)
         {
             panes.ShowSection(section);
+        }
+
+        if (noticeId.Length > 0 && destinationsByTab.TryGetValue(DestinationTab.Home, out var home) &&
+            home is HomeDestination dashboard)
+        {
+            dashboard.OpenAnnouncement(noticeId);
         }
 
         if (talkId.Length > 0)
@@ -812,11 +1134,11 @@ public sealed class HandsetShell
         DestinationTab.Social => section switch
         {
             SocialPane.Phone => "phone",
-            SocialPane.People => "people",
+            SocialPane.People => "friends",
             SocialPane.Feed => "feed",
             SocialPane.Communities => "communities",
             SocialPane.Linkshells => "linkshells",
-            _ => "messages",
+            _ => "direct",
         },
         DestinationTab.Explore => section == ExplorePane.Events ? "events" : "explore",
         DestinationTab.You => "you",
@@ -831,12 +1153,7 @@ public sealed class HandsetShell
             return;
         }
 
-        currentTab = DestinationTab.Social;
-        if (scrollByTab.TryGetValue(currentTab, out var jumped))
-        {
-            jumped.Reset();
-        }
-
+        LaunchQuickApp("pearlchat");
         if (destinationsByTab.TryGetValue(DestinationTab.Social, out var destination) &&
             destination is SocialDestination social)
         {
@@ -851,16 +1168,119 @@ public sealed class HandsetShell
             return;
         }
 
-        currentTab = DestinationTab.Social;
-        if (scrollByTab.TryGetValue(currentTab, out var jumped))
-        {
-            jumped.Reset();
-        }
-
+        LaunchQuickApp("friends");
         if (destinationsByTab.TryGetValue(DestinationTab.Social, out var destination) &&
             destination is SocialDestination social)
         {
             social.OpenProfile(peerId);
         }
     }
+
+    private void RememberLaunchSeat()
+    {
+        launchSeat = CaptureSeat();
+        RememberSeat();
+    }
+
+    private void RememberSeat()
+    {
+        var seat = CaptureSeat();
+        if (trail.Count > 0 && trail[^1].Equals(seat))
+        {
+            return;
+        }
+
+        trail.Add(seat);
+        if (trail.Count > 16)
+        {
+            trail.RemoveAt(0);
+        }
+    }
+
+    private void RestoreSeat()
+    {
+        if (trail.Count == 0)
+        {
+            appsDock.Retreat();
+            return;
+        }
+
+        var seat = trail[^1];
+        trail.RemoveAt(trail.Count - 1);
+        ApplySeat(seat);
+    }
+
+    private void ApplySeat(ShellSeat seat)
+    {
+        switch (seat.Kind)
+        {
+            case ShellKind.Extra:
+                currentTab = DestinationTab.Home;
+                ShowHomeDashboard();
+                appsDock.SetDestLane(false);
+                if (seat.Index >= 0 && seat.Index < preferences.ExtraHomeScreens)
+                {
+                    appsDock.ShowExtra(seat.Index);
+                    return;
+                }
+
+                appsDock.ShowStudio();
+                return;
+            case ShellKind.Apps:
+                currentTab = DestinationTab.Home;
+                ShowHomeDashboard();
+                appsDock.SetDestLane(false);
+                appsDock.ShowAppScreen(seat.Index);
+                return;
+            case ShellKind.Dest:
+                OpenDestination(seat.Tab, seat.Index, remember: false);
+                return;
+            default:
+                currentTab = DestinationTab.Home;
+                ShowHomeDashboard();
+                appsDock.SetDestLane(false);
+                appsDock.ShowStudio();
+                return;
+        }
+    }
+
+    private void ShowHomeDashboard()
+    {
+        if (destinationsByTab.TryGetValue(DestinationTab.Home, out var home) &&
+            home is ISectionedDestination panes)
+        {
+            panes.ShowSection(HomePane.Dashboard);
+        }
+    }
+
+    private ShellSeat CaptureSeat()
+    {
+        if (appsDock.OnApps)
+        {
+            return new ShellSeat(ShellKind.Apps, appsDock.AppScreenIndex, currentTab);
+        }
+
+        if (appsDock.OnExtra)
+        {
+            return new ShellSeat(ShellKind.Extra, appsDock.ExtraIndex, DestinationTab.Home);
+        }
+
+        var section = CurrentDestination() is ISectionedDestination panes ? panes.CurrentSection : 0;
+        if (currentTab != DestinationTab.Home || section != HomePane.Dashboard)
+        {
+            return new ShellSeat(ShellKind.Dest, section, currentTab);
+        }
+
+        return new ShellSeat(ShellKind.Studio, 0, DestinationTab.Home);
+    }
+
+    private enum ShellKind : byte
+    {
+        Studio = 0,
+        Extra = 1,
+        Apps = 2,
+        Dest = 3,
+    }
+
+    private readonly record struct ShellSeat(ShellKind Kind, int Index, DestinationTab Tab);
 }

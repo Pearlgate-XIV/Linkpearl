@@ -3,6 +3,7 @@
 
   <PropertyGroup>
     <RootNamespace>Linkpearl.Applets.Life</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>

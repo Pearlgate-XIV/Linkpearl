@@ -49,7 +49,11 @@ public sealed class DestinationHub
     private int pendingSection;
     private string pendingTalk = string.Empty;
     private string pendingProfile = string.Empty;
+    private string pendingNotice = string.Empty;
+    private string pendingApplet = string.Empty;
+    private string pendingAppletHint = string.Empty;
     private bool pending;
+    private bool appletPending;
     private bool searchPending;
     private bool menuPending;
 
@@ -59,6 +63,17 @@ public sealed class DestinationHub
         pendingSection = section;
         pendingTalk = string.Empty;
         pendingProfile = string.Empty;
+        pendingNotice = string.Empty;
+        pending = true;
+    }
+
+    public void OpenAnnouncement(string announcementId)
+    {
+        pendingTab = DestinationTab.Home;
+        pendingSection = HomePane.Announcements;
+        pendingTalk = string.Empty;
+        pendingProfile = string.Empty;
+        pendingNotice = announcementId ?? string.Empty;
         pending = true;
     }
 
@@ -68,6 +83,7 @@ public sealed class DestinationHub
         pendingSection = SocialPane.Messages;
         pendingTalk = threadId;
         pendingProfile = string.Empty;
+        pendingNotice = string.Empty;
         pending = true;
     }
 
@@ -77,19 +93,29 @@ public sealed class DestinationHub
         pendingSection = SocialPane.People;
         pendingTalk = string.Empty;
         pendingProfile = peerId;
+        pendingNotice = string.Empty;
         pending = true;
+    }
+
+    public void OpenApplet(string appletId, string routeHint = "")
+    {
+        pendingApplet = appletId ?? string.Empty;
+        pendingAppletHint = routeHint ?? string.Empty;
+        appletPending = pendingApplet.Length > 0;
     }
 
     public void OpenSearch() => searchPending = true;
 
     public void OpenMenu() => menuPending = true;
 
-    public bool TryTake(out DestinationTab tab, out int section, out string talkId, out string profileId)
+    public bool TryTake(out DestinationTab tab, out int section, out string talkId, out string profileId,
+        out string noticeId)
     {
         tab = pendingTab;
         section = pendingSection;
         talkId = pendingTalk;
         profileId = pendingProfile;
+        noticeId = pendingNotice;
         if (!pending)
         {
             return false;
@@ -98,7 +124,23 @@ public sealed class DestinationHub
         pending = false;
         pendingTalk = string.Empty;
         pendingProfile = string.Empty;
+        pendingNotice = string.Empty;
         return true;
+    }
+
+    public bool TryTakeApplet(out string appletId, out string routeHint)
+    {
+        appletId = pendingApplet;
+        routeHint = pendingAppletHint;
+        if (!appletPending)
+        {
+            return false;
+        }
+
+        appletPending = false;
+        pendingApplet = string.Empty;
+        pendingAppletHint = string.Empty;
+        return appletId.Length > 0;
     }
 
     public bool TryTakeSearch()

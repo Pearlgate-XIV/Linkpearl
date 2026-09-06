@@ -21,4 +21,7 @@ public static class HandsetClockText
     public static string FormatLocal(IClock clock, bool use24Hour) => use24Hour
         ? clock.Now.ToString("HH:mm", CultureInfo.CurrentCulture)
         : clock.Now.ToString("h:mm tt", CultureInfo.CurrentCulture);
+
+    public static string FormatDate(IClock clock) =>
+        clock.Now.ToString("ddd, MMM d", CultureInfo.CurrentCulture);
 }

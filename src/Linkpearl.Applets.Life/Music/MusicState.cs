@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Linkpearl.Audio;
 using Linkpearl.Modules;
 
 namespace Linkpearl.Applets.Life.Music;
@@ -6,9 +8,10 @@ namespace Linkpearl.Applets.Life.Music;
 internal enum MusicTab : byte
 {
     Home = 0,
-    Discover = 1,
-    Library = 2,
-    Profile = 3,
+    Feed = 1,
+    Search = 2,
+    Library = 3,
+    Profile = 4,
 }
 
 internal enum MusicPage : byte
@@ -25,6 +28,24 @@ internal enum MusicPage : byte
     Roles = 9,
     Switcher = 10,
     EditProfile = 11,
+    GenreList = 12,
+    Playlist = 13,
+    PickPlaylist = 14,
+    PlacePhoto = 15,
+    Settings = 16,
+}
+
+internal enum MusicPhotoKind : byte
+{
+    Banner = 0,
+    Face = 1,
+}
+
+internal enum MusicFeedPane : byte
+{
+    Radio = 0,
+    Following = 1,
+    Live = 2,
 }
 
 internal sealed class MusicState
@@ -39,6 +60,8 @@ internal sealed class MusicState
 
     public string DisplayName { get; set; } = string.Empty;
 
+    public string Honorific { get; set; } = string.Empty;
+
     public string Handle { get; set; } = string.Empty;
 
     public string DjName { get; set; } = string.Empty;
@@ -50,6 +73,28 @@ internal sealed class MusicState
     public string StationBio { get; set; } = string.Empty;
 
     public string StationArtPath { get; set; } = string.Empty;
+
+    public string ProfileBannerPath { get; set; } = string.Empty;
+
+    public string ProfileFacePath { get; set; } = string.Empty;
+
+    public bool UsesHandsetProfile { get; set; } = true;
+
+    public bool UsesHandsetIdentity { get; set; } = true;
+
+    public float BannerZoom { get; set; } = 1f;
+
+    public float BannerFocusX { get; set; } = 0.5f;
+
+    public float BannerFocusY { get; set; } = 0.5f;
+
+    public float FaceZoom { get; set; } = 1f;
+
+    public float FaceFocusX { get; set; } = 0.5f;
+
+    public float FaceFocusY { get; set; } = 0.5f;
+
+    public MusicPhotoKind Placing { get; set; }
 
     public string StationMount { get; set; } = string.Empty;
 
@@ -77,13 +122,27 @@ internal sealed class MusicState
 
     public HashSet<string> Following { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<FollowedStationSnap> FollowedStations { get; } = new();
+
+    public List<MusicPlaylist> Playlists { get; } = new();
+
+    public List<MusicStationMark> Queue { get; } = new();
+
+    public int QueueIndex { get; set; }
+
+    public string DraftName { get; set; } = string.Empty;
+
+    public string ViewingPlaylistId { get; set; } = string.Empty;
+
+    public MusicStationMark? Pending { get; set; }
+
     public string ViewingId { get; set; } = string.Empty;
 
     public string PeopleQuery { get; set; } = string.Empty;
 
     public MusicTab Tab { get; set; } = MusicTab.Home;
 
-    public bool DiscoverLive { get; set; }
+    public MusicFeedPane FeedPane { get; set; }
 
     public MusicPage Page { get; set; } = MusicPage.Onboard;
 
@@ -95,12 +154,94 @@ internal sealed class MusicState
 
     public float SheetHeight { get; set; } = 1600f;
 
+    [JsonIgnore]
+    public string RevealStationId { get; set; } = string.Empty;
+
     public static readonly string[] Genres =
     {
-        "Lo-Fi", "Rock", "Metal", "Electronic", "Bass", "Dubstep", "Techno", "Chill", "House", "Ambient",
+        "Pop", "Hip Hop", "Rock", "Metal", "Electronic", "Bass", "Chill", "Country", "Latin",
     };
 
     public string Genre => Genres[Math.Clamp(GenreIndex, 0, Genres.Length - 1)];
+
+    [JsonIgnore]
+    public string GenreTagDraft { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool ReportOpen { get; set; }
+
+    [JsonIgnore]
+    public int ReportReason { get; set; }
+
+    [JsonIgnore]
+    public string ReportDetail { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string ReportTarget { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string ReportTitle { get; set; } = string.Empty;
+
+    public static string NormalizeHashtag(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var text = raw.Trim();
+        while (text.Length > 0 && text[0] == '#')
+        {
+            text = text[1..].Trim();
+        }
+
+        var slug = new char[Math.Min(text.Length, 24)];
+        var count = 0;
+        for (var index = 0; index < text.Length && count < slug.Length; index++)
+        {
+            var glyph = text[index];
+            if (glyph is >= 'A' and <= 'Z')
+            {
+                slug[count++] = (char)(glyph + 32);
+                continue;
+            }
+
+            if (glyph is >= 'a' and <= 'z' or >= '0' and <= '9')
+            {
+                slug[count++] = glyph;
+            }
+        }
+
+        return count == 0 ? string.Empty : new string(slug, 0, count);
+    }
+
+    public static string FormatHashtag(string tag)
+    {
+        var slug = NormalizeHashtag(tag);
+        return slug.Length == 0 ? string.Empty : "#" + slug;
+    }
+
+    public bool TryAddHashtag(string? raw)
+    {
+        var slug = NormalizeHashtag(raw);
+        if (slug.Length == 0)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < Interests.Count; index++)
+        {
+            if (string.Equals(NormalizeHashtag(Interests[index]), slug, StringComparison.Ordinal))
+            {
+                GenreTagDraft = string.Empty;
+                return false;
+            }
+        }
+
+        Interests.Add(slug);
+        GenreTagDraft = string.Empty;
+        return true;
+    }
 
     public static string NormalizeCapture(string? app) =>
         string.Equals(app, "mic", StringComparison.OrdinalIgnoreCase) ? "mic" : "sound";
@@ -152,12 +293,25 @@ internal sealed class MusicState
                     state.Dj = dto.Dj;
                     state.Venue = dto.Venue;
                     state.DisplayName = dto.DisplayName ?? string.Empty;
+                    state.Honorific = dto.Honorific ?? string.Empty;
                     state.Handle = dto.Handle ?? string.Empty;
                     state.DjName = dto.DjName ?? string.Empty;
                     state.StationName = dto.StationName ?? string.Empty;
                     state.StationId = dto.StationId ?? string.Empty;
                     state.StationBio = dto.StationBio ?? string.Empty;
                     state.StationArtPath = dto.StationArtPath ?? string.Empty;
+                    state.ProfileBannerPath = dto.ProfileBannerPath ?? string.Empty;
+                    state.ProfileFacePath = dto.ProfileFacePath ?? string.Empty;
+                    state.UsesHandsetProfile = dto.UsesHandsetProfile ??
+                        (string.IsNullOrWhiteSpace(dto.ProfileFacePath) &&
+                         string.IsNullOrWhiteSpace(dto.ProfileBannerPath));
+                    state.UsesHandsetIdentity = dto.UsesHandsetIdentity ?? state.UsesHandsetProfile;
+                    state.BannerZoom = dto.BannerZoom > 0f ? dto.BannerZoom : 1f;
+                    state.BannerFocusX = dto.BannerFocusX == 0f && dto.BannerFocusY == 0f ? 0.5f : dto.BannerFocusX;
+                    state.BannerFocusY = dto.BannerFocusX == 0f && dto.BannerFocusY == 0f ? 0.5f : dto.BannerFocusY;
+                    state.FaceZoom = dto.FaceZoom > 0f ? dto.FaceZoom : 1f;
+                    state.FaceFocusX = dto.FaceFocusX == 0f && dto.FaceFocusY == 0f ? 0.5f : dto.FaceFocusX;
+                    state.FaceFocusY = dto.FaceFocusX == 0f && dto.FaceFocusY == 0f ? 0.5f : dto.FaceFocusY;
                     state.StationMount = SlugMount(dto.StationMount ?? string.Empty);
                     state.IcecastHost = (dto.IcecastHost ?? string.Empty).Trim();
                     state.IcecastPassword = dto.IcecastPassword ?? string.Empty;
@@ -194,6 +348,29 @@ internal sealed class MusicState
                             }
                         }
                     }
+
+                    if (dto.FollowedStations is { Length: > 0 })
+                    {
+                        foreach (var row in dto.FollowedStations)
+                        {
+                            if (row is { Id.Length: > 0 })
+                            {
+                                state.RememberFollowed(row);
+                            }
+                        }
+                    }
+
+                    if (dto.Playlists is { Length: > 0 })
+                    {
+                        foreach (var row in dto.Playlists)
+                        {
+                            var list = MusicPlaylist.FromSave(row);
+                            if (list is not null)
+                            {
+                                state.Playlists.Add(list);
+                            }
+                        }
+                    }
                 }
             }
             catch (JsonException)
@@ -214,9 +391,16 @@ internal sealed class MusicState
             state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
         }
 
-        if (state.Interests.Count == 0)
+        for (var index = state.Interests.Count - 1; index >= 0; index--)
         {
-            state.Interests.Add(Genres[0]);
+            var slug = NormalizeHashtag(state.Interests[index]);
+            if (slug.Length == 0)
+            {
+                state.Interests.RemoveAt(index);
+                continue;
+            }
+
+            state.Interests[index] = slug;
         }
 
         state.Page = state.Onboarded ? MusicPage.Tabs : MusicPage.Onboard;
@@ -236,12 +420,23 @@ internal sealed class MusicState
                 Dj = Dj,
                 Venue = Venue,
                 DisplayName = DisplayName,
+                Honorific = Honorific,
                 Handle = Handle,
                 DjName = DjName,
                 StationName = StationName,
                 StationId = StationId,
                 StationBio = StationBio,
                 StationArtPath = StationArtPath,
+                ProfileBannerPath = ProfileBannerPath,
+                ProfileFacePath = ProfileFacePath,
+                UsesHandsetProfile = UsesHandsetProfile,
+                UsesHandsetIdentity = UsesHandsetIdentity,
+                BannerZoom = BannerZoom,
+                BannerFocusX = BannerFocusX,
+                BannerFocusY = BannerFocusY,
+                FaceZoom = FaceZoom,
+                FaceFocusX = FaceFocusX,
+                FaceFocusY = FaceFocusY,
                 StationMount = StationMount,
                 IcecastHost = IcecastHost,
                 IcecastPassword = IcecastPassword,
@@ -255,11 +450,29 @@ internal sealed class MusicState
                 Interests = Interests.ToArray(),
                 Favorites = Favorites.ToArray(),
                 Following = Following.ToArray(),
+                FollowedStations = FollowedStations.ToArray(),
+                Playlists = Playlists.Select(static row => row.ToSave()).ToArray(),
             }));
         }
         catch (IOException)
         {
         }
+    }
+
+    public void AdjustPlacing(float zoom, float focusX, float focusY)
+    {
+        zoom = Math.Clamp(zoom, 0.28f, 4.5f);
+        if (Placing == MusicPhotoKind.Face)
+        {
+            FaceZoom = zoom;
+            FaceFocusX = focusX;
+            FaceFocusY = focusY;
+            return;
+        }
+
+        BannerZoom = zoom;
+        BannerFocusX = focusX;
+        BannerFocusY = focusY;
     }
 
     public void Open(MusicPage page)
@@ -300,6 +513,90 @@ internal sealed class MusicState
         return false;
     }
 
+    public static string BareStationId(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return string.Empty;
+        }
+
+        var text = id.Trim();
+        return text.StartsWith("live:", StringComparison.OrdinalIgnoreCase) ? text["live:".Length..] : text;
+    }
+
+    public bool FollowsStationId(string id)
+    {
+        var bare = BareStationId(id);
+        return bare.Length > 0 &&
+               (Following.Contains(bare) || Following.Contains("live:" + bare) || Following.Contains(id));
+    }
+
+    public int FollowingCount()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in Following)
+        {
+            var bare = BareStationId(id);
+            if (bare.Length > 0)
+            {
+                seen.Add(bare);
+            }
+        }
+
+        return seen.Count;
+    }
+
+    public bool ToggleFollowStation(FollowedStationSnap snap)
+    {
+        var bare = BareStationId(snap.Id);
+        if (bare.Length == 0)
+        {
+            return false;
+        }
+
+        var liveId = "live:" + bare;
+        if (FollowsStationId(bare))
+        {
+            Following.Remove(bare);
+            Following.Remove(liveId);
+            ForgetFollowed(bare);
+            return false;
+        }
+
+        Following.Add(bare);
+        Following.Add(liveId);
+        snap.Id = bare;
+        RememberFollowed(snap);
+        return true;
+    }
+
+    public void RememberFollowed(FollowedStationSnap snap)
+    {
+        var bare = BareStationId(snap.Id);
+        if (bare.Length == 0)
+        {
+            return;
+        }
+
+        snap.Id = bare;
+        for (var index = 0; index < FollowedStations.Count; index++)
+        {
+            if (string.Equals(FollowedStations[index].Id, bare, StringComparison.OrdinalIgnoreCase))
+            {
+                FollowedStations[index] = snap;
+                return;
+            }
+        }
+
+        FollowedStations.Add(snap);
+    }
+
+    public void ForgetFollowed(string id)
+    {
+        var bare = BareStationId(id);
+        FollowedStations.RemoveAll(row => string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase));
+    }
+
     public void ToggleFavorite(string id)
     {
         if (id.Length == 0)
@@ -311,6 +608,57 @@ internal sealed class MusicState
         {
             Favorites.Add(id);
         }
+    }
+
+    public MusicPlaylist? FindPlaylist(string id) =>
+        Playlists.FirstOrDefault(row => string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    public MusicPlaylist CreatePlaylist(string name)
+    {
+        var title = name.Trim();
+        var list = new MusicPlaylist
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = title.Length > 0 ? title : "Playlist " + (Playlists.Count + 1),
+        };
+        Playlists.Add(list);
+        DraftName = string.Empty;
+        return list;
+    }
+
+    public void AddPending(string playlistId)
+    {
+        if (Pending is null)
+        {
+            return;
+        }
+
+        FindPlaylist(playlistId)?.Put(Pending);
+        Pending = null;
+    }
+
+    public void ArmQueue(IReadOnlyList<MusicStationMark> stations, int index)
+    {
+        Queue.Clear();
+        Queue.AddRange(stations);
+        QueueIndex = Queue.Count == 0 ? 0 : Math.Clamp(index, 0, Queue.Count - 1);
+    }
+
+    public void ClearQueue()
+    {
+        Queue.Clear();
+        QueueIndex = 0;
+    }
+
+    public MusicStationMark? StepQueue(int delta)
+    {
+        if (Queue.Count == 0)
+        {
+            return null;
+        }
+
+        QueueIndex = (QueueIndex + delta + Queue.Count) % Queue.Count;
+        return Queue[QueueIndex];
     }
 
     private sealed class MusicSave
@@ -325,6 +673,8 @@ internal sealed class MusicState
 
         public string? DisplayName { get; set; }
 
+        public string? Honorific { get; set; }
+
         public string? Handle { get; set; }
 
         public string? DjName { get; set; }
@@ -336,6 +686,26 @@ internal sealed class MusicState
         public string? StationBio { get; set; }
 
         public string? StationArtPath { get; set; }
+
+        public string? ProfileBannerPath { get; set; }
+
+        public string? ProfileFacePath { get; set; }
+
+        public bool? UsesHandsetProfile { get; set; }
+
+        public bool? UsesHandsetIdentity { get; set; }
+
+        public float BannerZoom { get; set; } = 1f;
+
+        public float BannerFocusX { get; set; } = 0.5f;
+
+        public float BannerFocusY { get; set; } = 0.5f;
+
+        public float FaceZoom { get; set; } = 1f;
+
+        public float FaceFocusX { get; set; } = 0.5f;
+
+        public float FaceFocusY { get; set; } = 0.5f;
 
         public string? StationMount { get; set; }
 
@@ -362,5 +732,154 @@ internal sealed class MusicState
         public string[]? Favorites { get; set; }
 
         public string[]? Following { get; set; }
+
+        public FollowedStationSnap[]? FollowedStations { get; set; }
+
+        public PlaylistSave[]? Playlists { get; set; }
     }
+}
+
+internal sealed class FollowedStationSnap
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Host { get; set; } = string.Empty;
+
+    public string Genre { get; set; } = string.Empty;
+
+    public string Bio { get; set; } = string.Empty;
+
+    public string ArtPath { get; set; } = string.Empty;
+
+    public string ListenUrl { get; set; } = string.Empty;
+
+    public string Mount { get; set; } = string.Empty;
+
+    public CommunityStation ToStation(bool live, int listeners = 0, int likes = 0, bool liked = false) =>
+        new(Id, Name.Length > 0 ? Name : "Station", Host, Genre, live, ListenUrl, listeners, Bio, ArtPath, Mount, likes,
+            liked);
+
+    public static FollowedStationSnap From(CommunityStation station) =>
+        new()
+        {
+            Id = MusicState.BareStationId(station.Id),
+            Name = station.Name,
+            Host = station.Host,
+            Genre = station.Genre,
+            Bio = station.Bio,
+            ArtPath = station.ArtPath,
+            ListenUrl = station.ListenUrl,
+            Mount = station.Mount,
+        };
+}
+
+internal sealed class MusicStationMark
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Genre { get; set; } = string.Empty;
+
+    public string Place { get; set; } = string.Empty;
+
+    public string StreamUrl { get; set; } = string.Empty;
+
+    public int Bitrate { get; set; }
+
+    public string ArtUrl { get; set; } = string.Empty;
+
+    public string AlternateUrl { get; set; } = string.Empty;
+
+    public PublicStation ToPublic() =>
+        new(Id, Title, Genre, Place, StreamUrl, Bitrate, ArtUrl, AlternateUrl);
+
+    public static MusicStationMark From(PublicStation station) =>
+        new()
+        {
+            Id = station.Id,
+            Title = station.Title,
+            Genre = station.Genre,
+            Place = station.Place,
+            StreamUrl = station.StreamUrl,
+            Bitrate = station.Bitrate,
+            ArtUrl = station.ArtUrl,
+            AlternateUrl = station.AlternateUrl,
+        };
+}
+
+internal sealed class MusicPlaylist
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public List<MusicStationMark> Stations { get; } = new();
+
+    public void Put(MusicStationMark mark)
+    {
+        if (mark.Id.Length == 0)
+        {
+            return;
+        }
+
+        for (var index = 0; index < Stations.Count; index++)
+        {
+            if (string.Equals(Stations[index].Id, mark.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                Stations[index] = mark;
+                return;
+            }
+        }
+
+        Stations.Add(mark);
+    }
+
+    public bool Drop(string stationId) =>
+        Stations.RemoveAll(row => string.Equals(row.Id, stationId, StringComparison.OrdinalIgnoreCase)) > 0;
+
+    public PlaylistSave ToSave() =>
+        new()
+        {
+            Id = Id,
+            Name = Name,
+            Stations = Stations.ToArray(),
+        };
+
+    public static MusicPlaylist? FromSave(PlaylistSave? row)
+    {
+        if (row is null || string.IsNullOrWhiteSpace(row.Id))
+        {
+            return null;
+        }
+
+        var list = new MusicPlaylist
+        {
+            Id = row.Id.Trim(),
+            Name = string.IsNullOrWhiteSpace(row.Name) ? "Playlist" : row.Name.Trim(),
+        };
+        if (row.Stations is { Length: > 0 })
+        {
+            foreach (var mark in row.Stations)
+            {
+                if (mark is { Id.Length: > 0 })
+                {
+                    list.Stations.Add(mark);
+                }
+            }
+        }
+
+        return list;
+    }
+}
+
+internal sealed class PlaylistSave
+{
+    public string? Id { get; set; }
+
+    public string? Name { get; set; }
+
+    public MusicStationMark[]? Stations { get; set; }
 }

@@ -52,10 +52,10 @@ public static class AppShelf
 {
     public static readonly AppSpec[] Catalog =
     {
-        Spec("pearlchat", "PearlChat", "Messaging", AppGroup.Essentials, AppChip.Social, AppKind.Shortcut,
-            DestinationTab.Social, SocialPane.Messages, true, "pearlchat.png"),
-        Spec("phone", "Phone", "Communication", AppGroup.Essentials, AppChip.Social, AppKind.Shortcut,
-            DestinationTab.Social, SocialPane.Phone, true, "phone.png"),
+        Spec("pearlchat", "PearlChat", "Messaging", AppGroup.Essentials, AppChip.Social, AppKind.Applet,
+            default, 0, true, "pearlchat.png"),
+        Spec("phone", "Phone", "Calls and texts", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
+            true, "phone.png"),
         Spec("music", "Music", "Media Player", AppGroup.Essentials, AppChip.Music, AppKind.Applet, default, 0, true,
             "music.png"),
         Spec("afterdark", "Daylight", "World Map", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
@@ -68,10 +68,12 @@ public static class AppShelf
             "wallet.png"),
         Spec("camera", "Camera", "Capture", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
             "camera.png"),
-        Spec("friends", "Friends", "Social", AppGroup.Life, AppChip.Social, AppKind.Shortcut, DestinationTab.Social,
-            SocialPane.People, true, "friends.png"),
-        Spec("market", "Market Watch", "Economy", AppGroup.Life, AppChip.Utility, AppKind.Shortcut,
-            DestinationTab.Explore, ExplorePane.Places, true, "market_watch.png"),
+        Spec("friends", "Friends", "Social", AppGroup.Life, AppChip.Social, AppKind.Applet, default, 0, true,
+            "friends.png"),
+        Spec("market", "Market", "Universalis", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
+            "market_watch.png"),
+        Spec("appstore", "App Store", "Catalog", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
+            "announcement.png"),
         Spec("retainer", "Retainer", "Companions", AppGroup.Life, AppChip.Utility, AppKind.Shortcut, DestinationTab.Home,
             HomePane.Dashboard, true, "retainer.png"),
         Spec("events", "Events", "Activities", AppGroup.Life, AppChip.Social, AppKind.Shortcut, DestinationTab.Explore,
@@ -79,11 +81,11 @@ public static class AppShelf
         Spec("place", "Place", "Navigation", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
             "place.png"),
         Spec("eorzea", "Eorzea", "Game menus", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
-            "events.png"),
+            "eorzea.png"),
         Spec("settings", "Settings", "System", AppGroup.Tools, AppChip.System, AppKind.Shortcut, DestinationTab.Settings,
             SettingsPane.Front, true, "settings.png"),
         Spec("feedback", "Feedback", "Discord", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
-            "announcement.png"),
+            "feedback.png"),
         Spec("notes", "Notes", "Lists", AppGroup.Tools, AppChip.Utility, AppKind.Applet, default, 0, true, "notes.png"),
         Spec("alarms", "Alarms", "Reminders", AppGroup.Tools, AppChip.Utility, AppKind.Applet, default, 0, true,
             "alarms.png"),
@@ -99,7 +101,7 @@ public static class AppShelf
     public static readonly string[] DefaultInstalled =
     {
         "pearlchat", "phone", "music", "afterdark", "weather", "calendar", "wallet", "camera", "friends", "settings",
-        "feedback", "market", "retainer", "events", "place", "eorzea", "notes", "alarms",
+        "feedback", "market", "appstore", "retainer", "events", "place", "eorzea", "notes", "alarms",
     };
 
     public static readonly string[] ChipLabels = { "All", "Social", "Music", "Utility", "System", "Favorites" };

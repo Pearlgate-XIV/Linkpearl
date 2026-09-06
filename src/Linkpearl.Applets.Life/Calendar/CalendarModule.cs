@@ -11,6 +11,7 @@ public sealed class CalendarModule : ILinkpearlModule
 
     public void Configure(IServiceCollection services, ModuleContext context)
     {
+        services.AddSingleton<CalendarBook>();
         services.AddSingleton<CalendarApplet>();
         services.AddSingleton<IApplet>(provider => provider.GetRequiredService<CalendarApplet>());
     }

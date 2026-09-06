@@ -1,0 +1,19 @@
+---
+description: After every Debug plugin build, copy to LinkpearlDev and reload the phone
+alwaysApply: true
+---
+
+# Reload the phone after every build
+
+When you build Linkpearl for in-game testing (Host Debug / LinkpearlDev):
+
+1. Set `$env:DALAMUD_HOME = "$env:AppData\XIVLauncher\addon\Hooks\dev"`.
+2. `dotnet build src\Linkpearl.Host -c Debug`.
+3. Copy Host `bin\Debug` into the Dalamud path
+   `C:\Users\alexb\OneDrive - Ferris State University\Desktop\Linkpearl2_New\LinkpearlDev`.
+   Do **not** use `%USERPROFILE%\Desktop\Linkpearl2_New\LinkpearlDev` — that is a different folder.
+   Skip `libmp3lame*` so the locked encoder files do not fail the copy.
+4. Touch that folder's `LinkpearlDev.dll` so Dalamud auto-reloads the plugin (this restarts the phone).
+5. Do not leave the user to reload `/xlplugins` unless the copy/touch failed.
+
+Do this after every build in this repo, without being asked.

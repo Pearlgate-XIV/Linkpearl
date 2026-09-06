@@ -55,23 +55,15 @@ internal static class StudioMarks
                     center + new Vector2(size * 0.40f, -size * 0.34f), color, stroke);
                 break;
             case StudioMark.Play:
+                FillTriangle(paint, center + new Vector2(size * 0.46f, 0f),
+                    center + new Vector2(-size * 0.36f, -size * 0.50f),
+                    center + new Vector2(-size * 0.36f, size * 0.50f), color);
+                break;
             case StudioMark.Next:
-                FillTriangle(paint, center + new Vector2(size * 0.40f, 0f),
-                    center + new Vector2(-size * 0.32f, -size * 0.44f),
-                    center + new Vector2(-size * 0.32f, size * 0.44f), color, stroke);
-                if (mark == StudioMark.Next)
-                {
-                    paint.Fill(Rect.FromSize(center + new Vector2(size * 0.40f, -size * 0.44f),
-                        new Vector2(MathF.Max(2.2f, stroke * 1.4f), size * 0.88f)), color, stroke * 0.4f);
-                }
-
+                DrawSkip(paint, center, size, color, forward: true);
                 break;
             case StudioMark.Prev:
-                FillTriangle(paint, center + new Vector2(-size * 0.40f, 0f),
-                    center + new Vector2(size * 0.32f, -size * 0.44f),
-                    center + new Vector2(size * 0.32f, size * 0.44f), color, stroke);
-                paint.Fill(Rect.FromSize(center + new Vector2(-size * 0.52f, -size * 0.44f),
-                    new Vector2(MathF.Max(2.2f, stroke * 1.4f), size * 0.88f)), color, stroke * 0.4f);
+                DrawSkip(paint, center, size, color, forward: false);
                 break;
             case StudioMark.Pause:
                 paint.Stroke(Rect.FromSize(center + new Vector2(-size * 0.36f, -size * 0.42f),
@@ -229,26 +221,21 @@ internal static class StudioMarks
                     center + new Vector2(size * 0.22f, -size * 0.58f), color, stroke);
                 break;
             case StudioMark.Speaker:
-                paint.Fill(Rect.FromSize(center + new Vector2(-size * 0.62f, -size * 0.18f),
-                    new Vector2(size * 0.28f, size * 0.36f)), color, size * 0.08f);
-                FillTriangle(paint, center + new Vector2(size * 0.10f, 0f),
-                    center + new Vector2(-size * 0.28f, -size * 0.42f),
-                    center + new Vector2(-size * 0.28f, size * 0.42f), color, stroke);
-                Span<Vector2> near = stackalloc Vector2[3]
-                {
-                    center + new Vector2(size * 0.22f, -size * 0.22f),
-                    center + new Vector2(size * 0.38f, 0f),
-                    center + new Vector2(size * 0.22f, size * 0.22f),
-                };
-                Span<Vector2> far = stackalloc Vector2[3]
-                {
-                    center + new Vector2(size * 0.38f, -size * 0.40f),
-                    center + new Vector2(size * 0.62f, 0f),
-                    center + new Vector2(size * 0.38f, size * 0.40f),
-                };
-                paint.Polyline(near, color, stroke, closed: false);
-                paint.Polyline(far, color, stroke, closed: false);
+            {
+                var body = Rect.FromSize(center + new Vector2(-size * 0.52f, -size * 0.26f),
+                    new Vector2(size * 0.22f, size * 0.52f));
+                paint.Fill(body, color, size * 0.10f);
+                var neck = body.Max.X - size * 0.02f;
+                var mouthX = center.X + size * 0.06f;
+                FillTrapezoid(paint, neck, center.Y - size * 0.22f, center.Y + size * 0.22f,
+                    mouthX, center.Y - size * 0.58f, center.Y + size * 0.58f, color);
+                var origin = new Vector2(mouthX + size * 0.04f, center.Y);
+                var wave = MathF.Max(2.2f, size * 0.15f);
+                DrawArc(paint, origin, size * 0.32f, color, wave);
+                DrawArc(paint, origin, size * 0.52f, color, wave);
+                DrawArc(paint, origin, size * 0.72f, color, wave);
                 break;
+            }
             case StudioMark.Gear:
                 paint.FillCircle(center, size * 0.28f, color);
                 paint.StrokeCircle(center, size * 0.52f, color, stroke);
@@ -263,13 +250,84 @@ internal static class StudioMarks
         }
     }
 
-    private static void FillTriangle(IPaintSurface paint, Vector2 a, Vector2 b, Vector2 c, Vector4 color, float stroke)
+    private static void DrawSkip(IPaintSurface paint, Vector2 center, float size, Vector4 color, bool forward)
     {
-        var thick = MathF.Max(2.4f, stroke * 1.8f);
-        paint.Polyline(stackalloc Vector2[] { a, b, c }, color, thick, closed: true);
-        paint.FillCircle(a, thick * 0.42f, color);
-        paint.FillCircle(b, thick * 0.42f, color);
-        paint.FillCircle(c, thick * 0.42f, color);
-        paint.FillCircle((a + b + c) / 3f, thick * 0.55f, color);
+        var half = size * 0.52f;
+        var bar = MathF.Max(3.4f, size * 0.18f);
+        var gap = MathF.Max(1.6f, size * 0.08f);
+        var tri = size * 0.80f;
+        var left = center.X - (tri + gap + bar) * 0.5f;
+        var tipX = forward ? left + tri : left + bar + gap;
+        var baseX = forward ? left : left + bar + gap + tri;
+        var barX = forward ? left + tri + gap : left;
+        FillTriangle(paint, new Vector2(baseX, center.Y - half),
+            new Vector2(baseX, center.Y + half),
+            new Vector2(tipX, center.Y), color);
+        paint.Fill(Rect.FromSize(new Vector2(barX, center.Y - half), new Vector2(bar, half * 2f)), color);
+    }
+
+    private static void DrawArc(IPaintSurface paint, Vector2 origin, float radius, Vector4 color, float stroke)
+    {
+        const int steps = 11;
+        Span<Vector2> points = stackalloc Vector2[steps];
+        var start = -1.05f;
+        var sweep = 2.10f;
+        for (var index = 0; index < steps; index++)
+        {
+            var angle = start + sweep * (index / (float)(steps - 1));
+            points[index] = origin + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+        }
+
+        paint.Polyline(points, color, stroke, closed: false);
+        paint.FillCircle(points[0], stroke * 0.5f, color);
+        paint.FillCircle(points[steps - 1], stroke * 0.5f, color);
+    }
+
+    private static void FillTrapezoid(IPaintSurface paint, float leftX, float leftTop, float leftBottom,
+        float rightX, float rightTop, float rightBottom, Vector4 color)
+    {
+        FillTriangle(paint, new Vector2(leftX, leftTop), new Vector2(leftX, leftBottom),
+            new Vector2(rightX, rightTop), color);
+        FillTriangle(paint, new Vector2(leftX, leftBottom), new Vector2(rightX, rightTop),
+            new Vector2(rightX, rightBottom), color);
+    }
+
+    private static void FillTriangle(IPaintSurface paint, Vector2 a, Vector2 b, Vector2 c, Vector4 color)
+    {
+        var minY = MathF.Min(a.Y, MathF.Min(b.Y, c.Y));
+        var maxY = MathF.Max(a.Y, MathF.Max(b.Y, c.Y));
+        var height = maxY - minY;
+        if (height < 0.5f)
+        {
+            return;
+        }
+
+        var step = 0.55f;
+        for (var y = minY; y <= maxY + 0.01f; y += step)
+        {
+            var left = float.MaxValue;
+            var right = float.MinValue;
+            Cross(a, b, y, ref left, ref right);
+            Cross(b, c, y, ref left, ref right);
+            Cross(c, a, y, ref left, ref right);
+            if (right < left)
+            {
+                continue;
+            }
+
+            paint.Line(new Vector2(left, y), new Vector2(right, y), color, step + 0.85f);
+        }
+    }
+
+    private static void Cross(Vector2 from, Vector2 to, float y, ref float left, ref float right)
+    {
+        if ((from.Y <= y && to.Y <= y) || (from.Y > y && to.Y > y) || MathF.Abs(to.Y - from.Y) < 0.0001f)
+        {
+            return;
+        }
+
+        var x = from.X + (to.X - from.X) * ((y - from.Y) / (to.Y - from.Y));
+        left = MathF.Min(left, x);
+        right = MathF.Max(right, x);
     }
 }

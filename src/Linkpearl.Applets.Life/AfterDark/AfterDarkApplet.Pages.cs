@@ -4,6 +4,7 @@ using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 
 namespace Linkpearl.Applets.Life.AfterDark;
 
@@ -116,8 +117,22 @@ public sealed partial class AfterDarkApplet
         {
             AfterDarkChrome.Mute(frame, stack.Take(frame.Units(28f)),
                 "This is the first thing people see in Discover.", night);
-            state.DisplayName = frame.TextField.Draw("ad-name", stack.Take(frame.Units(34f)), state.DisplayName,
+            var shown = EditableName();
+            var next = frame.TextField.Draw("ad-name-" + profileStamp, stack.Take(frame.Units(34f)), shown,
                 "Display name");
+            if (next != shown)
+            {
+                state.DisplayName = next;
+            }
+
+            var honor = ProfileHonorific();
+            var honorNext = frame.TextField.Draw("ad-honor-" + profileStamp, stack.Take(frame.Units(34f)), honor,
+                "Honorific");
+            if (honorNext != honor)
+            {
+                state.Honorific = ShownName.ClampTitle(honorNext);
+            }
+
             state.Handle = frame.TextField.Draw("ad-handle", stack.Take(frame.Units(34f)), state.Handle, "Handle");
             state.Pronouns = frame.TextField.Draw("ad-pronouns", stack.Take(frame.Units(34f)), state.Pronouns,
                 "Pronouns");
@@ -254,6 +269,12 @@ public sealed partial class AfterDarkApplet
             case NightPage.ShareSend:
                 DrawShareSend(frame, area);
                 break;
+            case NightPage.Inbox:
+                DrawMessages(frame, area);
+                break;
+            case NightPage.Alerts:
+                DrawAlerts(frame, area);
+                break;
             default:
                 DrawBlocked(frame, area);
                 break;
@@ -312,7 +333,7 @@ public sealed partial class AfterDarkApplet
         ScenePerson person;
         if (state.StoryIndex < 0)
         {
-            person = new ScenePerson(-1, string.Empty, state.DisplayName, state.Handle, "You", state.OwnStory, true, 0,
+            person = new ScenePerson(-1, string.Empty, ProfileName(), state.Handle, "You", state.OwnStory, true, 0,
                 false, AfterDarkChrome.Tone(night).Accent, Array.Empty<string>(), Array.Empty<string>(),
                 pearl.Current.MeAvatarUrl);
         }
@@ -621,7 +642,7 @@ public sealed partial class AfterDarkApplet
             state.QuoteOf = string.Empty;
             state.DraftMedia.Clear();
             state.Page = NightPage.Tabs;
-            state.Tab = NightTab.Home;
+            state.Tab = NightTab.Feed;
             pearl.WatchFeed(state.FeedEveryone ? "foryou" : "following");
         }
     }
@@ -677,8 +698,7 @@ public sealed partial class AfterDarkApplet
 
         if (!state.TryFind(state.ChatIndex, out var person))
         {
-            state.Page = NightPage.Tabs;
-            state.Tab = NightTab.Messages;
+            state.Open(NightPage.Inbox);
             return;
         }
 
@@ -957,8 +977,15 @@ public sealed partial class AfterDarkApplet
                 var path = shots[index + col].Path;
                 if (state.PickingAvatar)
                 {
-                    pearl.SetAvatar(path);
+                    state.ProfileFacePath = path;
                     state.PickingAvatar = false;
+                    state.Save(paths);
+                }
+                else if (state.PickingBanner)
+                {
+                    state.ProfileBannerPath = path;
+                    state.PickingBanner = false;
+                    state.Save(paths);
                 }
                 else if (state.ReturnTo == NightPage.StoryCompose)
                 {

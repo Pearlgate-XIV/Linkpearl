@@ -22,6 +22,7 @@ public sealed class HandsetFontService : IDisposable
     private readonly IFontAtlas atlas;
     private readonly string fontDirectory;
     private readonly Dictionary<FontRole, IFontHandle> handles = new();
+    private IFontHandle? dreamsDisplay;
     private string displayFace = FounderFaces.Inter;
     private float scale = 1f;
     private bool disposed;
@@ -51,7 +52,17 @@ public sealed class HandsetFontService : IDisposable
         }
     }
 
-    public IFontHandle Handle(FontRole role) => handles[role];
+    public IFontHandle Handle(FontRole role)
+    {
+        if (role == FontRole.Display &&
+            string.Equals(displayFace, FounderFaces.Dreams, StringComparison.Ordinal) &&
+            dreamsDisplay is { Available: true })
+        {
+            return dreamsDisplay;
+        }
+
+        return handles[role];
+    }
 
     public void Rescale(float nextScale)
     {
@@ -60,14 +71,7 @@ public sealed class HandsetFontService : IDisposable
 
     public void SetDisplayFace(string faceId)
     {
-        var id = FounderFaces.Sanitize(faceId);
-        if (string.Equals(id, displayFace, StringComparison.Ordinal) && handles.Count > 0)
-        {
-            return;
-        }
-
-        displayFace = id;
-        Build(scale);
+        displayFace = FounderFaces.Sanitize(faceId);
     }
 
     public void Dispose()
@@ -78,52 +82,64 @@ public sealed class HandsetFontService : IDisposable
         }
 
         disposed = true;
-        foreach (var handle in handles.Values)
-        {
-            handle.Dispose();
-        }
-
-        handles.Clear();
+        ForgetHandles();
     }
 
     private void Build(float nextScale = 1f)
     {
         scale = nextScale;
         using var suppression = atlas.SuppressAutoRebuild();
+        ForgetHandles();
+
+        foreach (var face in Faces)
+        {
+            handles[face.Role] = NewHandle(face.File, face.SizeMultiplier);
+        }
+
+        var dreams = FounderFaces.RelativeFile(FounderFaces.Dreams);
+        if (File.Exists(Path.Combine(fontDirectory, dreams)))
+        {
+            dreamsDisplay = NewHandle(dreams, 2.00f);
+        }
+
+        _ = atlas.BuildFontsAsync().ContinueWith(_ => Rebuilt?.Invoke());
+    }
+
+    private IFontHandle NewHandle(string relative, float sizeMultiplier)
+    {
+        var path = Path.Combine(fontDirectory, relative);
+        if (!File.Exists(path))
+        {
+            path = Path.Combine(fontDirectory, "Inter-Bold.ttf");
+        }
+
+        var file = path;
+        var pixelSize = UiBuilder.DefaultFontSizePx * sizeMultiplier * scale;
+        return atlas.NewDelegateFontHandle(entry => entry.OnPreBuild(tools =>
+        {
+            var config = new SafeFontConfig { SizePx = pixelSize };
+            var built = tools.AddFontFromFile(file, config);
+            config.MergeFont = built;
+            config.GlyphRanges = FancyGlyphs;
+            foreach (var extra in FallbackFaces())
+            {
+                tools.AddFontFromFile(extra, config);
+            }
+
+            tools.Font = built;
+        }));
+    }
+
+    private void ForgetHandles()
+    {
         foreach (var handle in handles.Values)
         {
             handle.Dispose();
         }
 
         handles.Clear();
-
-        foreach (var face in Faces)
-        {
-            var relative = face.Role == FontRole.Display ? FounderFaces.RelativeFile(displayFace) : face.File;
-            var path = Path.Combine(fontDirectory, relative);
-            if (!File.Exists(path))
-            {
-                path = Path.Combine(fontDirectory, face.File);
-            }
-
-            var pixelSize = UiBuilder.DefaultFontSizePx * face.SizeMultiplier * scale;
-            var file = path;
-            handles[face.Role] = atlas.NewDelegateFontHandle(entry => entry.OnPreBuild(tools =>
-            {
-                var config = new SafeFontConfig { SizePx = pixelSize };
-                var built = tools.AddFontFromFile(file, config);
-                config.MergeFont = built;
-                config.GlyphRanges = FancyGlyphs;
-                foreach (var extra in FallbackFaces())
-                {
-                    tools.AddFontFromFile(extra, config);
-                }
-
-                tools.Font = built;
-            }));
-        }
-
-        _ = atlas.BuildFontsAsync().ContinueWith(_ => Rebuilt?.Invoke());
+        dreamsDisplay?.Dispose();
+        dreamsDisplay = null;
     }
 
     private static readonly ushort[] FancyGlyphs =

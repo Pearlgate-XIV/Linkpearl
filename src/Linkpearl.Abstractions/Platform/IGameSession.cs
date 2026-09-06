@@ -63,6 +63,10 @@ public interface IGameSession
 
     string JobName { get; }
 
+    string RaceName { get; }
+
+    int PhoneCountry { get; }
+
     string ZoneName { get; }
 
     string MapPlace { get; }

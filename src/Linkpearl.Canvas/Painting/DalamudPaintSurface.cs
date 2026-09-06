@@ -190,18 +190,38 @@ public sealed class DalamudPaintSurface : IPaintSurface
             return;
         }
 
-        const int steps = 72;
+        var top = new Vector4(from.X, from.Y, from.Z, 1f);
+        var bottom = new Vector4(to.X, to.Y, to.Z, 1f);
+        FillAppTile(area, Mix(top, bottom, 0.55f));
+
+        const int slices = 40;
+        const float exponent = 4.8f;
+        var uv = ImGui.GetFontTexUvWhitePixel();
+        var halfW = MathF.Max(area.Width * 0.5f, 0.5f);
+        var halfH = MathF.Max(area.Height * 0.5f, 0.5f);
         var center = area.Center;
-        var width = MathF.Max(area.Width, 1f);
-        var height = MathF.Max(area.Height, 1f);
-        var previous = AppTilePoint(area, 0f);
-        for (var index = 1; index <= steps; index++)
+        drawList.PrimReserve(slices * 6, (slices + 1) * 2);
+        var start = (int)drawList.VtxCurrentIdx;
+        for (var index = 0; index <= slices; index++)
         {
-            var next = AppTilePoint(area, index / (float)steps);
-            var mid = (previous + next + center) / 3f;
-            var slant = Math.Clamp(((mid.X - area.Min.X) / width + (mid.Y - area.Min.Y) / height) * 0.5f, 0f, 1f);
-            drawList.AddTriangleFilled(center, previous, next, ImGui.GetColorU32(Mix(from, to, slant)));
-            previous = next;
+            var amount = index / (float)slices;
+            var unitY = -1f + 2f * amount;
+            var width = MathF.Max(0.75f, TileHalfWidth(unitY, halfW, exponent));
+            var y = center.Y + unitY * halfH;
+            var color = ImGui.GetColorU32(Mix(top, bottom, amount));
+            drawList.PrimWriteVtx(new Vector2(center.X - width, y), uv, color);
+            drawList.PrimWriteVtx(new Vector2(center.X + width, y), uv, color);
+        }
+
+        for (var index = 0; index < slices; index++)
+        {
+            var at = (ushort)(start + index * 2);
+            drawList.PrimWriteIdx(at);
+            drawList.PrimWriteIdx((ushort)(at + 1));
+            drawList.PrimWriteIdx((ushort)(at + 2));
+            drawList.PrimWriteIdx((ushort)(at + 1));
+            drawList.PrimWriteIdx((ushort)(at + 3));
+            drawList.PrimWriteIdx((ushort)(at + 2));
         }
     }
 
@@ -225,6 +245,12 @@ public sealed class DalamudPaintSurface : IPaintSurface
         {
             drawList.PathLineTo(AppTilePoint(area, index / (float)steps));
         }
+    }
+
+    private static float TileHalfWidth(float unitY, float halfWidth, float exponent)
+    {
+        var remain = 1f - MathF.Pow(MathF.Min(1f, MathF.Abs(unitY)), exponent);
+        return remain <= 0f ? 0f : halfWidth * MathF.Pow(remain, 1f / exponent);
     }
 
     private static Vector2 AppTilePoint(Rect area, float turn)

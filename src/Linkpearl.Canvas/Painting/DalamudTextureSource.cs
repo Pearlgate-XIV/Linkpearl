@@ -186,6 +186,42 @@ public sealed class DalamudTextureSource : ITextureSource
         }
     }
 
+    public void ForgetFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        shared.Remove(path);
+        frames.Remove(path);
+        failed.Remove(path);
+        missing.Remove(path);
+        opaque.Remove(path);
+        mipFailed.Remove(path);
+        if (mips.Remove(path, out var chain))
+        {
+            for (var index = 0; index < chain.Levels.Count; index++)
+            {
+                chain.Levels[index].Wrap.Dispose();
+            }
+        }
+
+        var drop = new List<string>();
+        foreach (var key in frames.Keys)
+        {
+            if (key.StartsWith(path, StringComparison.Ordinal))
+            {
+                drop.Add(key);
+            }
+        }
+
+        for (var index = 0; index < drop.Count; index++)
+        {
+            frames.Remove(drop[index]);
+        }
+    }
+
     public ITextureHandle? FromFile(string path) => FromFile(path, Vector2.Zero);
 
     public ITextureHandle? FromFile(string path, Vector2 destPixels)

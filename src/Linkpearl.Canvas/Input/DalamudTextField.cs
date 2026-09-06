@@ -518,4 +518,16 @@ public sealed class DalamudTextField : ITextField
         yield return (VirtualKey.OEM_6, shift ? '}' : ']');
         yield return (VirtualKey.OEM_7, shift ? '"' : '\'');
     }
+
+    public string ClipboardText()
+    {
+        try
+        {
+            return ImGui.GetClipboardText() ?? string.Empty;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
 }

@@ -21,12 +21,13 @@ internal static class MusicRoster
     public static string SelfId(PearlSnapshot pearl) =>
         pearl.MeId.Length > 0 ? pearl.MeId : "me";
 
-    public static MusicPerson Self(MusicState state, PearlSnapshot pearl, bool broadcasting)
+    public static MusicPerson Self(MusicState state, PearlSnapshot pearl, bool broadcasting, string shownName = "")
     {
         var role = state.Dj ? "DJ" : state.Venue ? "Venue" : "Listener";
+        var name = shownName.Length > 0 ? shownName : (state.DisplayName.Length > 0 ? state.DisplayName : "Listener");
         return new MusicPerson(
             SelfId(pearl),
-            state.DisplayName,
+            name,
             state.Handle,
             state.Bio.Length > 0 ? state.Bio : pearl.MeBio,
             role,
@@ -67,13 +68,15 @@ internal static class MusicRoster
             false);
 
     public static IReadOnlyList<MusicPerson> Directory(MusicState state, PearlSnapshot pearl,
-        IReadOnlyList<CommunityStation> live, IReadOnlyList<CommunityStation> mine, bool broadcasting)
+        IReadOnlyList<CommunityStation> live, IReadOnlyList<CommunityStation> mine,
+        IReadOnlyList<CommunityStation> listed, bool broadcasting, string shownName = "")
     {
         var byId = new Dictionary<string, MusicPerson>(StringComparer.OrdinalIgnoreCase);
-        var self = Self(state, pearl, broadcasting);
+        var self = Self(state, pearl, broadcasting, shownName);
         byId[self.Id] = self;
         AddLive(byId, live);
         AddLive(byId, mine);
+        AddLive(byId, listed);
         for (var index = 0; index < pearl.People.Length; index++)
         {
             var person = FromPearl(pearl.People[index]);

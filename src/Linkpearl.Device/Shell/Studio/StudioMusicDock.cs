@@ -1,6 +1,7 @@
 using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Geometry;
+using Linkpearl.Media;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 
@@ -11,7 +12,7 @@ internal sealed class StudioMusicDock
     private readonly IHandsetAudio audio;
     private readonly IPublicRadio radio;
     private readonly IPearlHub pearl;
-    private readonly Action<Rect> openStations;
+    private readonly Action<Rect, string> openStations;
     private bool volumeOpen;
     private bool volumeDrag;
     private int genreIndex;
@@ -19,7 +20,7 @@ internal sealed class StudioMusicDock
     private float playedSeconds;
     private float scroll;
 
-    public StudioMusicDock(IHandsetAudio audio, IPublicRadio radio, IPearlHub pearl, Action<Rect> openStations)
+    public StudioMusicDock(IHandsetAudio audio, IPublicRadio radio, IPearlHub pearl, Action<Rect, string> openStations)
     {
         this.audio = audio;
         this.radio = radio;
@@ -29,7 +30,7 @@ internal sealed class StudioMusicDock
 
     public bool BlocksPager => volumeOpen || volumeDrag;
 
-    public static float Height(in AppletFrame frame) => frame.Units(96f);
+    public static float Height(in AppletFrame frame) => frame.Units(90f);
 
     public void Draw(in AppletFrame frame, Rect row)
     {
@@ -47,49 +48,42 @@ internal sealed class StudioMusicDock
         var detail = now.Detail ?? string.Empty;
         var id = now.Id ?? string.Empty;
         var artPath = now.ArtPath ?? string.Empty;
-        var gold = frame.Theme.Palette.WarmAccent;
+        var accent = new Vector4(0.18f, 0.86f, 1f, 1f);
         var ink = frame.Theme.Palette.Ink;
         var muted = frame.Theme.Palette.InkMuted;
         var playing = audio.Phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering;
         var tuned = id.Length > 0;
-        StudioChrome.DrawPanel(frame, row);
-        var inset = row.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f), frame.Units(8f)));
-        var speakerW = frame.Units(28f);
-        var volumeGap = frame.Units(16f);
-        var head = inset.TopSlice(frame.Units(13f));
-        StudioChrome.DrawHeader(frame, new Rect(head.Min, new Vector2(head.Max.X - speakerW - volumeGap, head.Max.Y)),
-            tuned ? now.Live ? "NOW · LIVE" : "NOW PLAYING" : "MUSIC", false, out _);
-        var speaker = Rect.FromSize(new Vector2(inset.Max.X - speakerW, inset.Min.Y - frame.Units(1f)),
-            new Vector2(speakerW, speakerW));
-        DrawKey(frame, speaker, StudioMark.Speaker, gold, volumeOpen);
-
-        var body = inset.Inset(new Edges(0f, frame.Units(16f), speakerW + volumeGap, 0f));
-        if (body.Width < 8f || body.Height < 8f)
+        var radius = frame.Units(14f);
+        frame.Paint.Fill(row, frame.Theme.Palette.SurfaceOverlay with { W = 0.82f }, radius);
+        frame.Paint.Stroke(row, accent with { W = 0.22f }, frame.Theme.Metrics.Hairline, radius);
+        var art = row.LeftSlice(row.Height);
+        DrawArt(frame, art, artPath, accent);
+        var pane = row.Inset(new Edges(art.Width + frame.Units(8f), frame.Units(5f), frame.Units(8f),
+            frame.Units(5f)));
+        if (pane.Width < 8f || pane.Height < 8f)
         {
             return;
         }
 
-        var artSide = MathF.Min(body.Height, frame.Units(44f));
-        var art = body.LeftSlice(artSide);
-        DrawArt(frame, art, artPath, gold);
-        var copy = new Rect(new Vector2(art.Max.X + frame.Units(8f), body.Min.Y), body.Max);
-        var gap = frame.Units(4f);
-        var playW = frame.Units(28f);
+        var play = pane.LeftSlice(frame.Units(26f)).TopSlice(frame.Units(26f));
+        var speaker = pane.RightSlice(frame.Units(26f)).TopSlice(frame.Units(26f));
+        var titles = new Rect(new Vector2(play.Max.X + frame.Units(8f), pane.Min.Y),
+            new Vector2(speaker.Min.X - frame.Units(6f), play.Max.Y));
+        var transport = pane.BottomSlice(frame.Units(22f));
         var small = frame.Units(22f);
-        var keyW = small * 3f + playW + gap * 3f;
-        var keyH = frame.Units(26f);
-        var waveH = frame.Units(18f);
-        var floor = copy.BottomSlice(MathF.Max(keyH, waveH));
-        var keys = floor.RightSlice(MathF.Min(keyW, MathF.Max(8f, copy.Width * 0.48f)));
-        var wave = new Rect(
-            new Vector2(copy.Min.X, floor.Center.Y - waveH * 0.5f),
-            new Vector2(keys.Min.X - frame.Units(8f), floor.Center.Y + waveH * 0.5f));
+        var gap = frame.Units(5f);
+        var prev = Rect.FromSize(transport.Min, new Vector2(small, transport.Height));
+        var next = Rect.FromSize(new Vector2(prev.Max.X + gap, transport.Min.Y), new Vector2(small, transport.Height));
+        var shuffle = Rect.FromSize(new Vector2(next.Max.X + gap, transport.Min.Y),
+            new Vector2(small, transport.Height));
+        var wave = new Rect(new Vector2(pane.Min.X, titles.Max.Y + frame.Units(4f)),
+            new Vector2(pane.Max.X, transport.Min.Y - frame.Units(3f)));
         var sliderH = frame.Units(28f);
         var slider = volumeOpen
-            ? new Rect(new Vector2(copy.Min.X, body.Center.Y - sliderH * 0.5f),
-                new Vector2(body.Max.X, body.Center.Y + sliderH * 0.5f))
+            ? new Rect(new Vector2(pane.Min.X, pane.Center.Y - sliderH * 0.5f),
+                new Vector2(pane.Max.X, pane.Center.Y + sliderH * 0.5f))
             : default;
-        if (!volumeOpen && copy.Width > frame.Units(16f) && copy.Height > 4f)
+        if (!volumeOpen)
         {
             var name = tuned && title.Length > 0
                 ? title
@@ -102,27 +96,23 @@ internal sealed class StudioMusicDock
                 ? detail
                 : audio.Phase == HandsetAudioPhase.Failed
                     ? audio.Notice ?? string.Empty
-                    : "Radio · " + genre;
-            var text = new Rect(copy.Min, new Vector2(copy.Max.X, floor.Min.Y - frame.Units(2f)));
-            frame.Text.DrawEllipsized(text.TopSlice(frame.Units(16f)), name,
-                new TextStyle(FontRole.CaptionStrong, ink));
-            frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(14f)), blurb,
+                    : now.Live
+                        ? "Live"
+                        : "Radio · " + genre;
+            frame.Text.DrawEllipsized(titles.TopSlice(frame.Units(12f)), blurb,
                 new TextStyle(FontRole.Caption, muted));
+            frame.Text.DrawEllipsized(titles.BottomSlice(frame.Units(15f)), name,
+                new TextStyle(FontRole.CaptionStrong, ink));
             RememberWave(id, playing, frame.DeltaSeconds);
-            DrawWave(frame, wave, id, Glow(), scroll, gold);
+            DrawWave(frame, wave, id, Glow(), scroll, accent);
+            DrawTime(frame, wave, now.Live ? "LIVE" : Clock(playedSeconds), ink);
+            DrawKey(frame, play, playing ? StudioMark.Pause : StudioMark.Play, accent, true);
+            DrawGhost(frame, prev, StudioMark.Prev, muted);
+            DrawGhost(frame, next, StudioMark.Next, muted);
+            DrawGhost(frame, shuffle, StudioMark.Shuffle, muted);
         }
 
-        var shuffle = Rect.FromSize(keys.Min, new Vector2(small, keys.Height));
-        var prev = Rect.FromSize(new Vector2(shuffle.Max.X + gap, keys.Min.Y), new Vector2(small, keys.Height));
-        var play = Rect.FromSize(new Vector2(prev.Max.X + gap, keys.Min.Y), new Vector2(playW, keys.Height));
-        var next = Rect.FromSize(new Vector2(play.Max.X + gap, keys.Min.Y), new Vector2(small, keys.Height));
-        if (!volumeOpen)
-        {
-            DrawKey(frame, shuffle, StudioMark.Shuffle, gold, false);
-            DrawKey(frame, prev, StudioMark.Prev, gold, false);
-            DrawKey(frame, play, playing ? StudioMark.Pause : StudioMark.Play, gold, true);
-            DrawKey(frame, next, StudioMark.Next, gold, false);
-        }
+        DrawGhost(frame, speaker, StudioMark.Speaker, volumeOpen ? accent : muted);
 
         if (Hit(frame, speaker))
         {
@@ -165,6 +155,12 @@ internal sealed class StudioMusicDock
             return;
         }
 
+        if (Hit(frame, art) || Hit(frame, titles))
+        {
+            openStations(row, NowPlayingPlace(genre, id));
+            return;
+        }
+
         if (wave.Width > 4f && frame.Input.ConsumeClick(wave))
         {
             return;
@@ -179,8 +175,18 @@ internal sealed class StudioMusicDock
 
         if (frame.Input.ConsumeClick(row))
         {
-            openStations(row);
+            openStations(row, "radio");
         }
+    }
+
+    private static string NowPlayingPlace(string genre, string stationId)
+    {
+        if (stationId.Length == 0)
+        {
+            return genre.Length == 0 ? "radio" : "search:" + genre;
+        }
+
+        return "search:" + genre + "|" + stationId;
     }
 
     private void Toggle(IReadOnlyList<PublicStation> stations)
@@ -388,8 +394,8 @@ internal sealed class StudioMusicDock
             return;
         }
 
-        var radius = frame.Units(10f);
-        frame.Paint.Fill(area, frame.Theme.Palette.SurfaceRaised with { W = 0.55f }, radius);
+        var plate = frame.Theme.Palette.SurfaceSunken with { W = 1f };
+        frame.Paint.Fill(area, plate);
         ITextureHandle? texture = null;
         try
         {
@@ -414,11 +420,51 @@ internal sealed class StudioMusicDock
 
         if (texture is { IsReady: true })
         {
-            frame.Paint.ImageRounded(texture, area, Vector2.Zero, Vector2.One, Vector4.One, radius);
+            var crop = CoverFit.Uv(texture.Size, area.Size);
+            frame.Paint.Image(texture, area, crop.Min, crop.Max, Vector4.One);
             return;
         }
 
         StudioMarks.Draw(frame.Paint, area.Inset(area.Width * 0.22f), StudioMark.Note, gold);
+    }
+
+    private static void DrawTime(in AppletFrame frame, Rect wave, string label, Vector4 ink)
+    {
+        if (wave.Width < frame.Units(36f) || wave.Height < frame.Units(10f))
+        {
+            return;
+        }
+
+        var tag = wave.RightSlice(frame.Units(34f)).Inset(new Edges(0f, wave.Height * 0.18f));
+        frame.Paint.Fill(tag, frame.Theme.Palette.SurfaceRaised with { W = 0.92f }, frame.Units(3f));
+        frame.Text.DrawIn(tag, label, new TextStyle(FontRole.Caption, ink, TextAlign.Center, scale: 0.82f));
+    }
+
+    private static string Clock(float seconds)
+    {
+        var total = Math.Max(0, (int)seconds);
+        return (total / 60).ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+               (total % 60).ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static void DrawGhost(in AppletFrame frame, Rect cell, StudioMark mark, Vector4 ink)
+    {
+        if (cell.Width < 4f || cell.Height < 4f)
+        {
+            return;
+        }
+
+        var hover = frame.Input.IsHovering(cell);
+        var side = MathF.Min(cell.Width, cell.Height);
+        if (hover)
+        {
+            frame.Paint.FillCircle(cell.Center, side * 0.54f, new Vector4(1f, 1f, 1f, 0.18f));
+            frame.Paint.StrokeCircle(cell.Center, side * 0.54f, new Vector4(1f, 1f, 1f, 0.40f),
+                frame.Theme.Metrics.Hairline);
+        }
+
+        var size = side * (hover ? 0.56f : 0.50f);
+        StudioMarks.Draw(frame.Paint, cell.Center, size, mark, hover ? frame.Theme.Palette.Ink : ink);
     }
 
     private static void DrawKey(in AppletFrame frame, Rect cell, StudioMark mark, Vector4 gold, bool primary)
@@ -428,12 +474,21 @@ internal sealed class StudioMusicDock
             return;
         }
 
+        var hover = frame.Input.IsHovering(cell);
         var side = MathF.Min(cell.Width, cell.Height);
-        var fill = primary ? gold with { W = 0.94f } : gold with { W = 0.42f };
-        var ink = primary ? new Vector4(0.08f, 0.07f, 0.06f, 1f) : new Vector4(1f, 0.93f, 0.74f, 1f);
-        var radius = side * (primary ? 0.46f : 0.40f);
+        var fill = primary
+            ? gold with { W = hover ? 1f : 0.96f }
+            : gold with { W = hover ? 0.62f : 0.42f };
+        var ink = primary ? frame.Theme.Palette.SurfaceSunken : gold with { W = 0.92f };
+        var radius = side * (primary ? (hover ? 0.52f : 0.46f) : (hover ? 0.46f : 0.40f));
+        if (hover)
+        {
+            frame.Paint.FillCircle(cell.Center, radius + frame.Units(2f), new Vector4(1f, 1f, 1f, 0.16f));
+        }
+
         frame.Paint.FillCircle(cell.Center, radius, fill);
-        frame.Paint.StrokeCircle(cell.Center, radius, gold with { W = 0.88f }, frame.Theme.Metrics.Hairline);
+        frame.Paint.StrokeCircle(cell.Center, radius, gold with { W = hover ? 0.88f : 0.55f },
+            frame.Theme.Metrics.Hairline);
         StudioMarks.Draw(frame.Paint,
             Rect.FromSize(cell.Center - new Vector2(side * 0.36f), new Vector2(side * 0.72f)), mark, ink);
     }

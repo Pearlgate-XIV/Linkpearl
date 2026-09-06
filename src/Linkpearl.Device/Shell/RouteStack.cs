@@ -273,10 +273,11 @@ public sealed class RouteStack : IRouter
         CaptureCurrent();
         var saved = routeHint is { Length: > 0 } ? routeHint : PlaceOf(appletId);
         var entry = new AppletEntry(saved.Length > 0 ? saved : routeHint, originTile);
+        var alwaysEnter = string.Equals(appletId, "pearlchat", StringComparison.Ordinal);
         if (ReferenceEquals(applet, current))
         {
             RememberRecent(appletId, saved);
-            if (routeHint is { Length: > 0 })
+            if (alwaysEnter || routeHint is { Length: > 0 })
             {
                 applet.Enter(entry);
             }
@@ -287,7 +288,7 @@ public sealed class RouteStack : IRouter
 
         current = applet;
         RememberRecent(appletId, saved);
-        if (living.Add(appletId) || routeHint is { Length: > 0 })
+        if (alwaysEnter || living.Add(appletId) || routeHint is { Length: > 0 })
         {
             applet.Enter(entry);
         }

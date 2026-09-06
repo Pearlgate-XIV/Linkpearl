@@ -22,11 +22,12 @@ public readonly struct ChassisPlate
     public readonly float BodyBottom;
     public readonly float Corner;
     public readonly float ScreenCorner;
+    public readonly float Gasket;
 
     public ChassisPlate(string fileName, float width, float height, float screenLeft, float screenTop,
         float screenRight, float screenBottom, float volumeTop, float volumeBottom, float powerTop,
         float powerBottom, float bodyLeft, float bodyTop, float bodyRight, float bodyBottom, float corner,
-        float screenCorner = 0f)
+        float screenCorner = 0f, float gasket = 0f)
     {
         FileName = fileName;
         Aspect = width / height;
@@ -44,6 +45,7 @@ public readonly struct ChassisPlate
         BodyBottom = bodyBottom;
         Corner = corner;
         ScreenCorner = screenCorner;
+        Gasket = gasket;
     }
 
     public Rect ScreenOn(Rect window) =>
@@ -74,8 +76,15 @@ public readonly struct ChassisPlate
         return TightenHole(window, raw);
     }
 
-    public float GasketOn(Rect window) =>
-        ScreenCorner > 0.0001f ? MathF.Max(1.9f, window.Width * 0.007f) * 0.7225f : 0f;
+    public float GasketOn(Rect window)
+    {
+        if (Gasket > 0.0001f)
+        {
+            return window.Width * Gasket;
+        }
+
+        return ScreenCorner > 0.0001f ? MathF.Max(1.9f, window.Width * 0.007f) * 0.7225f : 0f;
+    }
 
     public Rect GlassOn(Rect window)
     {
@@ -86,7 +95,13 @@ public readonly struct ChassisPlate
     public float GlassRadiusOn(Rect window)
     {
         var gasket = GasketOn(window);
-        return MathF.Max(0f, ScreenRadiusOn(window) - gasket * 0.55f);
+        if (gasket <= 0f)
+        {
+            return ScreenRadiusOn(window);
+        }
+
+        var shrink = Gasket > 0.0001f ? gasket : gasket * 0.55f;
+        return MathF.Max(0f, ScreenRadiusOn(window) - shrink);
     }
 
     // Pocket windows shrink the rim with width, so the curve reads as a hairline.
@@ -122,10 +137,10 @@ public readonly struct ChassisPlate
 
     private Rect SideNub(Rect window, float topFrac, float bottomFrac)
     {
-        var left = window.Max.X - window.Width * ScreenRight;
+        var jut = window.Width * MathF.Max(BodyRight, 0.02f);
         var top = window.Min.Y + window.Height * topFrac;
         var bottom = window.Min.Y + window.Height * bottomFrac;
-        return new Rect(new Vector2(left, top), new Vector2(window.Max.X, bottom));
+        return new Rect(new Vector2(window.Max.X - jut, top), new Vector2(window.Max.X, bottom));
     }
 }
 
@@ -143,10 +158,10 @@ public static class ChassisCatalog
         206f / 987f, 310f / 987f, 382f / 987f, 411f / 987f,
         5f / 710f, 4f / 987f, 9f / 710f, 4f / 987f, 33f / 710f);
 
-    public static ChassisPlate Android { get; } = new("android.png", 472f, 1000f,
-        10f / 472f, 10f / 1000f, 14f / 472f, 8f / 1000f,
-        190f / 1000f, 302f / 1000f, 382f / 1000f, 430f / 1000f,
-        0f, 0f, 0f, 0f, 42f / 472f, 30f / 472f);
+    public static ChassisPlate Android { get; } = new("android.png", 462f, 938f,
+        5f / 462f, 5f / 938f, 12f / 462f, 5f / 938f,
+        173f / 938f, 298f / 938f, 348f / 938f, 419f / 938f,
+        0f, 0f, 7f / 462f, 0f, 26f / 462f, 21f / 462f, 4f / 462f);
 
     public static ChassisPlate For(HandsetForm form) => For(form, HandsetCase.Pearl);
 

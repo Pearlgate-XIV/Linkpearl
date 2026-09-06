@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using Linkpearl.Applets;
+using Linkpearl.Calendar;
+using Linkpearl.Device.Shell;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Destinations;
@@ -10,6 +12,7 @@ using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Net;
+using Linkpearl.Notices;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
@@ -34,12 +37,27 @@ internal sealed class StudioSurface
     private readonly StudioWeather sky;
     private readonly StudioHunt hunt = new();
     private readonly StudioMusicDock musicDock;
+    private readonly List<(string Id, Rect Area)> widgetHits = [];
+    private readonly List<(string Id, Rect Area)> appHits = [];
+    private readonly GlassEdit glass;
     private float nameClock;
+    private float jiggle;
+    private string? pressId;
+    private long pressAt;
+    private Vector2 pressPoint;
+    private string? dragId;
+    private bool skipOpen;
+    private int pageNudge;
+    private long edgeAt;
+    private int pickSlot = -1;
+    private bool appsEdit;
+    private int seat = -1;
+    private Rect appsDockArea;
 
     public StudioSurface(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
         IWeatherOracle weather, DisplayPreferences display, bool development, BadgeBook badges, NoticeLedger notices,
-        ProfileChrome profile, Action<string, Rect> openApplet, Action<Rect> openRadioStations, IHandsetAudio audio,
-        IPublicRadio radio)
+        ProfileChrome profile, Action<string, Rect> openApplet, Action<Rect, string> openRadioStations, IHandsetAudio audio,
+        IPublicRadio radio, GlassEdit glass)
     {
         this.clock = clock;
         this.game = game;
@@ -47,6 +65,7 @@ internal sealed class StudioSurface
         this.talk = talk;
         this.hub = hub;
         this.display = display;
+        this.glass = glass;
         this.development = development;
         this.badges = badges;
         this.notices = notices;
@@ -58,14 +77,78 @@ internal sealed class StudioSurface
 
     public bool OverlayOpen => profile.OverlayOpen;
 
-    public bool BlocksPager => musicDock.BlocksPager;
+    public bool Editing => glass.Active || appsEdit;
 
-    public bool Back() => profile.Back();
+    public string? FlyingId => dragId;
 
-    public float Compose(in AppletFrame frame, IApplet? camera)
+    public int PageNudge => pageNudge;
+
+    public void ClearNudge() => pageNudge = 0;
+
+    public void AdoptDrag(string id)
     {
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        glass.Active = true;
+        skipOpen = true;
+        dragId = ContainsId(DisplayPreferences.DefaultStudioWidgets, id) ? "w:" + id : "a:" + id;
+        pressId = dragId;
+        pressAt = Environment.TickCount64;
+        pressPoint = new Vector2(float.MinValue, 0f);
+    }
+
+    public void ReleaseDrag()
+    {
+        pressId = null;
+        dragId = null;
+    }
+
+    public bool BlocksPager(Vector2 at, bool held)
+    {
+        if (musicDock.BlocksPager || pressId is not null || dragId is not null || pickSlot >= 0 || appsEdit)
+        {
+            return true;
+        }
+
+        return held && HitsMoveable(at);
+    }
+
+    public bool Back()
+    {
+        if (pickSlot >= 0)
+        {
+            pickSlot = -1;
+            return true;
+        }
+
+        if (appsEdit)
+        {
+            appsEdit = false;
+            return true;
+        }
+
+        if (glass.Active)
+        {
+            StopEdit();
+            return true;
+        }
+
+        return profile.Back();
+    }
+
+    public float ComposeExtra(in AppletFrame frame, int extraIndex) =>
+        Compose(frame, camera: null, extraIndex);
+
+    public float Compose(in AppletFrame frame, IApplet? camera, int extraIndex = -1)
+    {
+        seat = extraIndex;
+        display.RestoreStudioDocks();
         var content = frame.Content;
         nameClock += frame.DeltaSeconds;
+        jiggle += frame.DeltaSeconds;
         var snapshot = pearl.Current;
         badges.Sync(snapshot.SignedIn && snapshot.FounderSeat > 0 && snapshot.FounderSeat <= FounderFaces.SeatLimit,
             game.JobName, development, GlassName.IsPatron(badges, snapshot, display, development));
@@ -74,12 +157,23 @@ internal sealed class StudioSurface
             return profile.DrawOverlay(frame);
         }
 
-        var dockH = HomeDock.Height(frame);
-        var dockLift = frame.Units(14f);
+        TickDrag(frame, content);
+        widgetHits.Clear();
+        appHits.Clear();
+
+        var dockH = extraIndex < 0 ? HomeDock.Height(frame) : 0f;
+        var dockLift = extraIndex < 0 ? frame.Units(3f) : 0f;
         var inset = content.Inset(new Edges(frame.Units(28f), frame.Units(44f), frame.Units(28f),
             dockH + dockLift + frame.Units(8f)));
         var gap = frame.Units(10f);
         var stack = new Stack(inset, StackAxis.Vertical, gap);
+        if (extraIndex >= 0)
+        {
+            LayoutWidgets(frame, stack, gap);
+            DrawFlying(frame);
+            return content.Height;
+        }
+
         HomeHeaderTools.Draw(frame, frame.Content, notices.Count(snapshot, talk, clock),
             display.Hushed(game.IsInDuty || game.IsInCutscene), out var notice, out var settings);
         if (frame.Input.ConsumeClick(settings))
@@ -91,42 +185,668 @@ internal sealed class StudioSurface
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
-        var musicH = StudioMusicDock.Height(frame);
         var huntH = StudioHunt.BarHeight(frame);
-        var leftover = MathF.Max(0f, stack.Remaining.Height - musicH - gap - huntH - gap);
-        var equal = MathF.Max(0f, (leftover - gap * 2f) / 3f);
-        var appsNeed = frame.Units(52f) * 2f + frame.Units(4f) * 3f +
-                       frame.Text.LineHeight(FontRole.Caption) * 2f;
-        var middleH = MathF.Min(MathF.Max(equal, appsNeed), leftover);
-        var rest = MathF.Max(0f, leftover - middleH - gap * 2f);
-        var sideBand = rest * 0.5f;
         var huntBar = stack.Take(huntH);
-        var calendar = stack.Take(sideBand);
-        var middle = stack.Take(middleH);
-        var weather = stack.Take(sideBand);
-        var music = stack.TakeRemaining();
-        var half = MathF.Max(0f, (middle.Width - gap) * 0.5f);
-
-        DrawCalendar(frame, calendar);
-        DrawAnnouncements(frame, middle.LeftSlice(half));
-        DrawApps(frame, middle.RightSlice(half));
-        sky.Draw(frame, weather, area => openApplet("weather", area));
-        try
-        {
-            musicDock.Draw(frame, music);
-        }
-        catch
-        {
-            // A bad radio frame must not take down search, docks, or soft keys.
-        }
-
+        LayoutWidgets(frame, stack, gap);
         hunt.Draw(frame, huntBar, inset, pearl, talk, hub, openApplet);
+        DrawFlying(frame);
+        if (pickSlot >= 0)
+        {
+            DrawAppPicker(frame, inset);
+        }
         var dock = content.BottomSlice(dockH + dockLift).Inset(new Edges(0f, 0f, 0f, dockLift));
         HomeDock.Draw(frame, dock, camera,
             display.Hushed(game.IsInDuty || game.IsInCutscene),
-            () => hub.Open(DestinationTab.Social, SocialPane.Phone),
+            () => openApplet("phone", content.BottomSlice(dockH + dockLift)),
             () => openApplet("camera", content.BottomSlice(dockH + dockLift)));
+        var at = frame.Input.Pointer;
+        var onChrome = huntBar.Contains(at) || notice.Contains(at) || settings.Contains(at) || dock.Contains(at);
+        if ((appsEdit || pickSlot >= 0) && !skipOpen && !appsDockArea.Contains(at) &&
+            frame.Input.ConsumeClick(content))
+        {
+            appsEdit = false;
+            pickSlot = -1;
+        }
+        else if (glass.Active && !appsEdit && dragId is null && !skipOpen && !onChrome &&
+                 frame.Input.ConsumeClick(content))
+        {
+            StopEdit();
+        }
+
+        if (!frame.Input.IsHeld())
+        {
+            skipOpen = false;
+        }
+
         return content.Height;
+    }
+
+    private void TickDrag(in AppletFrame frame, Rect body)
+    {
+        var held = frame.Input.IsHeld();
+        if (!held)
+        {
+            if (dragId is not null)
+            {
+                ResolveDrop(frame.Input.Pointer);
+            }
+
+            pressId = null;
+            dragId = null;
+            edgeAt = 0;
+            return;
+        }
+
+        if (held && dragId is not null)
+        {
+            WatchEdge(frame, body);
+        }
+
+        if (pressId is not { } holding)
+        {
+            return;
+        }
+
+        if (string.Equals(holding, "w:music", StringComparison.Ordinal) && musicDock.BlocksPager)
+        {
+            return;
+        }
+
+        var travel = (frame.Input.Pointer - pressPoint).Length();
+        var armed = Environment.TickCount64 - pressAt >= 480;
+        var appsHold = string.Equals(holding, "w:apps", StringComparison.Ordinal);
+        if (appsHold && appsEdit)
+        {
+            return;
+        }
+
+        if (travel > frame.Units(6f))
+        {
+            if (glass.Active || armed)
+            {
+                glass.Active = true;
+                appsEdit = false;
+                dragId = holding;
+                pickSlot = -1;
+                skipOpen = true;
+            }
+
+            return;
+        }
+
+        if (!armed)
+        {
+            return;
+        }
+
+        skipOpen = true;
+        if (appsHold)
+        {
+            appsEdit = true;
+            return;
+        }
+
+        glass.Active = true;
+    }
+
+    private void ResolveDrop(Vector2 pointer)
+    {
+        if (dragId is not { Length: > 0 } moving)
+        {
+            return;
+        }
+
+        if (moving.StartsWith("w:", StringComparison.Ordinal))
+        {
+            var widget = moving[2..];
+            display.PlaceStudioWidget(widget, seat);
+            var inside = Hit(widgetHits, pointer, moving, pad: false);
+            var rowHit = HitRow(widgetHits, pointer, moving);
+            var tail = TailBelow(widgetHits, pointer, moving);
+            var target = inside ?? rowHit ?? tail ?? Nearest(widgetHits, pointer, moving);
+            if (target is not { Length: > 2 })
+            {
+                return;
+            }
+
+            var neighbor = target[2..];
+            WidgetDrop side;
+            if (tail is not null && inside is null && rowHit is null)
+            {
+                side = WidgetDrop.Below;
+            }
+            else if (inside is null && rowHit is not null)
+            {
+                side = RowDrop(widgetHits, target, pointer);
+            }
+            else
+            {
+                side = ReadDrop(widgetHits, target, pointer);
+            }
+
+            if (string.Equals(neighbor, "apps", StringComparison.Ordinal) &&
+                side is WidgetDrop.Left or WidgetDrop.Right)
+            {
+                side = AppsDropSide(widgetHits, target, pointer, side);
+            }
+
+            if (side is WidgetDrop.Left or WidgetDrop.Right)
+            {
+                display.SeatStudioWidget(widget, neighbor, side == WidgetDrop.Left);
+                return;
+            }
+
+            display.StackStudioWidget(widget, neighbor, side == WidgetDrop.Above);
+            return;
+        }
+
+        if (moving.StartsWith("a:", StringComparison.Ordinal))
+        {
+            var app = moving[2..];
+            var target = Hit(appHits, pointer, moving);
+            if (target is not { Length: > 2 })
+            {
+                return;
+            }
+
+            display.ReplaceStudioApp(app, IndexOnHome(target[2..]));
+        }
+    }
+
+    private static string? Hit(List<(string Id, Rect Area)> cells, Vector2 pointer, string skip, bool pad = false)
+    {
+        string? found = null;
+        var best = float.MaxValue;
+        for (var index = 0; index < cells.Count; index++)
+        {
+            var cell = cells[index];
+            var area = pad ? cell.Area.Expand(cell.Area.Height * 0.18f) : cell.Area;
+            if (string.Equals(cell.Id, skip, StringComparison.Ordinal) || !area.Contains(pointer))
+            {
+                continue;
+            }
+
+            var distance = (cell.Area.Center - pointer).LengthSquared();
+            if (distance >= best)
+            {
+                continue;
+            }
+
+            best = distance;
+            found = cell.Id;
+        }
+
+        return found;
+    }
+
+    private static string? Nearest(List<(string Id, Rect Area)> cells, Vector2 pointer, string skip)
+    {
+        string? found = null;
+        var best = float.MaxValue;
+        for (var index = 0; index < cells.Count; index++)
+        {
+            var cell = cells[index];
+            if (string.Equals(cell.Id, skip, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var distance = (cell.Area.Center - pointer).LengthSquared();
+            if (distance >= best)
+            {
+                continue;
+            }
+
+            best = distance;
+            found = cell.Id;
+        }
+
+        return found;
+    }
+
+    private static WidgetDrop DropSideOf(Rect area, Vector2 pointer)
+    {
+        var across = area.Width > 1f ? (pointer.X - area.Min.X) / area.Width : 0.5f;
+        var down = area.Height > 1f ? (pointer.Y - area.Min.Y) / area.Height : 0.5f;
+        if (down <= 0.30f)
+        {
+            return WidgetDrop.Above;
+        }
+
+        if (down >= 0.70f)
+        {
+            return WidgetDrop.Below;
+        }
+
+        if (across <= 0.42f)
+        {
+            return WidgetDrop.Left;
+        }
+
+        if (across >= 0.58f)
+        {
+            return WidgetDrop.Right;
+        }
+
+        return down < 0.5f ? WidgetDrop.Above : WidgetDrop.Below;
+    }
+
+    private static WidgetDrop RowDrop(List<(string Id, Rect Area)> cells, string target, Vector2 pointer)
+    {
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (!string.Equals(cells[index].Id, target, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var area = cells[index].Area;
+            if (pointer.Y < area.Min.Y)
+            {
+                return WidgetDrop.Above;
+            }
+
+            if (pointer.Y > area.Max.Y)
+            {
+                return WidgetDrop.Below;
+            }
+
+            return pointer.X < area.Center.X ? WidgetDrop.Left : WidgetDrop.Right;
+        }
+
+        return WidgetDrop.Below;
+    }
+
+    private static string? TailBelow(List<(string Id, Rect Area)> cells, Vector2 pointer, string skip)
+    {
+        string? last = null;
+        var bottom = float.MinValue;
+        for (var index = 0; index < cells.Count; index++)
+        {
+            var cell = cells[index];
+            if (string.Equals(cell.Id, skip, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (cell.Area.Max.Y > bottom)
+            {
+                bottom = cell.Area.Max.Y;
+                last = cell.Id;
+            }
+        }
+
+        return last is not null && pointer.Y > bottom ? last : null;
+    }
+
+    private static string? HitRow(List<(string Id, Rect Area)> cells, Vector2 pointer, string skip)
+    {
+        string? found = null;
+        var best = float.MaxValue;
+        for (var index = 0; index < cells.Count; index++)
+        {
+            var cell = cells[index];
+            if (string.Equals(cell.Id, skip, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var slop = cell.Area.Height * 0.28f;
+            if (pointer.Y < cell.Area.Min.Y - slop || pointer.Y > cell.Area.Max.Y + slop)
+            {
+                continue;
+            }
+
+            var distance = MathF.Abs(cell.Area.Center.X - pointer.X);
+            if (distance >= best)
+            {
+                continue;
+            }
+
+            best = distance;
+            found = cell.Id;
+        }
+
+        return found;
+    }
+
+    private static WidgetDrop SideByX(List<(string Id, Rect Area)> cells, string target, Vector2 pointer)
+    {
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (string.Equals(cells[index].Id, target, StringComparison.Ordinal))
+            {
+                return pointer.X < cells[index].Area.Center.X ? WidgetDrop.Left : WidgetDrop.Right;
+            }
+        }
+
+        return WidgetDrop.Right;
+    }
+
+    private static WidgetDrop AppsDropSide(List<(string Id, Rect Area)> cells, string target, Vector2 pointer,
+        WidgetDrop fallback)
+    {
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (!string.Equals(cells[index].Id, target, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var area = cells[index].Area;
+            var span = area.Width;
+            var along = span > 1f ? (pointer.X - area.Min.X) / span : 0.5f;
+            if (along <= 0.48f)
+            {
+                return WidgetDrop.Left;
+            }
+
+            if (along >= 0.52f)
+            {
+                return WidgetDrop.Right;
+            }
+
+            return fallback;
+        }
+
+        return fallback;
+    }
+
+    private static WidgetDrop ReadDrop(List<(string Id, Rect Area)> cells, string target, Vector2 pointer)
+    {
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (string.Equals(cells[index].Id, target, StringComparison.Ordinal))
+            {
+                return DropSideOf(cells[index].Area, pointer);
+            }
+        }
+
+        return WidgetDrop.Below;
+    }
+
+    private void LayoutWidgets(in AppletFrame frame, Stack stack, float gap)
+    {
+        var order = new List<string>(display.StudioWidgets.Count);
+        for (var index = 0; index < display.StudioWidgets.Count; index++)
+        {
+            var id = display.StudioWidgets[index];
+            if (display.StudioWidgetSeat(id) == seat)
+            {
+                order.Add(id);
+            }
+        }
+
+        var rows = new List<string[]>(order.Count);
+        for (var index = 0; index < order.Count; index++)
+        {
+            var id = order[index];
+            if (index + 1 < order.Count && display.StudioWidgetHalf(id) &&
+                display.StudioWidgetHalf(order[index + 1]))
+            {
+                rows.Add([id, order[index + 1]]);
+                index++;
+                continue;
+            }
+
+            rows.Add([id]);
+        }
+
+        var leftover = stack.Remaining.Height;
+        var musicH = StudioMusicDock.Height(frame);
+        var musicRows = 0;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (rows[index].Length == 1 && string.Equals(rows[index][0], "music", StringComparison.Ordinal))
+            {
+                musicRows++;
+            }
+        }
+
+        var flex = rows.Count - musicRows;
+        var body = leftover - musicH * musicRows - gap * Math.Max(0, rows.Count - 1);
+        var rowH = flex > 0 ? MathF.Max(frame.Units(64f), body / flex) : musicH;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var music = row.Length == 1 && string.Equals(row[0], "music", StringComparison.Ordinal);
+            var area = stack.Take(music ? musicH : rowH);
+            if (row.Length == 2)
+            {
+                var half = MathF.Max(0f, (area.Width - gap) * 0.5f);
+                PlaceWidget(frame, row[0], area.LeftSlice(half));
+                PlaceWidget(frame, row[1], area.RightSlice(half));
+                continue;
+            }
+
+            PlaceWidget(frame, row[0], area);
+        }
+    }
+
+    private void PlaceWidget(in AppletFrame frame, string id, Rect area)
+    {
+        var key = "w:" + id;
+        widgetHits.Add((key, area));
+        if (string.Equals(dragId, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!(string.Equals(id, "music", StringComparison.Ordinal) && musicDock.BlocksPager))
+        {
+            WatchPress(frame, area, key);
+        }
+        var open = !glass.Active && !appsEdit && !skipOpen;
+        var drawn = glass.Active ? area.Translate(EditSway(jiggle, area.Min.X, frame.Units(0.4f))) : area;
+        var hover = open && dragId is null && LiftsOnHover(id) && frame.Input.IsHovering(drawn);
+        if (hover)
+        {
+            drawn = Lift(drawn, 1.06f);
+        }
+
+        DrawWidget(frame, id, drawn, open);
+        if (hover)
+        {
+            var radius = MathF.Max(frame.Units(18f), MathF.Min(drawn.Width, drawn.Height) * 0.12f);
+            frame.Paint.Fill(drawn, new Vector4(1f, 1f, 1f, 0.08f), radius);
+            frame.Paint.Stroke(drawn, new Vector4(1f, 1f, 1f, 0.28f), frame.Theme.Metrics.Hairline, radius);
+        }
+        if (appsEdit && string.Equals(id, "apps", StringComparison.Ordinal))
+        {
+            frame.Paint.Stroke(drawn, frame.Theme.Palette.WarmAccent with { W = 0.35f },
+                frame.Theme.Metrics.Hairline, frame.Units(10f));
+        }
+        else if (glass.Active && dragId is null)
+        {
+            frame.Paint.Stroke(drawn, frame.Theme.Palette.WarmAccent with { W = 0.22f },
+                frame.Theme.Metrics.Hairline, frame.Units(10f));
+        }
+        else if (glass.Active && dragId is { Length: > 2 } flying &&
+                 flying.StartsWith("w:", StringComparison.Ordinal) &&
+                 !string.Equals(flying, key, StringComparison.Ordinal) &&
+                 area.Contains(frame.Input.Pointer))
+        {
+            var gold = frame.Theme.Palette.WarmAccent with { W = 0.20f };
+            var side = string.Equals(id, "apps", StringComparison.Ordinal)
+                ? AppsDropSide(widgetHits, key, frame.Input.Pointer, DropSideOf(area, frame.Input.Pointer))
+                : DropSideOf(area, frame.Input.Pointer);
+            if (side == WidgetDrop.Left)
+            {
+                frame.Paint.Fill(area.LeftSlice(area.Width * 0.5f), gold, frame.Units(10f));
+            }
+            else if (side == WidgetDrop.Right)
+            {
+                frame.Paint.Fill(area.RightSlice(area.Width * 0.5f), gold, frame.Units(10f));
+            }
+            else if (side == WidgetDrop.Above)
+            {
+                frame.Paint.Fill(area.TopSlice(area.Height * 0.5f), gold, frame.Units(10f));
+            }
+            else
+            {
+                frame.Paint.Fill(area.BottomSlice(area.Height * 0.5f), gold, frame.Units(10f));
+            }
+        }
+    }
+
+    private void DrawWidget(in AppletFrame frame, string id, Rect area, bool open)
+    {
+        switch (id)
+        {
+            case "calendar":
+                DrawCalendar(frame, area, open);
+                return;
+            case "announcements":
+                DrawAnnouncements(frame, area, open);
+                return;
+            case "apps":
+                DrawApps(frame, area, open);
+                return;
+            case "weather":
+                sky.Draw(open ? frame : frame.WithInput(SilentInput.Instance), area,
+                    rect => openApplet("weather", rect));
+                return;
+            case "music":
+                try
+                {
+                    musicDock.Draw(open ? frame : frame.WithInput(SilentInput.Instance), area);
+                }
+                catch
+                {
+                }
+
+                return;
+        }
+    }
+
+    private void DrawFlying(in AppletFrame frame)
+    {
+        if (dragId is not { Length: > 2 } flying)
+        {
+            return;
+        }
+
+        if (flying.StartsWith("w:", StringComparison.Ordinal))
+        {
+            var size = new Vector2(frame.Units(168f), frame.Units(110f));
+            for (var index = 0; index < widgetHits.Count; index++)
+            {
+                if (string.Equals(widgetHits[index].Id, flying, StringComparison.Ordinal))
+                {
+                    size = widgetHits[index].Area.Size;
+                    break;
+                }
+            }
+
+            DrawWidget(frame, flying[2..], Rect.FromSize(frame.Input.Pointer - size * 0.5f, size), false);
+            return;
+        }
+
+        if (!flying.StartsWith("a:", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var tile = new Vector2(frame.Units(64f), frame.Units(72f));
+        for (var index = 0; index < appHits.Count; index++)
+        {
+            if (string.Equals(appHits[index].Id, flying, StringComparison.Ordinal))
+            {
+                tile = appHits[index].Area.Size;
+                break;
+            }
+        }
+
+        DrawApp(frame, Rect.FromSize(frame.Input.Pointer - tile * 0.5f, tile), flying[2..], TitleOf(flying[2..]),
+            0, static () => { }, false);
+    }
+
+    private void WatchPress(in AppletFrame frame, Rect area, string id)
+    {
+        if (frame.Input.WasPressed(area))
+        {
+            pressId = id;
+            pressAt = Environment.TickCount64;
+            pressPoint = frame.Input.Pointer;
+        }
+    }
+
+    private bool HitsMoveable(Vector2 at)
+    {
+        for (var index = 0; index < widgetHits.Count; index++)
+        {
+            if (widgetHits[index].Area.Contains(at))
+            {
+                return true;
+            }
+        }
+
+        for (var index = 0; index < appHits.Count; index++)
+        {
+            if (appHits[index].Area.Contains(at))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void WatchEdge(in AppletFrame frame, Rect body)
+    {
+        var edge = frame.Units(28f);
+        var at = frame.Input.Pointer;
+        var side = 0;
+        if (at.X >= body.Max.X - edge)
+        {
+            side = 1;
+        }
+        else if (at.X <= body.Min.X + edge)
+        {
+            side = -1;
+        }
+
+        if (side == 0)
+        {
+            edgeAt = 0;
+            return;
+        }
+
+        if (edgeAt == 0)
+        {
+            edgeAt = Environment.TickCount64;
+        }
+
+        if (Environment.TickCount64 - edgeAt < 280)
+        {
+            return;
+        }
+
+        pageNudge = side;
+        edgeAt = Environment.TickCount64;
+    }
+
+    private static bool ContainsId(IReadOnlyList<string> ids, string id)
+    {
+        for (var index = 0; index < ids.Count; index++)
+        {
+            if (string.Equals(ids[index], id, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void StopEdit()
+    {
+        glass.Active = false;
+        appsEdit = false;
+        pressId = null;
+        dragId = null;
+        skipOpen = false;
+        pickSlot = -1;
     }
 
     // Identity stay on ProfileChrome for social surfaces. This page no longer hosts the card.
@@ -135,13 +855,13 @@ internal sealed class StudioSurface
         var snapshot = pearl.Current;
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
         var patron = GlassName.IsPatron(badges, snapshot, display, development);
-        var name = GlassName.Resolve(display, linked, patron);
+        var name = GlassName.ProfileName(display, linked);
         if (name.Length == 0)
         {
             name = "Linkpearl";
         }
 
-        var title = patron ? ShownName.ClampTitle(display.OwnTitle).Trim() : string.Empty;
+        var title = GlassName.Honorific(display);
         var ink = frame.Theme.Palette.Ink;
         var muted = frame.Theme.Palette.InkMuted;
         var gold = frame.Theme.Palette.WarmAccent;
@@ -208,21 +928,13 @@ internal sealed class StudioSurface
             cursor = titleRow.Max.Y;
         }
 
-        var slotGap = frame.Units(6f);
-        var buttonGap = frame.Units(12f);
         var calendarGap = frame.Units(8f);
         var slot = MathF.Floor(badgeH);
         var rowY = MathF.Round(cursor + badgeGap);
         var editRight = calendarRight - calendarGap;
-        var badgesW = MathF.Min(
-            slot * BadgeCatalog.SlotCount + slotGap * (BadgeCatalog.SlotCount - 1),
-            MathF.Max(0f, editRight - copyLeft - frame.Units(54f) - buttonGap));
-        var badgesRow = Rect.FromSize(new Vector2(copyLeft, rowY), new Vector2(badgesW, slot));
         var edit = new Rect(
-            new Vector2(badgesRow.Max.X + buttonGap, rowY),
-            new Vector2(editRight, rowY + slot));
-
-        profile.DrawStudioBadges(frame, badgesRow);
+            new Vector2(copyLeft, rowY),
+            new Vector2(MathF.Min(copyLeft + frame.Units(124f), editRight), rowY + slot));
         profile.DrawStudioEdit(frame, edit);
     }
 
@@ -387,94 +1099,28 @@ internal sealed class StudioSurface
         frame.Paint.PopClip();
     }
 
-    private void DrawCalendar(in AppletFrame frame, Rect row)
+    private void DrawCalendar(in AppletFrame frame, Rect row, bool open)
     {
-        StudioChrome.DrawPanel(frame, row);
-        var gold = frame.Theme.Palette.WarmAccent;
-        var ink = frame.Theme.Palette.Ink;
-        var muted = frame.Theme.Palette.InkMuted;
-        var now = clock.Now;
-        var inset = row.Inset(new Edges(frame.Units(12f), frame.Units(8f), frame.Units(12f), frame.Units(8f)));
-        StudioChrome.DrawHeader(frame, inset.TopSlice(frame.Units(14f)), "CALENDAR", true, out var more);
-        if (frame.Input.ConsumeClick(more))
-        {
-            openApplet("calendar", row);
-        }
-
-        var body = inset.Inset(new Edges(0f, frame.Units(18f), 0f, 0f));
-        var split = body.Width * 0.48f;
-        var left = body.LeftSlice(split);
-        var right = body.RightSlice(body.Width - split - frame.Units(8f));
-        var weekday = now.ToString("dddd", CultureInfo.CurrentCulture).ToUpperInvariant();
-        var date = weekday + " " + now.Day.ToString(CultureInfo.InvariantCulture);
-        frame.Text.DrawFitted(left.TopSlice(left.Height * 0.58f), date, new TextStyle(FontRole.Title, ink));
-        frame.Text.DrawEllipsized(left.BottomSlice(frame.Units(16f)), "No events today.",
-            new TextStyle(FontRole.Caption, muted));
-
-        DrawMonth(frame, right, now, gold, ink, muted);
-        if (frame.Input.ConsumeClick(row))
+        var bells = EorzeaTime.FromUnix(clock.UtcNow.ToUnixTimeSeconds());
+        CalendarChrome.Dock(open ? frame : frame.WithInput(SilentInput.Instance), row, clock.Now, bells);
+        if (open && frame.Input.ConsumeClick(row))
         {
             openApplet("calendar", row);
         }
     }
 
-    private static void DrawMonth(in AppletFrame frame, Rect area, DateTimeOffset now, Vector4 gold, Vector4 ink,
-        Vector4 muted)
+    private void DrawAnnouncements(in AppletFrame frame, Rect area, bool open)
     {
-        frame.Text.DrawEllipsized(area.TopSlice(frame.Units(12f)),
-            now.ToString("MMMM", CultureInfo.CurrentCulture),
-            new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center, 1f, 0.90f));
-        var grid = area.Inset(new Edges(0f, frame.Units(14f), 0f, 0f));
-        var cellW = grid.Width / 7f;
-        var cellH = grid.Height / 7f;
-        var start = now.Date.AddDays(-(int)now.DayOfWeek);
-        for (var column = 0; column < 7; column++)
-        {
-            var head = Rect.FromSize(new Vector2(grid.Min.X + column * cellW, grid.Min.Y), new Vector2(cellW, cellH));
-            var label = start.AddDays(column).ToString("ddd", CultureInfo.CurrentCulture);
-            frame.Text.DrawIn(head, label.Length > 0 ? label[..1] : "?",
-                new TextStyle(FontRole.Caption, muted, TextAlign.Center, 1f, 0.80f));
-        }
-
-        var first = new DateTime(now.Year, now.Month, 1);
-        var lead = (int)first.DayOfWeek;
-        var days = DateTime.DaysInMonth(now.Year, now.Month);
-        for (var day = 1; day <= days; day++)
-        {
-            var index = lead + day - 1;
-            var cell = Rect.FromSize(
-                new Vector2(grid.Min.X + index % 7 * cellW, grid.Min.Y + (index / 7 + 1) * cellH),
-                new Vector2(cellW, cellH));
-            var today = day == now.Day;
-            if (today)
-            {
-                frame.Paint.StrokeCircle(cell.Center, MathF.Min(cell.Width, cell.Height) * 0.36f, gold,
-                    MathF.Max(1f, frame.Units(1.1f)));
-            }
-
-            frame.Text.DrawIn(cell, day.ToString(CultureInfo.InvariantCulture),
-                new TextStyle(FontRole.Caption, today ? gold : ink, TextAlign.Center, 1f, 0.86f));
-        }
-    }
-
-    private void DrawAnnouncements(in AppletFrame frame, Rect area)
-    {
-        StudioChrome.DrawPanel(frame, area);
-        var gold = frame.Theme.Palette.WarmAccent;
-        var ink = frame.Theme.Palette.Ink;
-        var muted = frame.Theme.Palette.InkMuted;
-        var inset = area.Inset(new Edges(frame.Units(12f), frame.Units(8f), frame.Units(12f), frame.Units(8f)));
-        StudioChrome.DrawHeader(frame, inset.TopSlice(frame.Units(14f)), "LINKPEARL ANNOUNCEMENTS", false,
-            out _);
-
         var snapshot = pearl.Current;
         var notices = snapshot.Announcements ?? [];
         string title;
         string body;
+        var when = string.Empty;
         if (notices.Length > 0)
         {
             title = notices[0].Title;
             body = notices[0].Body;
+            when = AnnouncementChrome.Ago(notices[0].CreatedAtUnix, clock.Now);
         }
         else if (!snapshot.SignedIn)
         {
@@ -483,46 +1129,212 @@ internal sealed class StudioSurface
         }
         else
         {
-            title = "No announcements.";
+            title = "No announcements";
             body = "When Pearlgate posts, the latest note will sit here.";
         }
 
-        var copy = inset.Inset(new Edges(0f, frame.Units(18f), 0f, 0f));
-        var mark = copy.LeftSlice(frame.Units(22f));
-        StudioMarks.Draw(frame.Paint, mark.TopSlice(frame.Units(22f)), StudioMark.Mail, gold);
-        var text = copy.Inset(new Edges(frame.Units(26f), 0f, 0f, 0f));
-        frame.Text.DrawEllipsized(text.TopSlice(frame.Units(16f)), title,
-            new TextStyle(FontRole.CaptionStrong, ink));
-        if (text.Height > frame.Units(28f))
-        {
-            frame.Text.DrawWrapped(text.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)), body,
-                new TextStyle(FontRole.Caption, muted));
-        }
-
-        if (frame.Input.ConsumeClick(area))
+        AnnouncementChrome.Dock(open ? frame : frame.WithInput(SilentInput.Instance), area, title, body, when,
+            Math.Max(0, notices.Length - 1), clock.Now);
+        if (open && frame.Input.ConsumeClick(area))
         {
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
     }
 
-    private void DrawApps(in AppletFrame frame, Rect area)
+    private void DrawApps(in AppletFrame frame, Rect area, bool open)
     {
+        appsDockArea = area;
         var grid = new TileGrid(area, 3, 2, frame.Units(4f));
-        DrawApp(frame, grid.Cell(0, 0), "pearlchat", "Messages", talk.UnreadTotal,
-            () => hub.Open(DestinationTab.Social, SocialPane.Messages));
-        DrawApp(frame, grid.Cell(1, 0), "party", "Party", 0,
-            () => hub.Open(DestinationTab.Social, SocialPane.Linkshells));
-        DrawApp(frame, grid.Cell(2, 0), "friends", "Friends", 0,
-            () => hub.Open(DestinationTab.Social, SocialPane.People));
-        DrawApp(frame, grid.Cell(0, 1), "retainer", "Retainer", 0, () => hub.Open(DestinationTab.You));
-        DrawApp(frame, grid.Cell(1, 1), "market", "Market", 0,
-            () => hub.Open(DestinationTab.Explore, ExplorePane.Places));
-        DrawApp(frame, grid.Cell(2, 1), "events", "Events", 0,
-            () => hub.Open(DestinationTab.Explore, ExplorePane.Events));
+        var ids = display.StudioApps;
+        for (var index = 0; index < 6; index++)
+        {
+            var cell = grid.Cell(index % 3, index / 3);
+            var id = index < ids.Count ? ids[index] : string.Empty;
+            DrawHomeApp(frame, cell, id, index, open);
+        }
+    }
+
+    private void DrawHomeApp(in AppletFrame frame, Rect cell, string appletId, int slot, bool open)
+    {
+        if (appletId.Length > 0 && !display.CanPlaceHomeApp(appletId))
+        {
+            appletId = string.Empty;
+        }
+
+        if (appletId.Length == 0)
+        {
+            if (appsEdit)
+            {
+                frame.Paint.Stroke(cell.Inset(frame.Units(2f)),
+                    pickSlot == slot
+                        ? frame.Theme.Palette.WarmAccent
+                        : frame.Theme.Palette.WarmAccent with { W = 0.28f },
+                    frame.Units(1.4f), frame.Units(10f));
+                if (pickSlot < 0 && !skipOpen && frame.Input.ConsumeClick(cell))
+                {
+                    pickSlot = slot;
+                    skipOpen = true;
+                }
+            }
+
+            return;
+        }
+
+        var key = "a:" + appletId;
+        appHits.Add((key, cell));
+        if (string.Equals(dragId, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var drawn = appsEdit ? cell.Translate(EditSway(jiggle, cell.Min.X + cell.Min.Y, frame.Units(0.35f))) : cell;
+        var dropLit = dragId is { Length: > 2 } && dragId.StartsWith("a:", StringComparison.Ordinal) &&
+                      cell.Contains(frame.Input.Pointer);
+        DrawApp(frame, drawn, appletId, TitleOf(appletId),
+            string.Equals(appletId, "pearlchat", StringComparison.Ordinal) ? talk.UnreadTotal : 0,
+            () => OpenHomeApp(appletId, cell), open);
+        if (appsEdit)
+        {
+            frame.Paint.Stroke(drawn.Inset(frame.Units(2f)),
+                pickSlot == slot
+                    ? frame.Theme.Palette.WarmAccent
+                    : frame.Theme.Palette.WarmAccent with { W = 0.28f },
+                frame.Units(1.4f), frame.Units(10f));
+        }
+
+        if (dropLit)
+        {
+            frame.Paint.Stroke(drawn.Inset(frame.Units(2f)), frame.Theme.Palette.WarmAccent,
+                frame.Units(2f), frame.Units(10f));
+        }
+
+        if (appsEdit && pickSlot < 0 && !skipOpen && frame.Input.ConsumeClick(cell))
+        {
+            pickSlot = slot;
+            skipOpen = true;
+        }
+    }
+
+    private void DrawAppPicker(in AppletFrame frame, Rect area)
+    {
+        var sheet = area.Inset(new Edges(0f, frame.Units(36f), 0f, 0f));
+        frame.Paint.Fill(sheet, frame.Theme.Palette.SurfaceRaised with { W = 0.97f }, frame.Units(14f));
+        frame.Paint.Stroke(sheet, frame.Theme.Palette.WarmAccent with { W = 0.4f }, frame.Theme.Metrics.Hairline,
+            frame.Units(14f));
+        var inner = sheet.Inset(frame.Units(12f));
+        var title = inner.TopSlice(frame.Units(20f));
+        frame.Text.DrawIn(title, "Replace with",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
+        var gridArea = inner.Inset(new Edges(0f, frame.Units(26f), 0f, 0f));
+        var choices = HomeAppChoices();
+        var columns = 4;
+        var cell = frame.Units(64f);
+        var gap = frame.Units(8f);
+        for (var index = 0; index < choices.Count; index++)
+        {
+            var col = index % columns;
+            var row = index / columns;
+            var tile = Rect.FromSize(
+                new Vector2(gridArea.Min.X + col * (gridArea.Width / columns), gridArea.Min.Y + row * (cell + gap)),
+                new Vector2(gridArea.Width / columns, cell));
+            if (tile.Min.Y > gridArea.Max.Y)
+            {
+                break;
+            }
+
+            var id = choices[index];
+            DrawApp(frame, tile, id, TitleOf(id), 0, () => { }, false);
+            if (frame.Input.ConsumeClick(tile))
+            {
+                display.ReplaceStudioApp(id, pickSlot);
+                pickSlot = -1;
+                skipOpen = true;
+            }
+        }
+
+        if (frame.Input.ConsumeClick(sheet))
+        {
+            skipOpen = true;
+        }
+    }
+
+    private List<string> HomeAppChoices()
+    {
+        var choices = new List<string>();
+        AddHomeChoice(choices, "party");
+        var owned = display.OwnedApps;
+        for (var index = 0; index < owned.Count; index++)
+        {
+            AddHomeChoice(choices, owned[index]);
+        }
+
+        return choices;
+    }
+
+    private void AddHomeChoice(List<string> choices, string id)
+    {
+        if (id.Length == 0 || id.StartsWith("folder:", StringComparison.Ordinal) || choices.Contains(id))
+        {
+            return;
+        }
+
+        if (display.CanPlaceHomeApp(id))
+        {
+            choices.Add(id);
+        }
+    }
+
+    private int IndexOnHome(string id)
+    {
+        var ids = display.StudioApps;
+        for (var index = 0; index < ids.Count; index++)
+        {
+            if (string.Equals(ids[index], id, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    private void OpenHomeApp(string appletId, Rect cell)
+    {
+        if (AppShelf.Find(appletId) is AppSpec spec)
+        {
+            if (spec.Kind == AppKind.Shortcut)
+            {
+                hub.Open(spec.Tab, spec.Pane);
+                return;
+            }
+
+            openApplet(appletId, cell);
+            return;
+        }
+
+        if (string.Equals(appletId, "party", StringComparison.Ordinal))
+        {
+            hub.Open(DestinationTab.Social, SocialPane.Linkshells);
+        }
+    }
+
+    private static string TitleOf(string appletId)
+    {
+        if (AppShelf.Find(appletId) is AppSpec spec)
+        {
+            return spec.Name;
+        }
+
+        return appletId switch
+        {
+            "pearlchat" => "Messages",
+            "party" => "Party",
+            _ => appletId,
+        };
     }
 
     private static void DrawApp(in AppletFrame frame, Rect cell, string appletId, string label, int badge,
-        Action pressed)
+        Action pressed, bool open)
     {
         if (cell.Width < 4f || cell.Height < 4f)
         {
@@ -559,10 +1371,32 @@ internal sealed class StudioSurface
                 new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center, 1f, 0.64f));
         }
 
-        if (frame.Input.ConsumeClick(cell))
+        if (open && frame.Input.ConsumeClick(cell))
         {
             pressed();
         }
     }
 
+    private static bool LiftsOnHover(string id) =>
+        id is "weather" or "announcements" or "calendar";
+
+    private static Rect Lift(Rect area, float scale)
+    {
+        var size = area.Size * scale;
+        return Rect.FromSize(area.Center - size * 0.5f, size);
+    }
+
+    private static Vector2 EditSway(float time, float seed, float amplitude)
+    {
+        var phase = time * 5.1f + seed * 0.041f;
+        return new Vector2(MathF.Sin(phase) * amplitude, MathF.Cos(phase * 0.82f) * amplitude * 0.42f);
+    }
+
+    private enum WidgetDrop : byte
+    {
+        Left = 0,
+        Right = 1,
+        Above = 2,
+        Below = 3,
+    }
 }

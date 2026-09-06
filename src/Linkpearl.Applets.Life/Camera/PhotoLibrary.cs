@@ -8,11 +8,20 @@ internal sealed class PhotoShot
 {
     public required string Id { get; init; }
 
-    public required string Album { get; init; }
+    public required string Album { get; set; }
 
-    public required string Relative { get; init; }
+    public string Folder { get; set; } = string.Empty;
+
+    public required string Relative { get; set; }
 
     public required string Title { get; init; }
+}
+
+internal sealed class PhotoFolder
+{
+    public required string Id { get; init; }
+
+    public required string Title { get; set; }
 }
 
 internal sealed class PhotoLibrary
@@ -25,6 +34,7 @@ internal sealed class PhotoLibrary
     private readonly string root;
     private readonly string catalog;
     private readonly List<PhotoShot> shots = new();
+    private readonly List<PhotoFolder> folders = new();
 
     private PhotoLibrary(string root, string catalog)
     {
@@ -33,6 +43,8 @@ internal sealed class PhotoLibrary
     }
 
     public IReadOnlyList<PhotoShot> Shots => shots;
+
+    public IReadOnlyList<PhotoFolder> Folders => folders;
 
     public static PhotoLibrary Load(HostPaths paths)
     {
@@ -48,7 +60,26 @@ internal sealed class PhotoLibrary
         try
         {
             var dto = JsonSerializer.Deserialize<PhotoSave>(File.ReadAllText(catalog));
-            if (dto?.Photos is null)
+            if (dto is null)
+            {
+                return library;
+            }
+
+            if (dto.Folders is not null)
+            {
+                for (var index = 0; index < dto.Folders.Length; index++)
+                {
+                    var row = dto.Folders[index];
+                    if (row is null || string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.Title))
+                    {
+                        continue;
+                    }
+
+                    library.folders.Add(new PhotoFolder { Id = row.Id, Title = row.Title.Trim() });
+                }
+            }
+
+            if (dto.Photos is null)
             {
                 return library;
             }
@@ -67,10 +98,17 @@ internal sealed class PhotoLibrary
                     continue;
                 }
 
+                var folder = row.Folder ?? string.Empty;
+                if (folder.Length > 0 && !library.HasFolder(folder))
+                {
+                    folder = string.Empty;
+                }
+
                 library.shots.Add(new PhotoShot
                 {
                     Id = row.Id,
                     Album = row.Album ?? Path.GetDirectoryName(row.Relative)?.Replace('\\', '/') ?? string.Empty,
+                    Folder = folder,
                     Relative = row.Relative.Replace('\\', '/'),
                     Title = row.Title ?? Path.GetFileName(row.Relative),
                 });
@@ -89,45 +127,215 @@ internal sealed class PhotoLibrary
     public string Absolute(PhotoShot shot) =>
         Path.Combine(root, shot.Relative.Replace('/', Path.DirectorySeparatorChar));
 
-    public int Import(IReadOnlyList<string> sources, DateTimeOffset now)
+    public PhotoShot? Find(string id)
     {
-        var album = now.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var folder = Path.Combine(root, album);
-        Directory.CreateDirectory(folder);
-        var added = 0;
-        for (var index = 0; index < sources.Count; index++)
+        for (var index = 0; index < shots.Count; index++)
         {
-            var source = sources[index];
-            var kind = Path.GetExtension(source);
-            if (!ImageKinds.Contains(kind) || !File.Exists(source))
+            if (string.Equals(shots[index].Id, id, StringComparison.Ordinal))
+            {
+                return shots[index];
+            }
+        }
+
+        return null;
+    }
+
+    public PhotoFolder? FolderOf(string id)
+    {
+        for (var index = 0; index < folders.Count; index++)
+        {
+            if (string.Equals(folders[index].Id, id, StringComparison.Ordinal))
+            {
+                return folders[index];
+            }
+        }
+
+        return null;
+    }
+
+    public List<PhotoShot> InFolder(string folder)
+    {
+        var list = new List<PhotoShot>();
+        for (var index = 0; index < shots.Count; index++)
+        {
+            if (string.Equals(shots[index].Folder, folder, StringComparison.Ordinal))
+            {
+                list.Add(shots[index]);
+            }
+        }
+
+        return list;
+    }
+
+    public List<PhotoShot> InAlbum(string album)
+    {
+        var list = new List<PhotoShot>();
+        for (var index = 0; index < shots.Count; index++)
+        {
+            var shot = shots[index];
+            if (shot.Folder.Length == 0 && string.Equals(shot.Album, album, StringComparison.Ordinal))
+            {
+                list.Add(shot);
+            }
+        }
+
+        return list;
+    }
+
+    public string NextAlbumTitle()
+    {
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < folders.Count; index++)
+        {
+            taken.Add(folders[index].Title);
+        }
+
+        if (!taken.Contains("Album"))
+        {
+            return "Album";
+        }
+
+        for (var number = 2; number < 100; number++)
+        {
+            var name = "Album " + number.ToString(CultureInfo.InvariantCulture);
+            if (!taken.Contains(name))
+            {
+                return name;
+            }
+        }
+
+        return "Album";
+    }
+
+    public PhotoFolder? CreateFolder(string title)
+    {
+        var name = title.Trim();
+        if (name.Length == 0)
+        {
+            name = NextAlbumTitle();
+        }
+
+        var folder = new PhotoFolder { Id = Guid.NewGuid().ToString("N")[..10], Title = name };
+        folders.Add(folder);
+        Save();
+        return folder;
+    }
+
+    public void RenameFolder(string id, string title)
+    {
+        var folder = FolderOf(id);
+        var name = title.Trim();
+        if (folder is null || name.Length == 0)
+        {
+            return;
+        }
+
+        folder.Title = name;
+        Save();
+    }
+
+    public void DropFolder(string id)
+    {
+        if (!HasFolder(id))
+        {
+            return;
+        }
+
+        folders.RemoveAll(row => string.Equals(row.Id, id, StringComparison.Ordinal));
+        for (var index = 0; index < shots.Count; index++)
+        {
+            if (string.Equals(shots[index].Folder, id, StringComparison.Ordinal))
+            {
+                shots[index].Folder = string.Empty;
+            }
+        }
+
+        Save();
+    }
+
+    public bool Remove(string id, out string path)
+    {
+        path = string.Empty;
+        var shot = Find(id);
+        if (shot is null)
+        {
+            return false;
+        }
+
+        path = Absolute(shot);
+        shots.Remove(shot);
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        Save();
+        return true;
+    }
+
+    public int RemoveMany(IReadOnlyList<string> ids, List<string> forgotten)
+    {
+        var drop = new HashSet<string>(ids, StringComparer.Ordinal);
+        if (drop.Count == 0)
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        for (var index = shots.Count - 1; index >= 0; index--)
+        {
+            var shot = shots[index];
+            if (!drop.Contains(shot.Id))
             {
                 continue;
             }
 
-            var id = Guid.NewGuid().ToString("N");
-            var relative = album + "/" + id + kind.ToLowerInvariant();
-            var dest = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+            var path = Absolute(shot);
+            shots.RemoveAt(index);
+            forgotten.Add(path);
             try
             {
-                File.Copy(source, dest, overwrite: false);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
             catch (IOException)
             {
-                continue;
             }
             catch (UnauthorizedAccessException)
             {
-                continue;
             }
 
-            shots.Insert(0, new PhotoShot
+            removed++;
+        }
+
+        if (removed > 0)
+        {
+            Save();
+        }
+
+        return removed;
+    }
+
+    public int Import(IReadOnlyList<string> sources, DateTimeOffset now, string folder)
+    {
+        var added = 0;
+        for (var index = 0; index < sources.Count; index++)
+        {
+            if (CopyIn(sources[index], now, folder, Path.GetFileName(sources[index])) is not null)
             {
-                Id = id,
-                Album = album,
-                Relative = relative,
-                Title = Path.GetFileName(source),
-            });
-            added++;
+                added++;
+            }
         }
 
         if (added > 0)
@@ -136,6 +344,142 @@ internal sealed class PhotoLibrary
         }
 
         return added;
+    }
+
+    private PhotoShot? CopyIn(string source, DateTimeOffset now, string folder, string title)
+    {
+        var kind = Path.GetExtension(source);
+        if (!ImageKinds.Contains(kind) || !File.Exists(source))
+        {
+            return null;
+        }
+
+        var album = now.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var id = Guid.NewGuid().ToString("N");
+        var ext = kind.ToLowerInvariant();
+        var relative = album + "/" + id + ext;
+        var dest = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? root);
+        try
+        {
+            File.Copy(source, dest, overwrite: false);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        var placed = folder.Length > 0 && HasFolder(folder) ? folder : string.Empty;
+        var shot = new PhotoShot
+        {
+            Id = id,
+            Album = album,
+            Folder = placed,
+            Relative = relative,
+            Title = title.Length > 0 ? title : Path.GetFileName(source),
+        };
+        shots.Insert(0, shot);
+        return shot;
+    }
+
+    public void MoveToFolder(string id, string folder)
+    {
+        var shot = Find(id);
+        if (shot is null)
+        {
+            return;
+        }
+
+        shot.Folder = folder.Length > 0 && HasFolder(folder) ? folder : string.Empty;
+        Save();
+    }
+
+    public PhotoShot? CopyEdited(PhotoShot source, DateTimeOffset now, float x, float y, float width, float height,
+        int turns)
+    {
+        var title = source.Title;
+        if (!title.EndsWith(" copy", StringComparison.OrdinalIgnoreCase))
+        {
+            title += " copy";
+        }
+
+        return ImportEdited(Absolute(source), now, source.Folder, x, y, width, height, turns, title);
+    }
+
+    public PhotoShot? ImportEdited(string source, DateTimeOffset now, string folder, float x, float y, float width,
+        float height, int turns, string? title = null)
+    {
+        var kind = Path.GetExtension(source);
+        if (!ImageKinds.Contains(kind) || !File.Exists(source))
+        {
+            return null;
+        }
+
+        var album = now.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var id = Guid.NewGuid().ToString("N");
+        var ext = string.Equals(kind, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(kind, ".jpeg", StringComparison.OrdinalIgnoreCase)
+            ? ".jpg"
+            : ".png";
+        var relative = album + "/" + id + ext;
+        var dest = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+        if (!PhotoEdit.Write(source, dest, x, y, width, height, turns))
+        {
+            return null;
+        }
+
+        var placed = folder.Length > 0 && HasFolder(folder) ? folder : string.Empty;
+        var shot = new PhotoShot
+        {
+            Id = id,
+            Album = album,
+            Folder = placed,
+            Relative = relative,
+            Title = title is { Length: > 0 } ? title : Path.GetFileName(source),
+        };
+        shots.Insert(0, shot);
+        Save();
+        return shot;
+    }
+
+    public bool Rewrite(PhotoShot shot, float x, float y, float width, float height, int turns, out string previous)
+    {
+        previous = Absolute(shot);
+        var ext = Path.GetExtension(shot.Relative);
+        if (ext.Length == 0)
+        {
+            ext = ".png";
+        }
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        var relative = shot.Album + "/" + shot.Id + "_" + stamp + ext.ToLowerInvariant();
+        var dest = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+        if (!PhotoEdit.Write(previous, dest, x, y, width, height, turns))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!string.Equals(previous, dest, StringComparison.OrdinalIgnoreCase) && File.Exists(previous))
+            {
+                File.Delete(previous);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        shot.Relative = relative;
+        Save();
+        return true;
     }
 
     public void Save()
@@ -151,12 +495,19 @@ internal sealed class PhotoLibrary
                 {
                     Id = shot.Id,
                     Album = shot.Album,
+                    Folder = shot.Folder,
                     Relative = shot.Relative,
                     Title = shot.Title,
                 };
             }
 
-            File.WriteAllText(catalog, JsonSerializer.Serialize(new PhotoSave { Photos = rows }));
+            var books = new FolderDto[folders.Count];
+            for (var index = 0; index < folders.Count; index++)
+            {
+                books[index] = new FolderDto { Id = folders[index].Id, Title = folders[index].Title };
+            }
+
+            File.WriteAllText(catalog, JsonSerializer.Serialize(new PhotoSave { Photos = rows, Folders = books }));
         }
         catch (IOException)
         {
@@ -165,9 +516,24 @@ internal sealed class PhotoLibrary
 
     public static bool IsPicture(string path) => ImageKinds.Contains(Path.GetExtension(path));
 
+    private bool HasFolder(string id)
+    {
+        for (var index = 0; index < folders.Count; index++)
+        {
+            if (string.Equals(folders[index].Id, id, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private sealed class PhotoSave
     {
         public PhotoDto[]? Photos { get; set; }
+
+        public FolderDto[]? Folders { get; set; }
     }
 
     private sealed class PhotoDto
@@ -176,7 +542,16 @@ internal sealed class PhotoLibrary
 
         public string? Album { get; set; }
 
+        public string? Folder { get; set; }
+
         public string? Relative { get; set; }
+
+        public string? Title { get; set; }
+    }
+
+    private sealed class FolderDto
+    {
+        public string? Id { get; set; }
 
         public string? Title { get; set; }
     }

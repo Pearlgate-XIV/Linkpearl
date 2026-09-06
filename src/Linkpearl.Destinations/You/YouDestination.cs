@@ -23,14 +23,15 @@ public sealed class YouDestination : IDestinationScreen
     private readonly ProfileChrome profile;
 
     public YouDestination(IGameSession game, IPearlHub pearl, BadgeBook badges, HostPaths paths,
-        ITextureSource textures, IFilePicker files, DisplayPreferences display, bool development)
+        ITextureSource textures, IFilePicker files, DisplayPreferences display, bool development,
+        HandsetProfileDesk profiles)
     {
         this.game = game;
         this.pearl = pearl;
         this.badges = badges;
         this.display = display;
         this.development = development;
-        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development);
+        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development, profiles);
     }
 
     public DestinationTab Tab => DestinationTab.You;
@@ -58,7 +59,7 @@ public sealed class YouDestination : IDestinationScreen
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
 
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
-        var name = GlassName.Resolve(display, linked, GlassName.IsPatron(badges, snapshot, display, development));
+        var name = GlassName.ProfileName(display, linked);
         if (name.Length == 0)
         {
             name = "Not logged in";

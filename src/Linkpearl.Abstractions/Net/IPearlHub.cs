@@ -15,7 +15,9 @@ public readonly record struct PearlPerson(
     string Handle,
     string PhoneNumber,
     bool IsMutual,
-    string AvatarUrl);
+    string AvatarUrl,
+    string Race = "",
+    string World = "");
 
 public readonly record struct PearlStory(
     string AuthorId,

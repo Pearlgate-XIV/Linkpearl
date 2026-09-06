@@ -2,6 +2,9 @@ namespace Linkpearl.Theming;
 
 public readonly struct Palette
 {
+    // Open apps sit on this wash so wallpaper still reads through a little.
+    public static readonly Vector4 AppGround = new(0f, 0f, 0f, 0.90f);
+
     public required Vector4 Surface { get; init; }
 
     public required Vector4 SurfaceRaised { get; init; }

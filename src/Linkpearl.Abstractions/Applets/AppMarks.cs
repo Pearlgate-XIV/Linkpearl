@@ -5,9 +5,9 @@ using Linkpearl.Modules;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 
-namespace Linkpearl.Device.Shell;
+namespace Linkpearl.Applets;
 
-internal static class AppMarks
+public static class AppMarks
 {
     private static readonly Vector4 White = new(0.96f, 0.96f, 0.97f, 1f);
     private static readonly Vector4 Rim = new(1f, 1f, 1f, 0.42f);
@@ -24,12 +24,66 @@ internal static class AppMarks
     public static void DrawFace(IPaintSurface paint, ITextureSource textures, HostPaths paths, Rect icon,
         string appletId, bool hover)
     {
+        if (appletId.StartsWith("folder:", StringComparison.Ordinal))
+        {
+            DrawFolderFace(paint, textures, paths, icon, [], hover);
+            return;
+        }
+
         if (AppIconCatalog.UseOriginalArt && TryDrawAsset(paint, textures, paths, icon, appletId))
         {
             return;
         }
 
         DrawTile(paint, textures, paths, icon, appletId, hover);
+    }
+
+    public static void DrawFolderFace(in AppletFrame frame, Rect icon, IReadOnlyList<string> children, bool hover) =>
+        DrawFolderFace(frame.Paint, frame.Textures, frame.Paths, icon, children, hover);
+
+    public static void DrawFolderFace(IPaintSurface paint, ITextureSource textures, HostPaths paths, Rect icon,
+        IReadOnlyList<string> children, bool hover)
+    {
+        var side = MathF.Min(icon.Width, icon.Height);
+        if (side <= 1f)
+        {
+            return;
+        }
+
+        var area = Rect.FromSize(icon.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
+        var radius = side * 0.22f;
+        var fill = hover ? new Vector4(1f, 1f, 1f, 0.22f) : new Vector4(1f, 1f, 1f, 0.12f);
+        var rim = hover ? new Vector4(1f, 1f, 1f, 0.88f) : new Vector4(1f, 1f, 1f, 0.62f);
+        paint.Fill(area, fill, radius);
+        paint.Stroke(area, rim, MathF.Max(1.1f, side * 0.035f), radius);
+
+        var show = Math.Min(4, children.Count);
+        if (show <= 0)
+        {
+            return;
+        }
+
+        var pad = side * 0.14f;
+        var gap = side * 0.07f;
+        var inner = area.Inset(pad);
+        if (show == 1)
+        {
+            var mini = MathF.Min(inner.Width, inner.Height) * 0.72f;
+            var box = Rect.FromSize(inner.Center - new Vector2(mini * 0.5f, mini * 0.5f), new Vector2(mini, mini));
+            DrawTile(paint, textures, paths, box, children[0], false);
+            return;
+        }
+
+        var cell = (MathF.Min(inner.Width, inner.Height) - gap) * 0.5f;
+        for (var index = 0; index < show; index++)
+        {
+            var col = index % 2;
+            var row = index / 2;
+            var box = Rect.FromSize(
+                new Vector2(inner.Min.X + col * (cell + gap), inner.Min.Y + row * (cell + gap)),
+                new Vector2(cell, cell));
+            DrawTile(paint, textures, paths, box, children[index], false);
+        }
     }
 
     public static void DrawRoundFace(in AppletFrame frame, Rect icon, string appletId, bool hover)
@@ -120,10 +174,23 @@ internal static class AppMarks
         }
 
         var area = Rect.FromSize(icon.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
-        var light = hover ? new Vector4(0.26f, 0.27f, 0.31f, 1f) : new Vector4(0.20f, 0.21f, 0.25f, 1f);
-        var dark = hover ? new Vector4(0.12f, 0.13f, 0.16f, 1f) : new Vector4(0.09f, 0.10f, 0.12f, 1f);
+        Vector4 light;
+        Vector4 dark;
+        if (appletId == "music")
+        {
+            var navy = TileBrand(appletId);
+            light = hover ? Lift(navy) : navy;
+            dark = light;
+        }
+        else
+        {
+            var brand = TileBrand(appletId);
+            dark = hover ? Lift(brand) : brand;
+            light = hover ? Lift(Wash(brand)) : Wash(brand);
+        }
+
         paint.FillAppTile(area, light, dark);
-        paint.StrokeAppTile(area, new Vector4(1f, 1f, 1f, hover ? 0.16f : 0.08f), MathF.Max(1f, side * 0.02f));
+        paint.StrokeAppTile(area, new Vector4(1f, 1f, 1f, hover ? 0.22f : 0.10f), MathF.Max(1f, side * 0.02f));
         if (!TryDrawPackedGlyph(paint, textures, paths, area, appletId))
         {
             DrawGlyph(paint, area, appletId);
@@ -151,6 +218,16 @@ internal static class AppMarks
         return true;
     }
 
+    private static Vector4 TileBrand(string appletId) => AppGround.Brand(appletId);
+
+    private static Vector4 Wash(Vector4 brand) =>
+        new(MathF.Min(1f, brand.X * 0.72f + 0.28f), MathF.Min(1f, brand.Y * 0.72f + 0.28f),
+            MathF.Min(1f, brand.Z * 0.72f + 0.28f), 1f);
+
+    private static Vector4 Lift(Vector4 color) =>
+        new(MathF.Min(1f, color.X * 1.10f + 0.08f), MathF.Min(1f, color.Y * 1.10f + 0.08f),
+            MathF.Min(1f, color.Z * 1.10f + 0.08f), 1f);
+
     private static string? GlyphFile(string appletId) => appletId switch
     {
         "phone" => "phone.png",
@@ -163,6 +240,8 @@ internal static class AppMarks
         "market" => "market.png",
         "weather" => "weather.png",
         "party" => "party.png",
+        "events" => "events.png",
+        "feedback" => "feedback.png",
         _ => null,
     };
 
@@ -188,6 +267,16 @@ internal static class AppMarks
         var center = icon.Center;
         paint.FillCircle(center, radius, hover ? GlassLit : Glass);
         paint.StrokeCircle(center, radius * 0.98f, Rim, MathF.Max(1.2f, radius * 0.045f));
+    }
+
+    public static void DrawMark(in AppletFrame frame, Rect icon, string appletId)
+    {
+        if (TryDrawPackedGlyph(frame.Paint, frame.Textures, frame.Paths, icon, appletId))
+        {
+            return;
+        }
+
+        DrawGlyph(frame.Paint, icon, appletId);
     }
 
     public static void DrawGlyph(IPaintSurface paint, Rect icon, string appletId)
@@ -261,6 +350,9 @@ internal static class AppMarks
                 break;
             case "stopwatch":
                 DrawStopwatch(paint, center, size, White, stroke);
+                break;
+            case "appstore":
+                DrawStore(paint, center, size, White, stroke);
                 break;
             default:
                 if (appletId.StartsWith("folder:", StringComparison.Ordinal))
@@ -372,6 +464,22 @@ internal static class AppMarks
         paint.Stroke(tab, ink, stroke, s * 0.10f, Corner.Top);
         var body = Rect.FromSize(c + new Vector2(-s * 0.78f, -s * 0.22f), new Vector2(s * 1.56f, s * 0.95f));
         paint.Stroke(body, ink, stroke, s * 0.14f);
+    }
+
+    private static void DrawStore(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)
+    {
+        var gap = s * 0.16f;
+        var tile = s * 0.48f;
+        var origin = c + new Vector2(-tile - gap * 0.5f, -tile - gap * 0.5f);
+        for (var row = 0; row < 2; row++)
+        {
+            for (var col = 0; col < 2; col++)
+            {
+                var box = Rect.FromSize(origin + new Vector2(col * (tile + gap), row * (tile + gap)),
+                    new Vector2(tile, tile));
+                paint.Stroke(box, ink, stroke, s * 0.10f);
+            }
+        }
     }
 
     private static void DrawAlarm(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)

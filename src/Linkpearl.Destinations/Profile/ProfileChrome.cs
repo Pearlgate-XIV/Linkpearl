@@ -9,6 +9,7 @@ using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Phone;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 
@@ -17,7 +18,7 @@ namespace Linkpearl.Destinations.Profile;
 public sealed class ProfileChrome
 {
     private const float TitleScale = 1f;
-    public const float SheetHeightUnits = 172f;
+    public const float SheetHeightUnits = 168f;
 
     private enum Sheet : byte
     {
@@ -34,16 +35,18 @@ public sealed class ProfileChrome
     private readonly IPearlHub pearl;
     private readonly IGameSession game;
     private readonly DisplayPreferences display;
+    private readonly HandsetProfileDesk profiles;
     private readonly bool development;
+    private bool synced;
     private Sheet sheet;
     private bool returnToEdit;
     private bool draggingPhoto;
     private int pickSlot;
     private float titleClock;
     private ColorWell colorWell;
-    private bool nameGlowOpen;
-    private bool titleGlowOpen;
     private readonly InkPicker inkPicker = new();
+    private bool portraitWait;
+    private bool bannerWait;
 
     private enum ColorWell : byte
     {
@@ -55,7 +58,8 @@ public sealed class ProfileChrome
     }
 
     public ProfileChrome(BadgeBook book, HostPaths paths, ITextureSource textures, IFilePicker files,
-        IPearlHub pearl, IGameSession game, DisplayPreferences display, bool development)
+        IPearlHub pearl, IGameSession game, DisplayPreferences display, bool development,
+        HandsetProfileDesk profiles)
     {
         this.book = book;
         this.paths = paths;
@@ -65,6 +69,7 @@ public sealed class ProfileChrome
         this.game = game;
         this.display = display;
         this.development = development;
+        this.profiles = profiles;
     }
 
     public bool OverlayOpen => sheet != Sheet.None;
@@ -84,6 +89,7 @@ public sealed class ProfileChrome
 
         draggingPhoto = false;
         returnToEdit = false;
+        synced = false;
         sheet = Sheet.None;
     }
 
@@ -110,12 +116,13 @@ public sealed class ProfileChrome
         var gold = frame.Theme.Palette.WarmAccent;
         var pad = frame.Units(4f);
         var inner = area.Inset(new Edges(pad, 0f, pad, pad));
-        var trayH = frame.Units(36f);
-        var trayGap = frame.Units(5f);
-        var face = MathF.Min(frame.Units(88f), MathF.Max(frame.Units(64f), inner.Height - trayH - trayGap));
-        var lift = frame.Units(10f);
-        var clusterY = inner.Min.Y - lift;
-        var bandBottom = inner.Min.Y + face;
+        var editH = sheet == Sheet.Edit ? 0f : frame.Units(36f);
+        var editGap = editH > 0f ? frame.Units(5f) : 0f;
+        var sink = 0f;
+        var face = MathF.Min(frame.Units(88f), MathF.Max(frame.Units(64f), inner.Height - editH - editGap - sink));
+        var lift = sheet == Sheet.Edit ? 0f : frame.Units(10f);
+        var clusterY = inner.Min.Y + sink - lift;
+        var bandBottom = clusterY + face;
         var avatar = Rect.FromSize(new Vector2(inner.Min.X, clusterY), new Vector2(face, face));
         DrawPortrait(frame, avatar);
         if (frame.Input.ConsumeClick(avatar))
@@ -123,37 +130,21 @@ public sealed class ProfileChrome
             OpenPortrait();
         }
 
-        var well = face * 0.75f;
-        var featured = Rect.FromSize(
-            new Vector2(inner.Max.X - well, avatar.Min.Y + (avatar.Height - well) * 0.5f),
-            new Vector2(well, well));
-        DrawMark(frame, featured, book.FeaturedId, gold);
-        if (frame.Input.ConsumeClick(featured))
-        {
-            OpenBadgePick(-1);
-        }
-
         var copyLeft = avatar.Max.X + frame.Units(10f);
-        var copyRight = featured.Min.X - frame.Units(8f);
-        var head = new Rect(new Vector2(copyLeft, clusterY), new Vector2(copyRight, bandBottom));
+        var head = new Rect(new Vector2(copyLeft, clusterY), new Vector2(inner.Max.X, inner.Max.Y));
         DrawIdentity(frame, head, name, job, world, place, jobIconId, gold);
 
-        var bottom = Rect.FromSize(new Vector2(inner.Min.X, bandBottom + trayGap),
-            new Vector2(inner.Width, trayH));
-        var tray = bottom;
         if (sheet != Sheet.Edit)
         {
-            var edit = bottom.RightSlice(frame.Units(124f));
+            var edit = Rect.FromSize(new Vector2(inner.Max.X - frame.Units(124f), bandBottom + editGap),
+                new Vector2(frame.Units(124f), editH));
             DrawEdit(frame, edit, gold);
             if (frame.Input.ConsumeClick(edit))
             {
                 OpenEdit();
             }
-
-            tray = new Rect(bottom.Min, new Vector2(edit.Min.X - frame.Units(8f), bottom.Max.Y));
         }
 
-        DrawSlots(frame, tray, gold);
         return area.Height;
     }
 
@@ -218,13 +209,12 @@ public sealed class ProfileChrome
         var ink = frame.Theme.Palette.Ink;
         var patron = GlassName.IsPatron(book, pearl.Current, display, development);
         titleClock += frame.DeltaSeconds;
-        var title = patron ? ShownName.ClampTitle(display.OwnTitle).Trim() : string.Empty;
+        var showTitle = sheet != Sheet.Edit;
+        var title = showTitle ? GlassName.Honorific(display) : string.Empty;
         var nameH = frame.Text.LineHeight(FontRole.Display);
         var titleH = title.Length > 0 ? frame.Text.LineHeight(FontRole.CaptionStrong) * TitleScale : 0f;
         var titleGap = titleH > 0f ? frame.Units(2f) : 0f;
         var rowH = MathF.Max(frame.Units(16f), frame.Text.LineHeight(FontRole.CaptionStrong) + frame.Units(4f));
-        var metaH = rowH * 3f;
-        var metaTop = area.Max.Y - metaH;
         if (titleH > 0f)
         {
             DrawHonorTitle(frame, Rect.FromSize(area.Min, new Vector2(area.Width, titleH)), title);
@@ -243,13 +233,14 @@ public sealed class ProfileChrome
                     frame.Units(1f)));
         }
 
-        if (metaH > area.Height - 4f)
+        var afterName = nameRow.Max.Y + frame.Units(6f);
+        if (afterName >= area.Max.Y)
         {
             return;
         }
 
         var icon = MathF.Min(frame.Units(15f), rowH * 0.58f);
-        var y = metaTop;
+        var y = afterName;
 
         var jobRow = Rect.FromSize(new Vector2(area.Min.X, y), new Vector2(area.Width, rowH));
         DrawMetaRow(frame, jobRow, icon, ink, job, false);
@@ -295,6 +286,8 @@ public sealed class ProfileChrome
 
     public float DrawOverlay(in AppletFrame frame)
     {
+        FinishPortraitPick();
+        FinishBannerPick();
         if (sheet == Sheet.None)
         {
             return 0f;
@@ -360,8 +353,25 @@ public sealed class ProfileChrome
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var head = stack.Take(frame.Units(28f));
+        frame.Text.DrawIn(head.LeftSlice(frame.Units(28f)), "‹",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        frame.Text.DrawIn(head.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)), "Profile",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        if (frame.Input.ConsumeClick(head.LeftSlice(frame.Units(90f))))
+        {
+            Close();
+            return 0f;
+        }
+
+        DrawBanner(frame, stack.Take(frame.Units(92f)));
         DrawCard(frame, stack.Take(frame.Units(SheetHeightUnits)), CardName(snapshot), GlassJob(), GlassWorld(snapshot),
             game.MapPlace, game.JobIconId);
+        DrawAction(frame, stack.Take(frame.Units(44f)), "Sync to apps", () => PushApps(snapshot));
+        DrawNotice(frame, stack.Take(frame.Units(40f)),
+            synced
+                ? "Copied to Music and Daylight. Each app can still be edited on its own."
+                : "Copies name, photo, and banner to Music and Daylight.");
         DrawNameControls(frame, ref stack, snapshot);
         DrawGateRows(frame, ref stack, snapshot);
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -370,8 +380,21 @@ public sealed class ProfileChrome
     private string CardName(PearlSnapshot snapshot)
     {
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
-        var name = GlassName.Resolve(display, linked, GlassName.IsPatron(book, snapshot, display, development));
+        var name = GlassName.ProfileName(display, linked);
         return name.Length > 0 ? name : "Not logged in";
+    }
+
+    private void PushApps(PearlSnapshot snapshot)
+    {
+        var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
+        var name = ShownName.Source(display, linked);
+        if (name.Length == 0)
+        {
+            name = ShownName.Sanitize(display.OwnName);
+        }
+
+        profiles.Push(name, GlassName.Honorific(display));
+        synced = true;
     }
 
     private void DrawNameControls(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
@@ -387,15 +410,31 @@ public sealed class ProfileChrome
                     : "Normal account: Patron rows follow your real Pearlgate pledge.");
         }
 
-        DrawChoice(frame, stack.Take(frame.Units(40f)), "Full name", display.NameStyle == NameStyle.Full,
+        DrawChoice(frame, stack.Take(frame.Units(40f)), "Full name", display.NameStyle != NameStyle.Given,
             () => display.NameStyle = NameStyle.Full);
         DrawChoice(frame, stack.Take(frame.Units(40f)), "First name", display.NameStyle == NameStyle.Given,
             () => display.NameStyle = NameStyle.Given);
 
+        var nameRow = stack.Take(frame.Units(52f));
+        CardChrome.DrawGold(frame, nameRow);
+        var namePad = nameRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
+        frame.Text.DrawIn(namePad.TopSlice(frame.Units(14f)), "Name",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        display.OwnName = frame.TextField.Draw("profile-own-name", namePad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
+            display.OwnName, "Leave blank for your in-game name", ShownName.OwnNameLimit, out _);
+
+        var faceUnlocked = patron || development;
+        var dreamsOn = string.Equals(display.DisplayFace, FounderFaces.Dreams, StringComparison.Ordinal);
+        if (faceUnlocked)
+        {
+            DrawToggle(frame, stack.Take(frame.Units(40f)), "Dreams typeface", dreamsOn, () =>
+                display.DisplayFace = dreamsOn ? FounderFaces.Inter : FounderFaces.Dreams);
+        }
+
         if (!patron)
         {
             DrawNotice(frame, stack.Take(frame.Units(56f)),
-                "Custom name, title, and title glow are for Patreon subscribers on this Pearlgate account.");
+                "Dreams typeface and name glow are for Patreon subscribers on this Pearlgate account.");
             if (snapshot.SignedIn)
             {
                 DrawAction(frame, stack.Take(frame.Units(44f)), "Connect Patreon", pearl.BeginPatronLink);
@@ -408,110 +447,28 @@ public sealed class ProfileChrome
             return;
         }
 
-        var nameRow = stack.Take(frame.Units(52f));
-        CardChrome.DrawGold(frame, nameRow);
-        var namePad = nameRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
-        frame.Text.DrawIn(namePad.TopSlice(frame.Units(14f)), "Add your own name",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        display.OwnName = frame.TextField.Draw("profile-own-name", namePad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
-            display.OwnName, "Paste any letters or symbols", ShownName.OwnNameLimit, out _);
-
-        var titleRow = stack.Take(frame.Units(52f));
-        CardChrome.DrawGold(frame, titleRow);
-        var titlePad = titleRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
-        frame.Text.DrawIn(titlePad.TopSlice(frame.Units(14f)), "Title",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        display.OwnTitle = frame.TextField.Draw("profile-own-title",
-            titlePad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
-            display.OwnTitle, "Shown above your name", ShownName.OwnTitleLimit, out _);
-
         DrawColorDoor(frame, ref stack, "Name text", display.NameInkR, display.NameInkG, display.NameInkB,
             ColorWell.NameInk, display.SetNameInkColor);
-        DrawColorDoor(frame, ref stack, "Title text", display.TitleInkR, display.TitleInkG, display.TitleInkB,
-            ColorWell.TitleInk, display.SetTitleInkColor);
-
-        nameGlowOpen = DrawDrop(frame, ref stack, "Name glow", nameGlowOpen);
-        if (nameGlowOpen)
-        {
-            DrawGlowChoices(frame, ref stack, display.NameGlow, display.NameGlowWeight,
-                on => display.NameGlow = on, weight => display.NameGlowWeight = weight);
-            DrawMotion(frame, ref stack, display.NameMotion, motion => display.NameMotion = motion);
-            if (display.NameGlow)
+        DrawSelect(frame, ref stack, "Glow type",
+            ["Static", "Pulse", "Wave"],
+            (int)display.NameMotion,
+            pick => display.NameMotion = (TitleMotion)pick);
+        DrawSelect(frame, ref stack, "Glow amount",
+            ["Off", "Soft", "Medium", "Strong"],
+            display.NameGlow ? (int)display.NameGlowWeight + 1 : 0,
+            pick =>
             {
-                DrawColorDoor(frame, ref stack, "Name glow color", display.NameGlowR, display.NameGlowG,
-                    display.NameGlowB, ColorWell.NameGlow, display.SetNameGlowColor);
-            }
+                display.NameGlow = pick > 0;
+                if (pick > 0)
+                {
+                    display.NameGlowWeight = (NameGlowWeight)(pick - 1);
+                }
+            });
+        if (display.NameGlow)
+        {
+            DrawColorDoor(frame, ref stack, "Name glow color", display.NameGlowR, display.NameGlowG,
+                display.NameGlowB, ColorWell.NameGlow, display.SetNameGlowColor);
         }
-
-        titleGlowOpen = DrawDrop(frame, ref stack, "Title glow", titleGlowOpen);
-        if (titleGlowOpen)
-        {
-            DrawGlowChoices(frame, ref stack, display.TitleGlow, display.TitleGlowWeight,
-                on => display.TitleGlow = on, weight => display.TitleGlowWeight = weight);
-            DrawMotion(frame, ref stack, display.TitleMotion, motion => display.TitleMotion = motion);
-            if (display.TitleGlow)
-            {
-                DrawColorDoor(frame, ref stack, "Title glow color", display.TitleGlowR, display.TitleGlowG,
-                    display.TitleGlowB, ColorWell.TitleGlow, display.SetTitleGlowColor);
-            }
-        }
-    }
-
-    private void DrawMotion(in AppletFrame frame, ref Stack stack, TitleMotion current, Action<TitleMotion> set)
-    {
-        DrawChoice(frame, stack.Take(frame.Units(40f)), "Static", current == TitleMotion.Static,
-            () => set(TitleMotion.Static));
-        DrawChoice(frame, stack.Take(frame.Units(40f)), "Pulse", current == TitleMotion.Pulse,
-            () => set(TitleMotion.Pulse));
-        DrawChoice(frame, stack.Take(frame.Units(40f)), "Wave", current == TitleMotion.Wave,
-            () => set(TitleMotion.Wave));
-    }
-
-    private void DrawGlowChoices(in AppletFrame frame, ref Stack stack, bool on, NameGlowWeight current,
-        Action<bool> setOn, Action<NameGlowWeight> setWeight)
-    {
-        DrawChoice(frame, stack.Take(frame.Units(36f)), "Off", !on, () => setOn(false));
-        DrawChoice(frame, stack.Take(frame.Units(36f)), "Soft glow", on && current == NameGlowWeight.Soft, () =>
-        {
-            setOn(true);
-            setWeight(NameGlowWeight.Soft);
-        });
-        DrawChoice(frame, stack.Take(frame.Units(36f)), "Medium glow", on && current == NameGlowWeight.Medium, () =>
-        {
-            setOn(true);
-            setWeight(NameGlowWeight.Medium);
-        });
-        DrawChoice(frame, stack.Take(frame.Units(36f)), "Strong glow", on && current == NameGlowWeight.Strong, () =>
-        {
-            setOn(true);
-            setWeight(NameGlowWeight.Strong);
-        });
-    }
-
-    private static bool DrawDrop(in AppletFrame frame, ref Stack stack, string label, bool open)
-    {
-        var row = stack.Take(frame.Units(40f));
-        CardChrome.DrawGold(frame, row);
-        var pad = row.Inset(new Edges(frame.Units(14f), 0f, frame.Units(12f), 0f));
-        frame.Text.DrawIn(pad.LeftSlice(pad.Width - frame.Units(28f)), label,
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        DrawCaret(frame.Paint, pad.RightSlice(frame.Units(16f)), frame.Theme.Palette.WarmAccent, open);
-        if (frame.Input.ConsumeClick(row))
-        {
-            return !open;
-        }
-
-        return open;
-    }
-
-    private static void DrawCaret(IPaintSurface paint, Rect area, Vector4 gold, bool open)
-    {
-        var c = area.Center;
-        var s = MathF.Min(area.Width, area.Height) * 0.28f;
-        var dir = open ? -1f : 1f;
-        var stroke = MathF.Max(1.2f, s * 0.42f);
-        paint.Line(c + new Vector2(-s, -s * 0.35f * dir), c + new Vector2(0f, s * 0.45f * dir), gold, stroke);
-        paint.Line(c + new Vector2(s, -s * 0.35f * dir), c + new Vector2(0f, s * 0.45f * dir), gold, stroke);
     }
 
     private void DrawColorDoor(in AppletFrame frame, ref Stack stack, string label, float r, float g, float b,
@@ -607,6 +564,64 @@ public sealed class ProfileChrome
         }
     }
 
+    private static void DrawToggle(in AppletFrame frame, Rect row, string label, bool on, Action tap)
+    {
+        CardChrome.DrawGold(frame, row);
+        var pad = row.Inset(new Edges(frame.Units(14f), 0f));
+        var gold = frame.Theme.Palette.WarmAccent;
+        var track = pad.RightSlice(frame.Units(40f));
+        var height = frame.Units(18f);
+        var well = Rect.FromSize(new Vector2(track.Min.X, track.Center.Y - height * 0.5f),
+            new Vector2(track.Width, height));
+        frame.Paint.Fill(well, on ? gold with { W = 0.92f } : frame.Theme.Palette.SurfaceRaised, height * 0.5f);
+        frame.Paint.Stroke(well, gold, frame.Units(1.1f), height * 0.5f);
+        var knobR = height * 0.36f;
+        var knobX = on ? well.Max.X - height * 0.5f : well.Min.X + height * 0.5f;
+        frame.Paint.FillCircle(new Vector2(knobX, well.Center.Y), knobR, frame.Theme.Palette.AccentInk);
+        frame.Text.DrawIn(pad.Inset(new Edges(0f, 0f, track.Width + frame.Units(10f), 0f)), label,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        if (frame.Input.ConsumeClick(row))
+        {
+            tap();
+        }
+    }
+
+    private static void DrawSelect(in AppletFrame frame, ref Stack stack, string label, string[] options, int selected,
+        Action<int> pick)
+    {
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), label,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        var row = stack.Take(frame.Units(36f));
+        CardChrome.DrawGold(frame, row);
+        var pad = row.Inset(new Edges(frame.Units(6f), frame.Units(5f)));
+        var gold = frame.Theme.Palette.WarmAccent;
+        var gap = frame.Units(4f);
+        var count = Math.Max(options.Length, 1);
+        var width = (pad.Width - gap * (count - 1)) / count;
+        for (var index = 0; index < options.Length; index++)
+        {
+            var cell = Rect.FromSize(new Vector2(pad.Min.X + index * (width + gap), pad.Min.Y),
+                new Vector2(width, pad.Height));
+            var on = index == selected;
+            if (on)
+            {
+                frame.Paint.Fill(cell, gold with { W = 0.92f }, frame.Units(8f));
+            }
+            else
+            {
+                frame.Paint.Stroke(cell, gold with { W = 0.45f }, frame.Units(1f), frame.Units(8f));
+            }
+
+            frame.Text.DrawIn(cell, options[index],
+                new TextStyle(FontRole.CaptionStrong, on ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.Ink,
+                    TextAlign.Center));
+            if (frame.Input.ConsumeClick(cell))
+            {
+                pick(index);
+            }
+        }
+    }
+
     private string GlassJob() =>
         game.JobName.Length > 0 ? TitleCase(game.JobName) : "Warrior of Light";
 
@@ -620,7 +635,8 @@ public sealed class ProfileChrome
     {
         var inGame = ShownName.Linked(game.Character.Name, snapshot.MeName);
         DrawStat(frame, stack.Take(frame.Units(40f)), "In game", inGame.Length > 0 ? inGame : "—");
-        DrawAccount(frame, stack.Take(frame.Units(44f)), snapshot);
+        DrawStat(frame, stack.Take(frame.Units(40f)), "Number",
+            snapshot.MyNumber.Length > 0 ? LineNumbers.Show(snapshot.MyNumber) : "—");
         if (snapshot.Busy)
         {
             DrawNotice(frame, stack.Take(frame.Units(36f)), "Working…");
@@ -636,12 +652,7 @@ public sealed class ProfileChrome
             DrawChallenge(frame, stack.Take(frame.Units(56f)), snapshot.ChallengeCode);
         }
 
-        DrawStat(frame, stack.Take(frame.Units(40f)), "Followers",
-            snapshot.Followers.ToString("N0", CultureInfo.InvariantCulture));
-        DrawStat(frame, stack.Take(frame.Units(40f)), "Following",
-            snapshot.Following.ToString("N0", CultureInfo.InvariantCulture));
-        DrawStat(frame, stack.Take(frame.Units(40f)), "Number",
-            snapshot.MyNumber.Length > 0 ? snapshot.MyNumber : "—");
+        DrawAccount(frame, stack.Take(frame.Units(44f)), snapshot);
     }
 
     private void DrawAccount(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
@@ -861,10 +872,48 @@ public sealed class ProfileChrome
         frame.Text.DrawIn(box, "+", new TextStyle(FontRole.BodyStrong, gold, TextAlign.Center));
     }
 
-    private void DrawPortrait(in AppletFrame frame, Rect area)
+    public void DrawFace(in AppletFrame frame, Rect area) => DrawPortrait(frame, area, compact: true);
+
+    private void DrawBanner(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var radius = MathF.Min(area.Width, area.Height) * 0.48f;
+        CardChrome.DrawGold(frame, area);
+        var inner = area.Inset(frame.Units(2f));
+        if (display.UsingBanner)
+        {
+            var texture = textures.FromFile(BannerFiles.Absolute(paths, display.CustomBannerFile));
+            if (texture is { IsReady: true })
+            {
+                var uv = CoverFit.Uv(texture.Size, inner.Size);
+                frame.Paint.ImageRounded(texture, inner, uv.Min, uv.Max, Vector4.One, frame.Units(10f));
+            }
+            else
+            {
+                frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(10f));
+                frame.Text.DrawIn(inner, "Tap to change banner",
+                    new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
+            }
+        }
+        else
+        {
+            frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(10f));
+            frame.Text.DrawIn(inner, "Tap to add a banner",
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
+        }
+
+        frame.Paint.Stroke(inner, gold with { W = 0.42f }, frame.Theme.Metrics.Hairline, frame.Units(10f));
+        if (frame.Input.ConsumeClick(inner))
+        {
+            PickBanner();
+        }
+    }
+
+    private void DrawPortrait(in AppletFrame frame, Rect area) => DrawPortrait(frame, area, compact: false);
+
+    private void DrawPortrait(in AppletFrame frame, Rect area, bool compact)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        var radius = MathF.Min(area.Width, area.Height) * (compact ? 0.42f : 0.48f);
         var center = area.Center;
         var side = radius * 2f;
         var square = Rect.FromSize(center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
@@ -882,12 +931,23 @@ public sealed class ProfileChrome
                 frame.Paint.FillCircle(center, radius, frame.Theme.Palette.SurfaceRaised with { W = 0.35f });
             }
         }
+        else if (compact)
+        {
+            var name = CardName(pearl.Current);
+            var glyph = name.Length > 0 && !string.Equals(name, "Not logged in", StringComparison.Ordinal)
+                ? name[0].ToString()
+                : "?";
+            frame.Paint.FillCircle(center, radius, frame.Theme.Palette.SurfaceRaised);
+            frame.Text.DrawIn(square, glyph,
+                new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
+        }
         else
         {
             frame.Text.DrawIn(square, "+", new TextStyle(FontRole.Display, gold, TextAlign.Center));
         }
 
-        frame.Paint.StrokeCircle(center, radius, gold with { W = 0.72f }, MathF.Max(1.2f, frame.Units(1.4f)));
+        frame.Paint.StrokeCircle(center, radius, gold with { W = compact ? 0.85f : 0.72f },
+            MathF.Max(1.2f, frame.Units(compact ? 1.2f : 1.4f)));
     }
 
     private void HandlePortraitGesture(in AppletFrame frame, Rect preview)
@@ -944,7 +1004,18 @@ public sealed class ProfileChrome
 
     private void PickPortrait()
     {
-        var picked = files.PickImageFiles();
+        files.BeginImagePick();
+        portraitWait = true;
+    }
+
+    private void FinishPortraitPick()
+    {
+        if (!portraitWait || !files.TryTakeImages(out var picked))
+        {
+            return;
+        }
+
+        portraitWait = false;
         if (picked.Count == 0)
         {
             return;
@@ -953,7 +1024,33 @@ public sealed class ProfileChrome
         if (PortraitFiles.TryImport(paths, picked[0], out var name))
         {
             book.SetPortrait(name);
+            pearl.SetAvatar(PortraitFiles.Absolute(paths, name));
             sheet = Sheet.PlacePortrait;
+        }
+    }
+
+    private void PickBanner()
+    {
+        files.BeginImagePick();
+        bannerWait = true;
+    }
+
+    private void FinishBannerPick()
+    {
+        if (!bannerWait || !files.TryTakeImages(out var picked))
+        {
+            return;
+        }
+
+        bannerWait = false;
+        if (picked.Count == 0)
+        {
+            return;
+        }
+
+        if (BannerFiles.TryImport(paths, picked[0], out var fileName))
+        {
+            display.CustomBannerFile = fileName;
         }
     }
 

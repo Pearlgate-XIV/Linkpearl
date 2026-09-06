@@ -39,6 +39,7 @@ public sealed class HandsetWindow : Window
     private readonly Action<bool> persistOpen;
     private readonly Action<bool> persistMinimized;
     private readonly Action persistPlacement;
+    private readonly Action powerOffPlugin;
     private readonly HandsetPlacement placement;
     private readonly ITextureSource textures;
     private readonly HostPaths paths;
@@ -54,13 +55,15 @@ public sealed class HandsetWindow : Window
     private bool placeOnce;
     private bool savePlacement;
     private Rect lastOuter;
+    private Rect lastShell;
     private float lastOuterRadius;
     private float lastOuterScale = 1f;
 
     public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
         HandsetShapePreference shapePreference, ScreenField screenField, ITextField textField,
-        DisplayPreferences display, IGameSession game, ITextureSource textures, HostPaths paths, Action persistShape,
-        Action<bool> persistOpen, Action<bool> persistMinimized, HandsetPlacement placement, Action persistPlacement)
+        DisplayPreferences display, IGameSession game, ITextureSource textures, HostPaths paths,         Action persistShape,
+        Action<bool> persistOpen, Action<bool> persistMinimized, HandsetPlacement placement, Action persistPlacement,
+        Action powerOffPlugin)
         : base("##LinkpearlHandset", ChromeFlags)
     {
         this.shell = shell;
@@ -79,6 +82,7 @@ public sealed class HandsetWindow : Window
         this.persistMinimized = persistMinimized;
         this.placement = placement;
         this.persistPlacement = persistPlacement;
+        this.powerOffPlugin = powerOffPlugin;
         RespectCloseHotkey = false;
     }
 
@@ -183,10 +187,11 @@ public sealed class HandsetWindow : Window
             ApplyWindowPos();
         }
         var roundCorners = shapePreference.Case == HandsetCase.Android;
-        var overCorner = lastOuter.Width > 16f &&
-            ResizeGrip.Hits(lastOuter, lastOuterScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
+        var overCorner = lastShell.Width > 16f &&
+            ResizeGrip.Hits(lastShell, lastOuterScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
         Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
-            (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner
+            (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner ||
+                shell.HoldsWindow
                 ? ImGuiWindowFlags.NoMove
                 : 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -205,7 +210,13 @@ public sealed class HandsetWindow : Window
     {
         var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case);
         var size = fold > 0.5f ? FaceSize() : FullSize();
-        return size.X * plate.Corner;
+        var radius = size.X * plate.Corner;
+        if (shapePreference.Case == HandsetCase.Android)
+        {
+            radius += size.X * plate.BodyRight;
+        }
+
+        return radius;
     }
 
     public override void Draw()
@@ -256,6 +267,12 @@ public sealed class HandsetWindow : Window
 
         var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case);
         lastOuter = windowRect;
+        lastShell = plate.BodyOn(windowRect);
+        if (lastShell.IsEmpty)
+        {
+            lastShell = windowRect;
+        }
+
         lastOuterRadius = plate.CornerOn(windowRect);
         lastOuterScale = scale;
         var skin = textures.FromFile(paths.Asset(Path.Combine(ChassisCatalog.Folder, plate.FileName)));
@@ -266,21 +283,31 @@ public sealed class HandsetWindow : Window
         float railDepth;
         if (usingSkin)
         {
+            var android = shapePreference.Case == HandsetCase.Android;
             body = plate.BodyOn(windowRect);
-            var overlap = MathF.Max(1.6f, windowRect.Width * 0.010f);
-            var hole = plate.ScreenOn(windowRect).Expand(overlap);
-            var holeRadius = plate.ScreenRadiusOn(windowRect) + overlap;
+            var overlap = android ? 0f : MathF.Max(1.6f, windowRect.Width * 0.010f);
             screen = plate.GlassOn(windowRect);
             screenRadius = plate.GlassRadiusOn(windowRect);
-            railDepth = MathF.Max(windowRect.Max.X - screen.Max.X, 1f);
-            paint.FillSquircle(hole, new Vector4(0f, 0f, 0f, 1f), holeRadius);
-            if (skin is { IsReady: true } && skin.Handle != 0)
+            var under = plate.ScreenOn(windowRect).Expand(android ? 0f : overlap);
+            var hole = plate.ScreenOn(windowRect).Expand(overlap);
+            var underRadius = plate.ScreenRadiusOn(windowRect) + (android ? 0f : overlap);
+            var holeRadius = android ? plate.ScreenRadiusOn(windowRect) + overlap : 0f;
+            if (!android)
             {
-                CaseWash.StampSkin(paint, skin, windowRect, plate.CornerOn(windowRect),
-                    plate.ScreenCorner > 0.0001f);
+                screenRadius = 0f;
+                underRadius = 0f;
             }
 
-            paint.FillSquircle(hole, new Vector4(0f, 0f, 0f, 1f), holeRadius);
+            railDepth = MathF.Max(windowRect.Max.X - screen.Max.X, 1f);
+            var ink = new Vector4(0f, 0f, 0f, 1f);
+            paint.FillSquircle(under, ink, underRadius);
+            if (skin is { IsReady: true } && skin.Handle != 0)
+            {
+                CaseWash.StampSkin(paint, skin, windowRect, android ? 0f : plate.CornerOn(windowRect),
+                    tint: android ? Vector4.One : asleep ? new Vector4(1.42f, 1.42f, 1.46f, 1f) : null);
+            }
+
+            paint.FillSquircle(hole, ink, holeRadius);
         }
         else
         {
@@ -290,15 +317,32 @@ public sealed class HandsetWindow : Window
             screen = chassis.Screen;
             screenRadius = chassis.ScreenRadius;
             railDepth = MathF.Max(windowRect.Max.X - chassis.Glass.Max.X, 1f);
-            CaseWash.Body(paint, body, chassis.BodyRadius, theme.Palette.SurfaceSunken, theme.Palette.WarmAccent);
-            paint.FillSquircle(chassis.Glass, new Vector4(0f, 0f, 0f, 1f), chassis.GlassRadius);
+            if (shapePreference.Case == HandsetCase.Android)
+            {
+                CaseWash.Android(paint, body, screen, plate.VolumeOn(windowRect), plate.PowerOn(windowRect),
+                    chassis.BodyRadius, screenRadius);
+            }
+            else
+            {
+                CaseWash.Body(paint, body, chassis.BodyRadius, theme.Palette.SurfaceSunken, theme.Palette.WarmAccent);
+            }
+
+            paint.FillSquircle(chassis.Glass, new Vector4(0f, 0f, 0f, 1f),
+                shapePreference.Case == HandsetCase.Android ? chassis.GlassRadius : 0f);
         }
 
+        if (shapePreference.Case != HandsetCase.Android)
+        {
+            screenRadius = 0f;
+        }
+
+        lastShell = body.IsEmpty ? windowRect : body;
+        lastOuterRadius = plate.CornerOn(windowRect);
         paint.FillSquircle(screen, new Vector4(0f, 0f, 0f, 1f), screenRadius);
         if (presenceVanish || screen.IsEmpty)
         {
             DrawCase(paint, skin, windowRect, body, screen, screenRadius, plate.CornerOn(windowRect),
-                plate.GasketOn(windowRect));
+                plate.GasketOn(windowRect), asleep);
             return;
         }
 
@@ -315,7 +359,7 @@ public sealed class HandsetWindow : Window
                 paint.PopClip();
                 clipped = false;
                 DrawCase(paint, skin, windowRect, body, screen, screenRadius, plate.CornerOn(windowRect),
-                    plate.GasketOn(windowRect));
+                    plate.GasketOn(windowRect), asleep);
                 return;
             }
 
@@ -332,17 +376,20 @@ public sealed class HandsetWindow : Window
             if (asleep)
             {
                 var dip = ImGuiHelpers.GlobalScale;
-                var sliderHit = PocketUnlock.HitOn(screen, dip);
+                var hasNotice = shell.PocketNoticeCount() > 0;
+                var sliderHit = PocketUnlock.HitOn(screen, dip, hasNotice);
+                var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice);
                 if (!blocked && !pocketMoving && !pocketUnlock.IsDragging &&
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
-                    if (!sliderHit.Contains(pointer) && !powerHit.Contains(pointer) && windowRect.Contains(pointer))
+                    if (!sliderHit.Contains(pointer) && !noticeHit.Contains(pointer) &&
+                        !powerHit.Contains(pointer) && windowRect.Contains(pointer))
                     {
                         pocketMoving = true;
                     }
                 }
 
-                woke = shell.DrawMinimized(paint, text, theme, frameInput, screen, dip, pocketUnlock, deltaSeconds,
+                woke = shell.DrawMinimized(frame, screen, pocketUnlock,
                     allowSlide: !pocketMoving && !overChrome);
             }
             else
@@ -357,16 +404,24 @@ public sealed class HandsetWindow : Window
                 }
 
                 pocketNow = shell.ConsumePocket();
+                if (shell.ConsumePowerOff())
+                {
+                    persistOpen(true);
+                    persistMinimized(false);
+                    powerOffPlugin();
+                    return;
+                }
                 if (display.Brightness < 0.995f)
                 {
                     paint.Fill(screen, new Vector4(0f, 0f, 0f, 1f - display.Brightness));
                 }
             }
 
+            paint.FillOutsideRound(screen, screenRadius, new Vector4(0f, 0f, 0f, 1f));
             paint.PopClip();
             clipped = false;
             DrawCase(paint, skin, windowRect, body, screen, screenRadius, plate.CornerOn(windowRect),
-                plate.GasketOn(windowRect));
+                plate.GasketOn(windowRect), asleep);
             if (!usingSkin)
             {
                 powerButton.Draw(paint, windowRect, railDepth, scale, theme.Palette.InkFaint);
@@ -436,7 +491,7 @@ public sealed class HandsetWindow : Window
             var caseRadius = lastOuterRadius;
             var step = shapePreference.ScaleStep;
             var roundCorners = shapePreference.Case == HandsetCase.Android;
-            var hoveredCorner = resizeGrip.Update(windowRect, input, scale, caseRadius, roundCorners,
+            var hoveredCorner = resizeGrip.Update(windowRect, lastShell, input, scale, caseRadius, roundCorners,
                 HandsetSizeCatalog.MinScale, HandsetSizeCatalog.FreeCeiling, ref step);
             var boundCorner = resizeGrip.IsDragging ? resizeGrip.ActiveCorner : hoveredCorner;
             step = HandsetSizeCatalog.ClampFree(step, MaxScaleOnScreen(boundCorner));
@@ -449,7 +504,7 @@ public sealed class HandsetWindow : Window
                 savePlacement = true;
             }
 
-            DrawResizeSliders(paint, windowRect, hoveredCorner, scale, caseRadius, roundCorners);
+            DrawResizeSliders(paint, lastShell, hoveredCorner, scale, caseRadius, roundCorners);
             if (hoveredCorner != ResizeCorner.None)
             {
                 ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hoveredCorner)
@@ -467,14 +522,14 @@ public sealed class HandsetWindow : Window
     }
 
     private static void DrawCase(IPaintSurface paint, ITextureHandle? skin, Rect window, Rect body, Rect screen,
-        float screenRadius, float caseRadius, float gasket)
+        float screenRadius, float caseRadius, float gasket, bool pocket)
     {
         if (skin is not { IsReady: true })
         {
             CaseWash.Sheen(paint, body, screen, caseRadius);
         }
 
-        DrawScreenGasket(paint, window, screen, screenRadius, gasket);
+        DrawScreenGasket(paint, window, screen, screenRadius, gasket, pocket);
     }
 
     private void StepFold(float deltaSeconds)
@@ -491,20 +546,29 @@ public sealed class HandsetWindow : Window
         }
     }
 
-    private static void DrawScreenGasket(IPaintSurface paint, Rect window, Rect screen, float radius, float gasket)
+    private static void DrawScreenGasket(IPaintSurface paint, Rect window, Rect screen, float radius, float gasket,
+        bool pocket)
     {
         if (screen.IsEmpty)
         {
             return;
         }
 
+        // ImGui insets an AA stroke 0.5px from Max, which leaves a hairline on the right and
+        // bottom. Grow those two edges so the rim meets the case.
+        var rim = new Rect(screen.Min, screen.Max + new Vector2(1f, 1f));
+        if (gasket > 0.5f)
+        {
+            // A 4px black rim eats the whole pocket bezel. Keep the skin visible.
+            paint.Stroke(rim, new Vector4(0f, 0f, 0f, 1f), pocket ? 1.4f : 4f, radius);
+            return;
+        }
+
         var gap = MathF.Min(screen.Min.X - window.Min.X, screen.Min.Y - window.Min.Y);
-        var thickness = gasket > 0.5f
-            ? Math.Max(gasket * 0.85f, 1.1f)
-            : !float.IsFinite(gap) || gap <= 0f
-                ? 1.084f
-                : Math.Clamp(gap * 0.152f, 0.8f, 1.987f);
-        paint.Stroke(screen, new Vector4(0f, 0f, 0f, 1f), thickness, radius);
+        var thickness = !float.IsFinite(gap) || gap <= 0f
+            ? 1.084f
+            : Math.Clamp(gap * 0.152f, 0.8f, 1.987f);
+        paint.Stroke(rim, new Vector4(0f, 0f, 0f, 1f), thickness, 0f);
     }
 
     private static void DrawResizeSliders(DalamudPaintSurface paint, Rect window, ResizeCorner hovered, float scale,

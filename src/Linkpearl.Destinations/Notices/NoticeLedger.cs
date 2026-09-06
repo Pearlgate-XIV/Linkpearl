@@ -1,5 +1,6 @@
 using System.Globalization;
 using Linkpearl.Net;
+using Linkpearl.Notices;
 using Linkpearl.Talk;
 using Linkpearl.Time;
 
@@ -10,6 +11,20 @@ public enum NoticeKind : byte
     Announcement = 0,
     Chat = 1,
     People = 2,
+    Music = 3,
+    Calendar = 4,
+}
+
+public static class NoticeMarks
+{
+    public static string For(NoticeKind kind) => kind switch
+    {
+        NoticeKind.People => "friends",
+        NoticeKind.Announcement => "events",
+        NoticeKind.Music => "music",
+        NoticeKind.Calendar => "calendar",
+        _ => "pearlchat",
+    };
 }
 
 public readonly record struct GlassNotice(
@@ -22,77 +37,150 @@ public readonly record struct GlassNotice(
     int Section,
     string TargetId);
 
-public sealed class NoticeLedger
+public sealed class NoticeLedger : INoticeTray
 {
-    private readonly HashSet<string> dismissed = new(StringComparer.Ordinal);
-    private readonly List<GlassNotice> visible = [];
+    private const int Cap = 24;
+    private readonly List<GlassNotice> tray = [];
+    private readonly HashSet<string> seen = new(StringComparer.Ordinal);
+    private readonly List<GlassNotice> arrived = [];
+    private bool seeded;
+    private int lastUnread;
 
     public IReadOnlyList<GlassNotice> Visible(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
-        visible.Clear();
-        var notices = snapshot.Announcements ?? [];
-        for (var index = 0; index < notices.Length; index++)
+        Ingest(snapshot, talk, clock);
+        return tray;
+    }
+
+    public int Count(PearlSnapshot snapshot, ITalk talk, IClock clock)
+    {
+        Ingest(snapshot, talk, clock);
+        return tray.Count;
+    }
+
+    public void Ingest(PearlSnapshot snapshot, ITalk talk, IClock clock)
+    {
+        var unread = talk.UnreadTotal + snapshot.UnreadTotal;
+        if (!seeded)
         {
-            var item = notices[index];
+            var notices = snapshot.Announcements ?? [];
+            for (var index = 0; index < notices.Length; index++)
+            {
+                seen.Add("ann:" + notices[index].Id);
+            }
+
+            if (snapshot.People.Length > 0)
+            {
+                seen.Add("people:" + snapshot.People[0].Id);
+            }
+
+            lastUnread = unread;
+            seeded = true;
+            return;
+        }
+
+        var posted = snapshot.Announcements ?? [];
+        for (var index = 0; index < posted.Length; index++)
+        {
+            var item = posted[index];
             var id = "ann:" + item.Id;
-            if (dismissed.Contains(id))
+            if (!seen.Add(id))
             {
                 continue;
             }
 
-            visible.Add(new GlassNotice(id, NoticeKind.Announcement, item.Title, Snippet(item.Body),
-                When(clock, item.CreatedAtUnix), DestinationTab.Home, HomePane.Announcements, item.Id));
+            Keep(new GlassNotice(id, NoticeKind.Announcement, item.Title, Snippet(item.Body),
+                Stamp(clock), DestinationTab.Home, HomePane.Announcements, item.Id));
         }
 
-        var unread = talk.UnreadTotal + snapshot.UnreadTotal;
-        if (unread > 0 && !dismissed.Contains("chat"))
+        if (unread > lastUnread)
         {
-            var title = "PearlChat";
-            var detail = unread.ToString(CultureInfo.InvariantCulture) + " unread";
+            var title = "Messages";
+            var detail = "New message";
+            var target = string.Empty;
             var inbox = talk.Inbox();
             for (var index = 0; index < inbox.Count; index++)
             {
-                if (inbox[index].Unread > 0 && inbox[index].Title.Length > 0)
+                if (inbox[index].Unread <= 0)
                 {
-                    title = inbox[index].Title;
-                    detail = inbox[index].Preview.Length > 0 ? inbox[index].Preview : detail;
-                    break;
+                    continue;
                 }
+
+                title = inbox[index].Title.Length > 0 ? inbox[index].Title : title;
+                detail = inbox[index].Preview.Length > 0 ? inbox[index].Preview : detail;
+                target = inbox[index].Id;
+                break;
             }
 
-            visible.Add(new GlassNotice("chat", NoticeKind.Chat, title, detail, "Now",
-                DestinationTab.Social, SocialPane.Messages, string.Empty));
+            var id = "chat:" + target + ":" + unread + ":" + tray.Count.ToString(CultureInfo.InvariantCulture);
+            Keep(new GlassNotice(id, NoticeKind.Chat, title, detail, Stamp(clock),
+                DestinationTab.Social, SocialPane.Messages, target));
         }
 
-        if (snapshot.People.Length > 0 && !dismissed.Contains("people"))
+        lastUnread = unread;
+        if (snapshot.People.Length > 0)
         {
             var person = snapshot.People[0];
-            visible.Add(new GlassNotice("people", NoticeKind.People, person.DisplayName,
-                person.IsMutual ? "On the glass" : person.Handle, "Now",
-                DestinationTab.Social, SocialPane.People, person.Id));
+            var id = "people:" + person.Id;
+            if (seen.Add(id))
+            {
+                Keep(new GlassNotice(id, NoticeKind.People, person.DisplayName,
+                    person.IsMutual ? "On the glass" : person.Handle, Stamp(clock),
+                    DestinationTab.Social, SocialPane.People, TalkIds.Person(person.Id)));
+            }
         }
-
-        return visible;
     }
 
-    public int Count(PearlSnapshot snapshot, ITalk talk, IClock clock) => Visible(snapshot, talk, clock).Count;
+    public GlassNotice? TakeArrival()
+    {
+        if (arrived.Count == 0)
+        {
+            return null;
+        }
+
+        var notice = arrived[^1];
+        arrived.Clear();
+        return notice;
+    }
+
+    public void ForgetArrivals() => arrived.Clear();
+
+    public void PostCalendar(string itemId, string title, string detail, IClock clock)
+    {
+        var id = "cal:" + itemId + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        seen.Add(id);
+        Keep(new GlassNotice(id, NoticeKind.Calendar, title.Length > 0 ? title : "Calendar",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, itemId));
+    }
+
+    public void Dismiss(string id)
+    {
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        for (var index = tray.Count - 1; index >= 0; index--)
+        {
+            if (string.Equals(tray[index].Id, id, StringComparison.Ordinal))
+            {
+                tray.RemoveAt(index);
+            }
+        }
+    }
 
     public void Clear(PearlSnapshot snapshot, ITalk talk)
     {
-        var notices = snapshot.Announcements ?? [];
-        for (var index = 0; index < notices.Length; index++)
-        {
-            dismissed.Add("ann:" + notices[index].Id);
-        }
+        tray.Clear();
+    }
 
-        if (talk.UnreadTotal + snapshot.UnreadTotal > 0)
+    private void Keep(in GlassNotice notice)
+    {
+        tray.Insert(0, notice);
+        arrived.Add(notice);
+        while (tray.Count > Cap)
         {
-            dismissed.Add("chat");
-        }
-
-        if (snapshot.People.Length > 0)
-        {
-            dismissed.Add("people");
+            tray.RemoveAt(tray.Count - 1);
         }
     }
 
@@ -102,29 +190,6 @@ public sealed class NoticeLedger
         return text.Length <= 72 ? text : text[..72].TrimEnd() + "...";
     }
 
-    private static string When(IClock clock, long unix)
-    {
-        if (unix <= 0)
-        {
-            return "Now";
-        }
-
-        var age = clock.UtcNow - DateTimeOffset.FromUnixTimeSeconds(unix);
-        if (age.TotalMinutes < 1)
-        {
-            return "Now";
-        }
-
-        if (age.TotalHours < 1)
-        {
-            return ((int)age.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "m";
-        }
-
-        if (age.TotalDays < 1)
-        {
-            return ((int)age.TotalHours).ToString(CultureInfo.InvariantCulture) + "h";
-        }
-
-        return ((int)age.TotalDays).ToString(CultureInfo.InvariantCulture) + "d";
-    }
+    private static string Stamp(IClock clock) =>
+        clock.Now.ToString("h:mm tt", CultureInfo.InvariantCulture);
 }
