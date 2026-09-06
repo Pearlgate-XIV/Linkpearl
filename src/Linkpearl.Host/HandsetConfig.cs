@@ -49,7 +49,7 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public bool Use24HourClock { get; set; }
 
-    public int Appearance { get; set; }
+    public int Appearance { get; set; } = (int)AppearanceMode.Night;
 
     public string WallpaperId { get; set; } = WallpaperCatalog.DefaultId;
 
@@ -59,9 +59,9 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string CustomBannerFile { get; set; } = string.Empty;
 
-    public string Colorway { get; set; } = ColorwayId.Crystal;
+    public string Colorway { get; set; } = ColorwayId.Night;
 
-    public string Core { get; set; } = CoreId.Gold;
+    public string Core { get; set; } = CoreId.Blue;
 
     public int Shade { get; set; } = (int)ShadeLevel.Even;
 
@@ -161,17 +161,29 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string MicrophoneDeviceId { get; set; } = string.Empty;
 
+    public string CallSpeakerDeviceId { get; set; } = string.Empty;
+
+    public string CallMicrophoneDeviceId { get; set; } = string.Empty;
+
     public bool AutoRotate { get; set; }
 
     public string[] Replies { get; set; } = [];
 
     public string[]? InstalledApps { get; set; }
 
+    public string[]? AppScreens { get; set; }
+
+    public string[]? OwnedApps { get; set; }
+
     public string[] FavoriteApps { get; set; } = [];
 
     public string[] AppFolders { get; set; } = [];
 
     public string[] QuickApps { get; set; } = [];
+
+    public string StudioWidgets { get; set; } = string.Empty;
+
+    public string StudioApps { get; set; } = string.Empty;
 
     public string[] RecentAppIds { get; set; } = [];
 
@@ -227,7 +239,7 @@ public sealed class HandsetConfig : IPluginConfiguration
         Shade = Math.Clamp(Shade, 0, 2);
         ClockFace = Math.Clamp(ClockFace, 0, 2);
         Lettering = Math.Clamp(Lettering, 0, 2);
-        NameStyle = Math.Clamp(NameStyle, 0, 1);
+        NameStyle = Math.Clamp(NameStyle, 0, 2);
         OwnName = ShownName.Sanitize(OwnName ?? string.Empty);
         OwnTitle = ShownName.ClampTitle(OwnTitle ?? string.Empty).Trim();
         TitleMotion = Math.Clamp(TitleMotion, 0, 2);
@@ -256,8 +268,11 @@ public sealed class HandsetConfig : IPluginConfiguration
         MicVolume = Math.Clamp(MicVolume, 0f, 1f);
         SpeakerDeviceId = SpeakerDeviceId?.Trim() ?? string.Empty;
         MicrophoneDeviceId = MicrophoneDeviceId?.Trim() ?? string.Empty;
+        CallSpeakerDeviceId = CallSpeakerDeviceId?.Trim() ?? string.Empty;
+        CallMicrophoneDeviceId = CallMicrophoneDeviceId?.Trim() ?? string.Empty;
         Replies ??= [];
         FavoriteApps ??= [];
+        OwnedApps ??= [];
         AppFolders ??= [];
         QuickApps ??= [];
         RecentAppIds ??= [];

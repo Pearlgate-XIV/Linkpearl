@@ -1,7 +1,8 @@
 namespace Linkpearl.Talk;
 
-// Per-thread pop-out watch. Armed stays on after the window is closed; the next incoming
-// line reopens that window at its last place. No cap on how many threads can be armed.
+// Per-thread pop-out watch. Tells share one tabbed dock; other rooms keep their own window.
+// Arming a thread keeps the button on until the user turns it off. Closing a tab or the
+// dock hides the window but leaves the thread armed so the next inbound line brings it back.
 public interface ITalkPopouts
 {
     bool IsArmed(string threadId);

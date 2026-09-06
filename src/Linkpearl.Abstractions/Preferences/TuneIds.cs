@@ -38,6 +38,7 @@ public enum NameStyle : byte
 {
     Full = 0,
     Given = 1,
+    Family = 2,
 }
 
 public enum NameGlowWeight : byte
@@ -95,43 +96,31 @@ public static class FounderFaces
 
 public static class ColorwayId
 {
-    public const string Crystal = "crystal";
-    public const string Pearl = "pearl";
-    public const string Ember = "ember";
     public const string Night = "night";
 
-    public static readonly string[] All = { Crystal, Pearl, Ember, Night };
+    public static readonly string[] All = { Night };
 
-    public static string Sanitize(string id)
-    {
-        for (var index = 0; index < All.Length; index++)
-        {
-            if (string.Equals(All[index], id, StringComparison.Ordinal))
-            {
-                return All[index];
-            }
-        }
+    public static string Sanitize(string id) => Night;
 
-        return Crystal;
-    }
-
-    public static string Label(string id) => Sanitize(id) switch
-    {
-        Pearl => "Pearl",
-        Ember => "Ember",
-        Night => "Night",
-        _ => "Crystal",
-    };
+    public static string Label(string id) => "Default";
 }
 
 public static class CoreId
 {
-    public const string Gold = "gold";
-    public const string Violet = "violet";
-    public const string Rose = "rose";
-    public const string Sage = "sage";
+    public const string White = "white";
+    public const string Black = "black";
+    public const string Red = "red";
+    public const string Blue = "blue";
+    public const string Green = "green";
+    public const string Pink = "pink";
+    public const string Orange = "orange";
+    public const string Purple = "purple";
+    public const string Yellow = "yellow";
 
-    public static readonly string[] All = { Gold, Violet, Rose, Sage };
+    public static readonly string[] All =
+    {
+        White, Black, Red, Blue, Green, Pink, Orange, Purple, Yellow,
+    };
 
     public static string Sanitize(string id)
     {
@@ -143,14 +132,32 @@ public static class CoreId
             }
         }
 
-        return Gold;
+        return Blue;
     }
 
     public static string Label(string id) => Sanitize(id) switch
     {
-        Violet => "Violet",
-        Rose => "Rose",
-        Sage => "Sage",
-        _ => "Gold",
+        White => "White",
+        Black => "Black",
+        Red => "Red",
+        Green => "Green",
+        Pink => "Pink",
+        Orange => "Orange",
+        Purple => "Purple",
+        Yellow => "Yellow",
+        _ => "Blue",
+    };
+
+    public static Vector4 Swatch(string id) => Sanitize(id) switch
+    {
+        White => new Vector4(0.96f, 0.96f, 0.98f, 1f),
+        Black => new Vector4(0.10f, 0.10f, 0.12f, 1f),
+        Red => new Vector4(0.92f, 0.28f, 0.32f, 1f),
+        Green => new Vector4(0.28f, 0.78f, 0.48f, 1f),
+        Pink => new Vector4(0.96f, 0.42f, 0.68f, 1f),
+        Orange => new Vector4(0.98f, 0.55f, 0.22f, 1f),
+        Purple => new Vector4(0.68f, 0.42f, 0.92f, 1f),
+        Yellow => new Vector4(0.96f, 0.84f, 0.28f, 1f),
+        _ => new Vector4(0.32f, 0.55f, 0.96f, 1f),
     };
 }

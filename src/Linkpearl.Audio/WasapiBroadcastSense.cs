@@ -332,7 +332,11 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
             selectedName = points.FirstOrDefault(row => row.Id == id).Name;
             if (selectedName.Length == 0)
             {
-                selectedName = id == DefaultMixId ? "Windows default mix" : "Audio device";
+                selectedName = id == DefaultMixId
+                    ? "Windows default mix"
+                    : id == IBroadcastSense.DefaultMicId
+                        ? "Windows default microphone"
+                        : "Audio device";
             }
 
             restart = listening;
@@ -556,6 +560,13 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         {
             heldDevice = heldEnum.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             return OpenRender(heldDevice);
+        }
+
+        if (string.Equals(id, IBroadcastSense.DefaultMicId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(id, "mic", StringComparison.OrdinalIgnoreCase))
+        {
+            heldDevice = heldEnum.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            return OpenCapture(heldDevice);
         }
 
         if (id.StartsWith("out:", StringComparison.Ordinal))

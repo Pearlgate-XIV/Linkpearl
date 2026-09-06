@@ -51,7 +51,8 @@ internal sealed class TalkShelf
         }
     }
 
-    public void Save(ulong contentId, IEnumerable<RoomSnapshot> tells, IReadOnlyDictionary<string, string> extraNotes)
+    public void Save(ulong contentId, IEnumerable<RoomSnapshot> tells, IReadOnlyDictionary<string, string> extraNotes,
+        IReadOnlyCollection<string> hidden)
     {
         if (contentId == 0UL)
         {
@@ -93,11 +94,21 @@ internal sealed class TalkShelf
             }
         }
 
+        var hid = new List<string>();
+        foreach (var id in hidden)
+        {
+            if (id.Length > 0)
+            {
+                hid.Add(id);
+            }
+        }
+
         var file = new ShelfFile
         {
             ContentId = contentId.ToString(CultureInfo.InvariantCulture),
             Threads = threads.ToArray(),
             Notes = notes.Count > 0 ? notes : null,
+            Hidden = hid.Count > 0 ? hid.ToArray() : null,
         };
         var path = PathFor(contentId);
         var temp = path + ".tmp";
@@ -142,6 +153,8 @@ internal sealed class TalkShelf
         public ShelfThread[]? Threads { get; set; }
 
         public Dictionary<string, string>? Notes { get; set; }
+
+        public string[]? Hidden { get; set; }
     }
 
     internal sealed record ShelfThread(

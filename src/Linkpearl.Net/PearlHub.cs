@@ -514,7 +514,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 MeHandle = me.Handle ?? string.Empty,
                 MeBio = me.Bio ?? string.Empty,
                 MeAvatarUrl = me.AvatarUrl ?? string.Empty,
-                MyNumber = contacts?.MyNumber ?? string.Empty,
+                MyNumber = LineNumber(me.PhoneNumber, contacts),
                 Followers = me.Followers,
                 Following = me.Following,
                 FounderSeat = SeatOf(me),
@@ -620,6 +620,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             MeHandle = user?.Handle ?? string.Empty,
             MeBio = user?.Bio ?? string.Empty,
             MeAvatarUrl = user?.AvatarUrl ?? string.Empty,
+            MyNumber = LineNumber(user?.PhoneNumber, null),
             Followers = user?.Followers ?? 0,
             Following = user?.Following ?? 0,
             FounderSeat = SeatOf(user),
@@ -794,6 +795,31 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         return mapped;
     }
 
+    private static string LineNumber(string? fromProfile, ContactListDto? contacts)
+    {
+        if (!string.IsNullOrWhiteSpace(fromProfile))
+        {
+            return fromProfile.Trim();
+        }
+
+        if (contacts is null)
+        {
+            return string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(contacts.MyNumber))
+        {
+            return contacts.MyNumber.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(contacts.PhoneNumber))
+        {
+            return contacts.PhoneNumber.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(contacts.Number) ? string.Empty : contacts.Number.Trim();
+    }
+
     private static PearlPerson[] MapPeople(ContactDto[]? items)
     {
         if (items is null || items.Length == 0)
@@ -807,7 +833,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var item = items[index];
             var name = string.IsNullOrWhiteSpace(item.Alias) ? item.DisplayName : item.Alias;
             mapped[index] = new PearlPerson(item.UserId, name ?? string.Empty, item.Handle ?? string.Empty,
-                item.PhoneNumber ?? string.Empty, item.IsMutual, item.AvatarUrl ?? string.Empty);
+                item.PhoneNumber ?? string.Empty, item.IsMutual, item.AvatarUrl ?? string.Empty,
+                item.Race ?? string.Empty, item.World ?? string.Empty);
         }
 
         return mapped;

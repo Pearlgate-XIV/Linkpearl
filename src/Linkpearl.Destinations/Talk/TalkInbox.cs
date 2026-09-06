@@ -18,6 +18,7 @@ public sealed class TalkInbox : ITalk, IDisposable
     private readonly object gate = new();
     private readonly Dictionary<string, Room> rooms = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> extraNotes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> hidden = new(StringComparer.OrdinalIgnoreCase);
     private ulong boundId;
     private int generation;
 
@@ -74,7 +75,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             var list = new List<TalkThread>(rooms.Count + snapshot.Chats.Length + 4);
             foreach (var pair in rooms)
             {
-                if (pair.Value.Kind == TalkKind.Live)
+                if (pair.Value.Kind == TalkKind.Live || hidden.Contains(pair.Key))
                 {
                     continue;
                 }
@@ -267,6 +268,10 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     public IReadOnlyList<GameFriend> Friends() => chat.Friends;
 
+    public bool ShouldOfferFriend(string name, string world) => chat.ShouldOfferFriend(name, world);
+
+    public void RequestFriend(string name, string world) => chat.RequestFriend(name, world);
+
     public IReadOnlyList<GamePeerHint> SearchNearby(string query)
     {
         var trimmed = query.Trim();
@@ -456,27 +461,59 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     public string StartTell(string name, string world)
     {
-        var id = TalkIds.Tell(name, world);
+        var trimmedName = name.Trim();
+        var trimmedWorld = world.Trim();
         lock (gate)
         {
             BindCharacter();
-            if (!rooms.TryGetValue(id, out var room))
+            var room = FindTellRoom(trimmedName, trimmedWorld);
+            if (room is null)
             {
+                var id = TalkIds.Tell(trimmedName, trimmedWorld);
                 room = new Room
                 {
                     Id = id,
                     Kind = TalkKind.Tell,
-                    Title = name.Trim(),
-                    World = world.Trim(),
-                    Subtitle = world.Trim().Length > 0 ? world.Trim() : "Tell",
+                    Title = trimmedName,
+                    World = trimmedWorld,
+                    Subtitle = trimmedWorld.Length > 0 ? trimmedWorld : "Tell",
                     Note = NoteOf(id),
                 };
                 rooms[id] = room;
-                generation++;
             }
+
+            if (trimmedWorld.Length > 0 && room.World.Length == 0)
+            {
+                room.World = trimmedWorld;
+                room.Subtitle = trimmedWorld;
+            }
+
+            room.LastAt = clock.Now;
+            Reveal(room.Id);
+            generation++;
+            Flush();
+            return room.Id;
+        }
+    }
+
+    public void HideThread(string threadId)
+    {
+        if (threadId.Length == 0)
+        {
+            return;
         }
 
-        return id;
+        lock (gate)
+        {
+            BindCharacter();
+            if (!hidden.Add(threadId))
+            {
+                return;
+            }
+
+            generation++;
+            Flush();
+        }
     }
 
     public void SetNote(string peerId, string note)
@@ -538,6 +575,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             Flush();
             rooms.Clear();
             extraNotes.Clear();
+            hidden.Clear();
             boundId = 0;
             generation++;
         }
@@ -568,6 +606,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         ForgetTells();
         ForgetLive();
         extraNotes.Clear();
+        hidden.Clear();
         boundId = id;
         if (id == 0UL)
         {
@@ -582,6 +621,17 @@ public sealed class TalkInbox : ITalk, IDisposable
     private void AbsorbShelf(ulong contentId)
     {
         var file = shelf.Load(contentId);
+        if (file.Hidden is { Length: > 0 } hid)
+        {
+            for (var index = 0; index < hid.Length; index++)
+            {
+                if (hid[index] is { Length: > 0 } id)
+                {
+                    hidden.Add(id);
+                }
+            }
+        }
+
         if (file.Notes is not null)
         {
             foreach (var pair in file.Notes)
@@ -712,7 +762,7 @@ public sealed class TalkInbox : ITalk, IDisposable
                 room.LastAt, room.Unread, room.Lines));
         }
 
-        shelf.Save(boundId, tells, extraNotes);
+        shelf.Save(boundId, tells, extraNotes, hidden);
     }
 
     private void HandleLine(GameChatLine line)
@@ -760,6 +810,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             }
 
             generation++;
+            Reveal(id);
             if (room.Kind == TalkKind.Tell)
             {
                 Flush();
@@ -1020,6 +1071,63 @@ public sealed class TalkInbox : ITalk, IDisposable
         return string.Empty;
     }
 
+    private Room? FindTellRoom(string name, string world)
+    {
+        if (name.Length == 0)
+        {
+            return null;
+        }
+
+        if (rooms.TryGetValue(TalkIds.Tell(name, world), out var exact))
+        {
+            return exact;
+        }
+
+        Room? match = null;
+        foreach (var room in rooms.Values)
+        {
+            if (room.Kind != TalkKind.Tell || !TellNamesMatch(room, name))
+            {
+                continue;
+            }
+
+            if (world.Length > 0 && room.World.Length > 0 &&
+                !room.World.Equals(world, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (match is null || room.LastAt > match.LastAt || room.Lines.Count > match.Lines.Count)
+            {
+                match = room;
+            }
+        }
+
+        return match;
+    }
+
+    private static bool TellNamesMatch(Room room, string name)
+    {
+        if (room.Title.Equals(name, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return TalkIds.TryParseTell(room.Id, out var stored, out _) &&
+               stored.Equals(name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool Reveal(string threadId)
+    {
+        if (!hidden.Remove(threadId))
+        {
+            return false;
+        }
+
+        generation++;
+        return true;
+    }
+
     private string NoteOf(string id) => extraNotes.TryGetValue(id, out var note) ? note : string.Empty;
 
     private static Room FromShelf(TalkShelf.ShelfThread stored)
@@ -1065,11 +1173,17 @@ public sealed class TalkInbox : ITalk, IDisposable
         return room;
     }
 
-    private static void AppendPearl(List<TalkThread> list, PearlSnapshot snapshot)
+    private void AppendPearl(List<TalkThread> list, PearlSnapshot snapshot)
     {
         for (var index = 0; index < snapshot.Chats.Length; index++)
         {
-            list.Add(PearlThread(snapshot.Chats[index], snapshot.SignedIn));
+            var thread = PearlThread(snapshot.Chats[index], snapshot.SignedIn);
+            if (hidden.Contains(thread.Id))
+            {
+                continue;
+            }
+
+            list.Add(thread);
         }
     }
 

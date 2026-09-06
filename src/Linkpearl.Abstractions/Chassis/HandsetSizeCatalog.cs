@@ -8,8 +8,8 @@ public static class HandsetSizeCatalog
     private static readonly Vector2 PhoneBase = new(517f / 1008f * 800f, 800f);
     private static readonly Vector2 TabletBase = new(710f / 987f * 800f, 800f);
 
-    private static readonly float[] Steps = { 0.65f, 0.80f, 1.00f, 1.25f, 1.55f, 1.95f };
-    private static readonly string[] Labels = { "XS", "S", "M", "L", "XL", "XXL" };
+    private static readonly float[] Steps = { 0.80f, 1.00f, 1.25f };
+    private static readonly string[] Labels = { "S", "M", "L" };
 
     public const float DefaultStep = 1.000f;
 

@@ -1,6 +1,7 @@
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
@@ -15,6 +16,7 @@ public sealed class AppsDock
     private const float SwipeCommit = 0.28f;
 
     private int extras;
+    private int appScreens = 1;
     private int page = -1;
     private int rest = -1;
     private float slide = -1f;
@@ -24,7 +26,7 @@ public sealed class AppsDock
     private Vector2 grabOrigin;
     private float grabSlide;
 
-    public bool OnApps => page == AppsPage;
+    public bool OnApps => page >= FirstAppsPage;
 
     public bool OnStudio => page == StudioPage;
 
@@ -36,7 +38,13 @@ public sealed class AppsDock
 
     public int StudioPage => destLane ? -1 : extras;
 
-    public int AppsPage => destLane ? 1 : extras + 1;
+    public int FirstAppsPage => destLane ? 1 : extras + 1;
+
+    public int AppsPage => FirstAppsPage;
+
+    public int AppScreenIndex => OnApps ? page - FirstAppsPage : 0;
+
+    public int AppScreenCount => destLane ? 1 : Math.Max(1, appScreens);
 
     public bool DestLane => destLane;
 
@@ -66,6 +74,22 @@ public sealed class AppsDock
     public void SetExtraScreens(int count)
     {
         extras = Math.Clamp(count, 0, ExtraCap);
+        if (!destLane)
+        {
+            var next = Math.Clamp(page, MinPage, MaxPage);
+            if (next != page)
+            {
+                page = next;
+                slide = page;
+            }
+
+            slide = Scalar.Clamp(slide, MinPage, MaxPage);
+        }
+    }
+
+    public void SetAppScreens(int count)
+    {
+        appScreens = Math.Clamp(count, 1, DisplayPreferences.AppScreenCap);
         if (!destLane)
         {
             var next = Math.Clamp(page, MinPage, MaxPage);
@@ -129,6 +153,25 @@ public sealed class AppsDock
         page = AppsPage;
     }
 
+    public void CoverWithApp()
+    {
+        rest = page;
+        if (!OnApps)
+        {
+            page = AppsPage;
+        }
+    }
+
+    public void Retreat()
+    {
+        page = rest;
+    }
+
+    public void ShowAppScreen(int index)
+    {
+        page = FirstAppsPage + Math.Clamp(index, 0, Math.Max(0, AppScreenCount - 1));
+    }
+
     public bool Step(int delta)
     {
         if (delta == 0)
@@ -160,6 +203,11 @@ public sealed class AppsDock
     {
         if (!allow)
         {
+            if (dragging)
+            {
+                slide = page;
+            }
+
             tracking = false;
             dragging = false;
             return false;
@@ -266,7 +314,7 @@ public sealed class AppsDock
 
     private int MinPage => destLane ? -1 : 0;
 
-    private int MaxPage => destLane ? 1 : extras + 1;
+    private int MaxPage => destLane ? 1 : extras + AppScreenCount;
 
     private void StepSlide(float deltaSeconds)
     {

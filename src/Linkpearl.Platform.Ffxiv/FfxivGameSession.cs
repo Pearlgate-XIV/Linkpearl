@@ -1,4 +1,5 @@
 using System.Globalization;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.Game;
@@ -9,6 +10,7 @@ using ClassJobSheet = Lumina.Excel.Sheets.ClassJob;
 using ItemSheet = Lumina.Excel.Sheets.Item;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
 using WeatherSheet = Lumina.Excel.Sheets.Weather;
+using RaceSheet = Lumina.Excel.Sheets.Race;
 using WorldSheet = Lumina.Excel.Sheets.World;
 
 namespace Linkpearl.Platform.Ffxiv;
@@ -29,6 +31,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private byte cachedWeatherId;
     private uint jobIconId;
     private string jobName = string.Empty;
+    private string raceName = string.Empty;
+    private int phoneCountry;
     private string zoneName = string.Empty;
     private string weatherName = string.Empty;
     private readonly object retainerGate = new();
@@ -76,6 +80,10 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     public uint JobIconId => jobIconId;
 
     public string JobName => jobName;
+
+    public string RaceName => raceName;
+
+    public int PhoneCountry => phoneCountry;
 
     public string ZoneName => zoneName;
 
@@ -278,6 +286,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             cachedTerritoryId = 0;
             jobIconId = 0;
             jobName = string.Empty;
+            raceName = string.Empty;
+            phoneCountry = 0;
             zoneName = string.Empty;
             weatherName = string.Empty;
             cachedWeatherId = 0;
@@ -325,6 +335,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         cachedTerritoryId = 0;
         jobIconId = 0;
         jobName = string.Empty;
+        raceName = string.Empty;
+        phoneCountry = 0;
         zoneName = string.Empty;
         weatherName = string.Empty;
         cachedWeatherId = 0;
@@ -354,6 +366,9 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
                 jobName = JobTitle(jobId);
                 jobIconId = jobs.IconFor(jobId);
             }
+
+            raceName = RaceTitle(localPlayer.Customize[(int)CustomizeIndex.Race],
+                localPlayer.Customize[(int)CustomizeIndex.Gender]);
         }
 
         var territoryId = clientState.TerritoryType;
@@ -426,6 +441,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             return CharacterIdentity.Unknown;
         }
 
+        phoneCountry = CountryOf(homeWorld);
         return new CharacterIdentity(contentId, name, WorldName(homeWorld), homeWorld, currentWorld);
     }
 
@@ -435,11 +451,55 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         return info is null ? 0UL : info->GetLocalContentId();
     }
 
+    private int CountryOf(uint worldId)
+    {
+        if (worldId != 0 && data.GetExcelSheet<WorldSheet>().TryGetRow(worldId, out var world) &&
+            world.DataCenter.IsValid)
+        {
+            var center = world.DataCenter.Value.Name.ExtractText();
+            if (center is "Aether" or "Primal" or "Crystal" or "Dynamis")
+            {
+                return 1;
+            }
+
+            if (center is "Chaos" or "Light")
+            {
+                return 2;
+            }
+
+            if (center is "Elemental" or "Gaia" or "Mana" or "Meteor")
+            {
+                return 3;
+            }
+
+            if (center is "Materia")
+            {
+                return 4;
+            }
+        }
+
+        return 0;
+    }
+
     private string WorldName(uint rowId)
     {
         if (rowId != 0 && data.GetExcelSheet<WorldSheet>().TryGetRow(rowId, out var world))
         {
             return world.Name.ExtractText();
+        }
+
+        return string.Empty;
+    }
+
+    private string RaceTitle(byte raceId, byte gender)
+    {
+        if (raceId != 0 && data.GetExcelSheet<RaceSheet>().TryGetRow(raceId, out var race))
+        {
+            var title = gender == 1 ? race.Feminine.ExtractText() : race.Masculine.ExtractText();
+            if (title.Length > 0)
+            {
+                return title;
+            }
         }
 
         return string.Empty;

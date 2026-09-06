@@ -17,6 +17,7 @@ public sealed class TalkPopoutWindow : Window
     private string draft = string.Empty;
     private int seenGeneration = -1;
     private bool stickBottom = true;
+    private float logOffset;
     private bool focusDraft;
     private Vector2 lastPos;
     private Vector2 lastSize = new(340f, 380f);
@@ -33,6 +34,7 @@ public sealed class TalkPopoutWindow : Window
         pinnedPos = position;
         pinnedSize = size;
         pinPlace = position.HasValue || size.HasValue;
+        stickBottom = true;
         Size = size ?? new Vector2(340f, 380f);
         SizeCondition = ImGuiCond.FirstUseEver;
         RespectCloseHotkey = false;
@@ -44,6 +46,13 @@ public sealed class TalkPopoutWindow : Window
     public Vector2 LastPos => lastPos;
 
     public Vector2 LastSize => lastSize;
+
+    public void SnapToNewest()
+    {
+        stickBottom = true;
+        logOffset = 0f;
+        seenGeneration = -1;
+    }
 
     public override void OnClose() => closed(threadId);
 
@@ -104,68 +113,131 @@ public sealed class TalkPopoutWindow : Window
         var footer = 44f;
         var body = ImGui.GetContentRegionAvail();
         var logHeight = MathF.Max(64f, body.Y - footer - 10f);
-        if (ImGui.BeginChild("##talk-log-" + threadId, new Vector2(body.X, logHeight), false,
-                ImGuiWindowFlags.None))
-        {
-            var lines = talk.Lines(threadId);
-            if (lines.Count == 0)
-            {
-                ImGui.PushStyleColor(ImGuiCol.Text, palette.InkFaint);
-                ImGui.TextUnformatted("No messages yet.");
-                ImGui.PopStyleColor();
-            }
-            else
-            {
-                var width = ImGui.GetContentRegionAvail().X;
-                for (var index = 0; index < lines.Count; index++)
-                {
-                    DrawBubble(lines[index], title, width, palette);
-                    ImGui.Dummy(new Vector2(1f, 8f));
-                }
-            }
-
-            if (talk.Generation != seenGeneration)
-            {
-                seenGeneration = talk.Generation;
-                stickBottom = true;
-            }
-
-            if (stickBottom)
-            {
-                ImGui.SetScrollHereY(1f);
-                stickBottom = false;
-            }
-        }
-
-        ImGui.EndChild();
+        DrawLog(title, logHeight, palette);
         ImGui.Dummy(new Vector2(1f, 6f));
         DrawComposer(thread?.CanSend == true, palette);
     }
 
-    private static void DrawBubble(TalkLine line, string peerName, float width, Palette palette)
+    private void DrawLog(string title, float logHeight, Palette palette)
+    {
+        var width = MathF.Max(32f, ImGui.GetContentRegionAvail().X);
+        var origin = ImGui.GetCursorScreenPos();
+        ImGui.InvisibleButton("##talk-log-" + threadId, new Vector2(width, logHeight));
+        var hovering = ImGui.IsItemHovered();
+        var lines = talk.Lines(threadId);
+        if (lines.Count == 0)
+        {
+            ImGui.SetCursorScreenPos(origin + new Vector2(8f, 8f));
+            ImGui.PushStyleColor(ImGuiCol.Text, palette.InkFaint);
+            ImGui.TextUnformatted("No messages yet.");
+            ImGui.PopStyleColor();
+            ImGui.SetCursorScreenPos(origin + new Vector2(0f, logHeight));
+            return;
+        }
+
+        const float gap = 8f;
+        var heights = new float[lines.Count];
+        var total = 0f;
+        for (var index = 0; index < lines.Count; index++)
+        {
+            heights[index] = MeasureBubble(lines[index], title, width);
+            total += heights[index] + (index == 0 ? 0f : gap);
+        }
+
+        var maxOffset = MathF.Max(0f, total - logHeight);
+        if (talk.Generation != seenGeneration)
+        {
+            seenGeneration = talk.Generation;
+            stickBottom = true;
+        }
+
+        if (hovering)
+        {
+            var wheel = ImGui.GetIO().MouseWheel;
+            if (MathF.Abs(wheel) > 0.01f)
+            {
+                stickBottom = false;
+                logOffset = Math.Clamp(logOffset - wheel * 48f, 0f, maxOffset);
+            }
+        }
+
+        if (stickBottom)
+        {
+            logOffset = maxOffset;
+        }
+        else
+        {
+            logOffset = Math.Clamp(logOffset, 0f, maxOffset);
+            if (logOffset >= maxOffset - 1.5f)
+            {
+                stickBottom = true;
+            }
+        }
+
+        var draw = ImGui.GetWindowDrawList();
+        draw.PushClipRect(origin, origin + new Vector2(width, logHeight), true);
+        var cursor = origin.Y - logOffset;
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var height = heights[index];
+            if (cursor + height >= origin.Y && cursor <= origin.Y + logHeight)
+            {
+                DrawBubble(new Vector2(origin.X, cursor), lines[index], title, width, palette);
+            }
+
+            cursor += height + gap;
+        }
+
+        draw.PopClipRect();
+        ImGui.SetCursorScreenPos(origin + new Vector2(0f, logHeight));
+    }
+
+    private static float MeasureBubble(TalkLine line, string peerName, float width)
+    {
+        const float pad = 8f;
+        const float gap = 2f;
+        SizeBubble(line, peerName, width, out _, out var nameSize, out var bodySize);
+        return pad + nameSize.Y + gap + bodySize.Y + pad;
+    }
+
+    private static void SizeBubble(TalkLine line, string peerName, float width, out float bubbleW,
+        out Vector2 nameSize, out Vector2 bodySize)
+    {
+        const float pad = 8f;
+        var who = Who(line, peerName);
+        var body = line.Body ?? string.Empty;
+        bubbleW = MathF.Max(72f, width * 0.78f);
+        var wrap = MathF.Max(24f, bubbleW - pad * 2f);
+        nameSize = ImGui.CalcTextSize(who, false, wrap);
+        bodySize = ImGui.CalcTextSize(body, false, wrap);
+        var neededW = MathF.Max(nameSize.X, bodySize.X) + pad * 2f;
+        if (neededW <= bubbleW)
+        {
+            return;
+        }
+
+        bubbleW = MathF.Min(width, neededW);
+        wrap = MathF.Max(24f, bubbleW - pad * 2f);
+        nameSize = ImGui.CalcTextSize(who, false, wrap);
+        bodySize = ImGui.CalcTextSize(body, false, wrap);
+    }
+
+    private static string Who(TalkLine line, string peerName) =>
+        line.Mine ? "Me" : line.Sender.Length > 0 ? line.Sender : peerName.Length > 0 ? peerName : "Them";
+
+    private static void DrawBubble(Vector2 row, TalkLine line, string peerName, float width, Palette palette)
     {
         const float pad = 8f;
         const float gap = 2f;
         const float radius = 12f;
         var gold = palette.WarmAccent;
-        var who = line.Mine ? "Me" : line.Sender.Length > 0 ? line.Sender : peerName.Length > 0 ? peerName : "Them";
+        var who = Who(line, peerName);
         var body = line.Body ?? string.Empty;
-        var bubbleW = MathF.Max(72f, width * 0.78f);
+        SizeBubble(line, peerName, width, out var bubbleW, out var nameSize, out var bodySize);
         var wrap = MathF.Max(24f, bubbleW - pad * 2f);
-        var nameSize = ImGui.CalcTextSize(who, false, wrap);
-        var bodySize = ImGui.CalcTextSize(body, false, wrap);
-        var neededW = MathF.Max(nameSize.X, bodySize.X) + pad * 2f;
-        if (neededW > bubbleW)
-        {
-            bubbleW = MathF.Min(width, neededW);
-            wrap = MathF.Max(24f, bubbleW - pad * 2f);
-            nameSize = ImGui.CalcTextSize(who, false, wrap);
-            bodySize = ImGui.CalcTextSize(body, false, wrap);
-        }
-
         var bubbleH = pad + nameSize.Y + gap + bodySize.Y + pad;
         var x = line.Mine ? MathF.Max(0f, width - bubbleW) : 0f;
-        var origin = ImGui.GetCursorScreenPos() + new Vector2(x, 0f);
+        var origin = row + new Vector2(x, 0f);
         var max = origin + new Vector2(bubbleW, bubbleH);
         var draw = ImGui.GetWindowDrawList();
         var fill = line.Mine ? MineFill(palette) : palette.SurfaceOverlay with { W = 0.55f };
@@ -186,10 +258,6 @@ public sealed class TalkPopoutWindow : Window
         ImGui.PopStyleColor();
         ImGui.PopTextWrapPos();
         draw.PopClipRect();
-
-        var bottom = MathF.Max(max.Y, ImGui.GetItemRectMax().Y + pad);
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, bottom));
-        ImGui.Dummy(new Vector2(1f, 1f));
     }
 
     private void DrawComposer(bool canSend, Palette palette)

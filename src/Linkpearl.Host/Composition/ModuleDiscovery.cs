@@ -15,6 +15,7 @@ public static class ModuleDiscovery
         new FeedbackModule(),
         new ClockModule(),
         new AlarmsModule(),
+        new PhoneModule(),
         new NotesModule(),
         new CalendarModule(),
         new MusicModule(),
@@ -27,5 +28,7 @@ public static class ModuleDiscovery
         new EorzeaModule(),
         new CameraModule(),
         new WalletModule(),
+        new MarketModule(),
+        new AppStoreModule(),
     };
 }

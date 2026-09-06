@@ -29,23 +29,24 @@ public sealed class PocketUnlock
         grab = 0f;
     }
 
-    public static Rect TrackOn(Rect screen, float dip)
+    public static Rect TrackOn(Rect screen, float dip, bool notice = false)
     {
         var width = WidthUnits * dip;
-        var height = HeightUnits * dip;
-        var clock = 24f * dip;
-        var top = screen.Min.Y + clock + 8f * dip;
-        var bottom = screen.Max.Y - 8f * dip;
-        var y = top + MathF.Max(0f, (bottom - top - height) * 0.45f);
+        var top = screen.Min.Y + MinimizedFace.TrackTop(dip, notice);
+        var bottom = screen.Max.Y - MinimizedFace.TrackBottom(dip);
+        var room = MathF.Max(0f, bottom - top);
+        var height = MathF.Min(HeightUnits * dip, room);
+        var y = top + MathF.Max(0f, (room - height) * 0.45f);
         return Rect.FromSize(new Vector2(screen.Center.X - width * 0.5f, y), new Vector2(width, height));
     }
 
-    public static Rect HitOn(Rect screen, float dip) => TrackOn(screen, dip).Expand(3f * dip);
+    public static Rect HitOn(Rect screen, float dip, bool notice = false) =>
+        TrackOn(screen, dip, notice).Expand(3f * dip);
 
     public bool Draw(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float dip, float deltaSeconds,
-        bool allowSlide)
+        bool allowSlide, bool notice = false)
     {
-        var track = TrackOn(screen, dip);
+        var track = TrackOn(screen, dip, notice);
         if (track.IsEmpty)
         {
             return false;
@@ -55,7 +56,7 @@ public sealed class PocketUnlock
         var minY = track.Min.Y + pad;
         var maxY = track.Max.Y - pad;
         var travel = MathF.Max(maxY - minY, 1f);
-        var hit = HitOn(screen, dip);
+        var hit = HitOn(screen, dip, notice);
 
         if (allowSlide && !dragging && hit.Contains(input.Pointer) &&
             ImGui.IsMouseClicked(ImGuiMouseButton.Left))

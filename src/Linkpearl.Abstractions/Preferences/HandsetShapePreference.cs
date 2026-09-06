@@ -133,9 +133,10 @@ public sealed class HandsetShapePreference
         }
     }
 
-    public static readonly float[] PocketSteps = { 0.85f, 1f, 1.22f };
+    // Small matches the compact overlay phones (~half the old default miniature).
+    public static readonly float[] PocketSteps = { 0.64f, 1f, 1.22f };
 
-    public static readonly string[] PocketLabels = { "S", "M", "L" };
+    public static readonly string[] PocketLabels = { "Small", "Medium", "Large" };
 
     public static float SnapPocket(float scale)
     {

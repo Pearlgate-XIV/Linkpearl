@@ -70,6 +70,10 @@ public interface ITalk
 
     IReadOnlyList<GameFriend> Friends();
 
+    bool ShouldOfferFriend(string name, string world);
+
+    void RequestFriend(string name, string world);
+
     IReadOnlyList<GamePeerHint> SearchNearby(string query);
 
     void MarkRead(string threadId);
@@ -77,6 +81,8 @@ public interface ITalk
     void Send(string threadId, string body);
 
     string StartTell(string name, string world);
+
+    void HideThread(string threadId);
 
     void SetNote(string peerId, string note);
 }

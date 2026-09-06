@@ -9,16 +9,15 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
 {
     private static readonly (string Name, string[] Tags)[] Map =
     {
-        ("Lo-Fi", ["lofi", "lo-fi"]),
+        ("Pop", ["pop", "hits", "top 40"]),
+        ("Hip Hop", ["hiphop", "rap", "urban"]),
         ("Rock", ["rock"]),
         ("Metal", ["metal"]),
-        ("Electronic", ["electronic", "edm"]),
-        ("Bass", ["bass"]),
-        ("Dubstep", ["dubstep"]),
-        ("Techno", ["techno"]),
-        ("Chill", ["chill", "chillout"]),
-        ("House", ["house"]),
-        ("Ambient", ["ambient"]),
+        ("Electronic", ["electronic", "edm", "house", "techno", "dance"]),
+        ("Bass", ["dubstep", "drum and bass", "dnb", "future bass", "riddim"]),
+        ("Chill", ["chill", "chillout", "lofi", "lo-fi"]),
+        ("Country", ["country"]),
+        ("Latin", ["latin", "reggaeton", "salsa"]),
     };
 
     private static readonly string[] Hosts =
@@ -153,7 +152,8 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
             }
 
             var list = merged.Values
-                .OrderByDescending(static station => station.Bitrate)
+                .OrderByDescending(static station => station.ArtUrl.Length > 0)
+                .ThenByDescending(static station => station.Bitrate)
                 .ThenBy(static station => station.Title, StringComparer.OrdinalIgnoreCase)
                 .Take(80)
                 .ToArray();

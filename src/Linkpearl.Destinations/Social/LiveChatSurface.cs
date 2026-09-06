@@ -10,10 +10,10 @@ internal sealed class LiveChatSurface
 {
     private static readonly (string Label, string ThreadId)[] Channels =
     {
-        ("SAY", TalkIds.LiveSay),
-        ("SHOUT", TalkIds.LiveShout),
-        ("YELL", TalkIds.LiveYell),
-        ("PARTY", TalkIds.LiveParty),
+        ("Say", TalkIds.LiveSay),
+        ("Shout", TalkIds.LiveShout),
+        ("Yell", TalkIds.LiveYell),
+        ("Party", TalkIds.LiveParty),
     };
 
     private readonly ITalk talk;
@@ -36,52 +36,55 @@ internal sealed class LiveChatSurface
         talk.MarkRead(TalkIds.Live);
         var thread = talk.Find(TalkIds.Live);
         var partyReady = talk.Find(TalkIds.Party)?.CanSend == true;
-        var inset = frame.Units(12f);
-        var area = frame.Content.Inset(inset);
-        var chips = area.BottomSlice(frame.Units(32f));
-        var composer = new Rect(new Vector2(area.Min.X, chips.Min.Y - frame.Units(50f)),
-            new Vector2(area.Max.X, chips.Min.Y - frame.Units(6f)));
-        var pane = new Rect(area.Min, new Vector2(area.Max.X, composer.Min.Y - frame.Units(8f)));
-
-        frame.Paint.Fill(pane, frame.Theme.Palette.SurfaceSunken with { W = 0.90f }, frame.Units(14f));
-        var filters = pane.Inset(new Edges(frame.Units(8f), frame.Units(8f), frame.Units(8f), 0f))
-            .TopSlice(frame.Units(26f));
-        var log = new Rect(new Vector2(pane.Min.X + frame.Units(12f), filters.Max.Y + frame.Units(6f)),
-            new Vector2(pane.Max.X - frame.Units(12f), pane.Max.Y - frame.Units(8f)));
+        var area = frame.Content.Inset(new Edges(frame.Units(4f), 0f, frame.Units(4f), frame.Units(2f)));
+        var sendBar = area.BottomSlice(frame.Units(38f));
+        var composer = new Rect(new Vector2(area.Min.X, sendBar.Min.Y - frame.Units(52f)),
+            new Vector2(area.Max.X, sendBar.Min.Y - frame.Units(8f)));
+        var filters = new Rect(area.Min, new Vector2(area.Max.X, area.Min.Y + frame.Units(36f)));
+        var log = new Rect(new Vector2(area.Min.X, filters.Max.Y + frame.Units(8f)),
+            new Vector2(area.Max.X, composer.Min.Y - frame.Units(8f)));
         DrawFilters(frame, filters);
         DrawLines(frame, log, thread, partyReady);
         DrawComposer(frame, composer, thread, partyReady);
-        DrawChannels(frame, chips, partyReady);
+        DrawChannels(frame, sendBar, partyReady);
 
         return frame.Content.Height;
     }
 
     private void DrawFilters(in AppletFrame frame, Rect row)
     {
-        var gap = frame.Units(5f);
+        var gap = frame.Units(6f);
         var width = (row.Width - gap * 3f) / 4f;
-        DrawFilter(frame, Rect.FromSize(row.Min, new Vector2(width, row.Height)), "SAY", display.FeedShowSay,
-            value => display.FeedShowSay = value);
-        DrawFilter(frame,
+        DrawFilterChip(frame, Rect.FromSize(row.Min, new Vector2(width, row.Height)), "Say", "SAY",
+            display.FeedShowSay, value => display.FeedShowSay = value);
+        DrawFilterChip(frame,
             Rect.FromSize(new Vector2(row.Min.X + width + gap, row.Min.Y), new Vector2(width, row.Height)),
-            "SHOUT", display.FeedShowShout, value => display.FeedShowShout = value);
-        DrawFilter(frame,
+            "Shout", "SHOUT", display.FeedShowShout, value => display.FeedShowShout = value);
+        DrawFilterChip(frame,
             Rect.FromSize(new Vector2(row.Min.X + (width + gap) * 2f, row.Min.Y), new Vector2(width, row.Height)),
-            "YELL", display.FeedShowYell, value => display.FeedShowYell = value);
-        DrawFilter(frame,
+            "Yell", "YELL", display.FeedShowYell, value => display.FeedShowYell = value);
+        DrawFilterChip(frame,
             Rect.FromSize(new Vector2(row.Min.X + (width + gap) * 3f, row.Min.Y), new Vector2(width, row.Height)),
-            "PARTY", display.FeedShowParty, value => display.FeedShowParty = value);
+            "Party", "PARTY", display.FeedShowParty, value => display.FeedShowParty = value);
     }
 
-    private void DrawFilter(in AppletFrame frame, Rect cell, string label, bool on, Action<bool> set)
+    private void DrawFilterChip(in AppletFrame frame, Rect cell, string label, string tag, bool on, Action<bool> set)
     {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var fill = on ? gold with { W = 0.30f } : frame.Theme.Palette.SurfaceOverlay with { W = 0.40f };
-        var ink = on ? gold : frame.Theme.Palette.InkFaint;
-        frame.Paint.Fill(cell, fill, cell.Height * 0.5f);
-        frame.Paint.Stroke(cell, gold with { W = on ? 0.62f : 0.16f }, frame.Theme.Metrics.Hairline,
-            cell.Height * 0.5f);
-        frame.Text.DrawIn(cell, label, new TextStyle(FontRole.CaptionStrong, ink, TextAlign.Center));
+        var radius = cell.Height * 0.5f;
+        if (on)
+        {
+            frame.Paint.Fill(cell, ChannelWash(tag), radius);
+            frame.Paint.Stroke(cell, ChannelLine(tag), frame.Units(1.4f), radius);
+            frame.Text.DrawIn(cell, label,
+                new TextStyle(FontRole.CaptionStrong, ChannelLine(tag), TextAlign.Center));
+        }
+        else
+        {
+            frame.Paint.Fill(cell, frame.Theme.Palette.SurfaceOverlay with { W = 0.55f }, radius);
+            frame.Text.DrawIn(cell, label,
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted, TextAlign.Center));
+        }
+
         if (frame.Input.ConsumeClick(cell))
         {
             set(!on);
@@ -92,25 +95,30 @@ internal sealed class LiveChatSurface
 
     private void DrawChannels(in AppletFrame frame, Rect row, bool partyReady)
     {
-        var gap = frame.Units(6f);
-        var width = (row.Width - gap * (Channels.Length - 1)) / Channels.Length;
+        var radius = row.Height * 0.5f;
+        frame.Paint.Fill(row, frame.Theme.Palette.SurfaceOverlay with { W = 0.62f }, radius);
+        var pad = frame.Units(3f);
+        var inner = row.Inset(pad);
+        var width = inner.Width / Channels.Length;
         for (var index = 0; index < Channels.Length; index++)
         {
-            var cell = Rect.FromSize(new Vector2(row.Min.X + index * (width + gap), row.Min.Y),
-                new Vector2(width, row.Height));
+            var cell = Rect.FromSize(new Vector2(inner.Min.X + index * width, inner.Min.Y),
+                new Vector2(width, inner.Height));
             var partyChip = Channels[index].ThreadId == TalkIds.LiveParty;
             var waiting = partyChip && !partyReady;
             var active = sendId == Channels[index].ThreadId;
-            var gold = frame.Theme.Palette.WarmAccent;
-            var fill = active ? gold with { W = 0.28f } : frame.Theme.Palette.SurfaceOverlay;
+            var tag = TagOf(Channels[index].ThreadId);
+            if (active)
+            {
+                frame.Paint.Fill(cell, ChannelWash(tag), cell.Height * 0.5f);
+                frame.Paint.Stroke(cell, ChannelLine(tag), frame.Units(1.4f), cell.Height * 0.5f);
+            }
+
             var ink = waiting && !active
                 ? frame.Theme.Palette.InkFaint
                 : active
-                    ? gold
+                    ? ChannelLine(tag)
                     : frame.Theme.Palette.InkMuted;
-            frame.Paint.Fill(cell, fill, cell.Height * 0.5f);
-            frame.Paint.Stroke(cell, gold with { W = active ? 0.70f : waiting ? 0.14f : 0.28f },
-                frame.Theme.Metrics.Hairline, cell.Height * 0.5f);
             frame.Text.DrawIn(cell, Channels[index].Label,
                 new TextStyle(FontRole.CaptionStrong, ink, TextAlign.Center));
             if (frame.Input.ConsumeClick(cell))
@@ -124,13 +132,11 @@ internal sealed class LiveChatSurface
 
     private void DrawComposer(in AppletFrame frame, Rect composer, TalkThread? thread, bool partyReady)
     {
-        var glass = frame.Theme.Palette.SurfaceOverlay with { W = 0.34f };
-        frame.Paint.Fill(composer, glass, frame.Units(12f));
-        frame.Paint.Stroke(composer, frame.Theme.Palette.WarmAccent with { W = 0.22f }, frame.Theme.Metrics.Hairline,
-            frame.Units(12f));
-        var inner = composer.Inset(frame.Units(6f));
-        var send = inner.RightSlice(frame.Units(56f));
-        var field = new Rect(inner.Min, new Vector2(send.Min.X - frame.Units(6f), inner.Max.Y));
+        var radius = composer.Height * 0.5f;
+        frame.Paint.Fill(composer, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, radius);
+        var inner = composer.Inset(new Edges(frame.Units(14f), frame.Units(4f), frame.Units(6f), frame.Units(4f)));
+        var send = inner.RightSlice(frame.Units(52f));
+        var field = new Rect(inner.Min, new Vector2(send.Min.X - frame.Units(8f), inner.Max.Y));
         var partyMode = sendId == TalkIds.LiveParty;
         var canSend = thread?.CanSend == true && (!partyMode || partyReady);
         if (!canSend)
@@ -138,16 +144,29 @@ internal sealed class LiveChatSurface
             var blocked = partyMode
                 ? "Join a party to talk here."
                 : "Chat is not available right now.";
-            frame.Text.DrawIn(field.Inset(frame.Units(6f)), blocked,
+            frame.Text.DrawIn(field, blocked,
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint));
             return;
         }
 
         draft = frame.TextField.Draw("feed-draft", field, draft, ChannelHint(), 400, out var submitted, true);
-        var sendInk = draft.Trim().Length > 0 ? frame.Theme.Palette.Accent : frame.Theme.Palette.InkFaint;
-        frame.Text.DrawIn(send, "Send", new TextStyle(FontRole.CaptionStrong, sendInk, TextAlign.Center));
-        if ((submitted || frame.Input.WasPressed(send) || frame.Input.ConsumeClick(send)) &&
-            draft.Trim().Length > 0)
+        var ready = draft.Trim().Length > 0;
+        var sendPad = send.Inset(frame.Units(4f));
+        var sendTag = TagOf(sendId);
+        if (ready)
+        {
+            frame.Paint.Fill(sendPad, ChannelWash(sendTag), sendPad.Height * 0.5f);
+            frame.Paint.Stroke(sendPad, ChannelLine(sendTag), frame.Units(1.4f), sendPad.Height * 0.5f);
+            frame.Text.DrawIn(sendPad, "Send",
+                new TextStyle(FontRole.CaptionStrong, ChannelLine(sendTag), TextAlign.Center));
+        }
+        else
+        {
+            frame.Text.DrawIn(sendPad, "Send",
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkFaint, TextAlign.Center));
+        }
+
+        if ((submitted || frame.Input.WasPressed(send) || frame.Input.ConsumeClick(send)) && ready)
         {
             var outgoing = draft.Trim();
             draft = string.Empty;
@@ -167,7 +186,7 @@ internal sealed class LiveChatSurface
             }
         }
 
-        return "SAY";
+        return "Say";
     }
 
     private void DrawLines(in AppletFrame frame, Rect viewport, TalkThread? thread, bool partyReady)
@@ -312,14 +331,11 @@ internal sealed class LiveChatSurface
 
     private static void DrawLine(in AppletFrame frame, Rect row, TalkLine line)
     {
-        var bubbleWidth = row.Width * 0.78f;
+        var bubbleWidth = row.Width * 0.82f;
         var bubble = line.Mine ? row.RightSlice(bubbleWidth) : row.LeftSlice(bubbleWidth);
-        var radius = frame.Units(12f);
-        var fill = line.Mine
-            ? frame.Theme.Palette.Accent with { W = 0.38f }
-            : frame.Theme.Palette.SurfaceRaised with { W = 0.36f };
-        var ink = line.Mine ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.Ink;
-        var who = line.Mine ? "ME" : line.Sender.Length > 0 ? line.Sender : "Them";
+        var radius = frame.Units(16f);
+        var lineColor = ChannelLine(line.Tag);
+        var who = line.Mine ? "You" : line.Sender.Length > 0 ? line.Sender : "Them";
         if (line.Tag.Length > 0)
         {
             who += " · " + line.Tag;
@@ -327,15 +343,36 @@ internal sealed class LiveChatSurface
 
         var nameRow = bubble.TopSlice(frame.Units(14f));
         frame.Text.DrawEllipsized(nameRow, who,
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent,
+            new TextStyle(FontRole.Caption, lineColor,
                 line.Mine ? TextAlign.Right : TextAlign.Left));
         var top = bubble.Inset(new Edges(0f, frame.Units(16f), 0f, 0f));
-        frame.Paint.Fill(top, fill, radius);
-        frame.Paint.Stroke(top, frame.Theme.Palette.WarmAccent with { W = line.Mine ? 0.36f : 0.20f },
-            frame.Theme.Metrics.Hairline, radius);
-        var copy = top.Inset(frame.Units(8f));
+        frame.Paint.Fill(top, ChannelWash(line.Tag), radius);
+        frame.Paint.Stroke(top, lineColor, frame.Units(1.5f), radius);
+        var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f), frame.Units(8f)));
         frame.Paint.PushClip(copy);
-        frame.Text.DrawWrapped(copy, line.Body, new TextStyle(FontRole.Body, ink));
+        frame.Text.DrawWrapped(copy, line.Body, new TextStyle(FontRole.Body, lineColor));
         frame.Paint.PopClip();
+    }
+
+    private static string TagOf(string threadId) => threadId switch
+    {
+        TalkIds.LiveShout => "SHOUT",
+        TalkIds.LiveYell => "YELL",
+        TalkIds.LiveParty => "PARTY",
+        _ => "SAY",
+    };
+
+    private static Vector4 ChannelLine(string tag) => tag switch
+    {
+        "SHOUT" => new Vector4(0.96f, 0.48f, 0.14f, 1f),
+        "YELL" => new Vector4(0.98f, 0.84f, 0.16f, 1f),
+        "PARTY" => new Vector4(0.35f, 0.62f, 1f, 1f),
+        _ => new Vector4(1f, 1f, 1f, 1f),
+    };
+
+    private static Vector4 ChannelWash(string tag)
+    {
+        var line = ChannelLine(tag);
+        return line with { W = 0.10f };
     }
 }

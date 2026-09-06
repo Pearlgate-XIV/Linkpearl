@@ -27,6 +27,8 @@ using Linkpearl.Host.Windows;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
+using Linkpearl.Notices;
+using Linkpearl.Net.Market;
 using Linkpearl.Net.Radio;
 using Linkpearl.Pearls;
 using Linkpearl.Platform;
@@ -70,6 +72,7 @@ public sealed class HandsetHost : IDisposable
     private readonly IcecastBroadcastPush broadcastPush;
     private readonly bool isDevelopment;
     private int lastUnread;
+    private bool poweringOff;
 
     public HandsetHost(IDalamudPluginInterface pluginInterface, IFramework framework, IClientState clientState,
         IObjectTable objectTable, ICondition condition, IDutyState dutyState, IPluginLog pluginLog,
@@ -99,9 +102,11 @@ public sealed class HandsetHost : IDisposable
 
         var jobs = new FfxivJobCatalog(dataManager);
         services.AddSingleton<IJobCatalog>(jobs);
+        services.AddSingleton<IGameItems>(new FfxivGameItems(dataManager));
         session = new FfxivGameSession(clientState, objectTable, condition, dutyState, partyList, framework, dataManager,
             jobs);
         services.AddSingleton<IGameSession>(session);
+        services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
@@ -121,6 +126,7 @@ public sealed class HandsetHost : IDisposable
         preferences.Changed += RememberDisplay;
         display = preferences;
         services.AddSingleton(preferences);
+        services.AddSingleton<HandsetProfileDesk>();
         services.AddSingleton(_ => BadgeBook.Load(paths, clock));
         services.AddSingleton(_ =>
         {
@@ -154,6 +160,7 @@ public sealed class HandsetHost : IDisposable
         preferences.Changed += ApplyAudioRoute;
         services.AddSingleton<IPublicRadio>(publicRadio);
         services.AddSingleton<ICommunityRadio>(communityRadio);
+        services.AddSingleton<IUniversalisMarket>(new UniversalisMarket());
         services.AddSingleton<IBroadcastSense>(broadcastSense);
         services.AddSingleton<IBroadcastPush>(broadcastPush);
 
@@ -164,6 +171,8 @@ public sealed class HandsetHost : IDisposable
 
         var hub = new DestinationHub();
         services.AddSingleton(hub);
+        services.AddSingleton<NoticeLedger>();
+        services.AddSingleton<INoticeTray>(static provider => provider.GetRequiredService<NoticeLedger>());
 
         services.AddSingleton<IFeedbackDesk>(new DiscordFeedbackDesk(environment, clock, clock, log));
 
@@ -176,14 +185,17 @@ public sealed class HandsetHost : IDisposable
 
         fonts = new HandsetFontService(pluginInterface);
         fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,
-            FounderFaces.Unlocked(false, 0, preferences.FounderFacesGranted, isDevelopment)));
+            isDevelopment || preferences.TestingAccount));
         var theme = new HandsetTheme(1f, preferences);
         popouts = new TalkPopoutBoard(windowSystem, talk, theme, RememberPopouts);
         popouts.Restore(config.PopoutTalkIds, config.PopoutTalkPlaces);
 
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
+        var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat);
         var apps = provider.GetServices<IApplet>().ToList();
+        apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
+        apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
         router = new RouteStack(appletById);
         router.Restore(config.RecentAppIds, config.RecentAppPlaces);
@@ -191,18 +203,19 @@ public sealed class HandsetHost : IDisposable
 
         shapePreference = new HandsetShapePreference(config.ScaleStep, config.Form, config.PositionLocked,
             config.PocketScale, config.Finish, config.ShowLockTab, config.Case);
-        var notices = new NoticeLedger();
+        var notices = provider.GetRequiredService<NoticeLedger>();
         var badges = provider.GetRequiredService<BadgeBook>();
-        var weather = new FfxivWeatherOracle(dataManager, clock);
+        var weather = provider.GetRequiredService<IWeatherOracle>();
+        var profiles = provider.GetRequiredService<HandsetProfileDesk>();
         IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
         {
             new HomeDestination(clock, session, pearl, talk, hub, preferences, paths, textures, badges, files,
-                weather, notices, isDevelopment),
-            new SocialDestination(pearl, clock, talk, session, preferences, popouts),
+                weather, notices, isDevelopment, profiles),
+            social,
             new ExploreDestination(pearl, session),
-            new YouDestination(session, pearl, badges, paths, textures, files, preferences, isDevelopment),
+            new YouDestination(session, pearl, badges, paths, textures, files, preferences, isDevelopment, profiles),
             new SettingsDestination(shapePreference, preferences, environment, session, pearl, hub, paths, textures,
-                files, ports, audio),
+                files, ports, audio, badges, profiles),
         };
         var textField = new DalamudTextField(fonts);
         this.textField = textField;
@@ -215,7 +228,8 @@ public sealed class HandsetHost : IDisposable
         placement.Load(config.HasOpenPos, config.OpenX, config.OpenY, config.HasPocketPos, config.PocketX,
             config.PocketY);
         window = new HandsetWindow(shell, fonts, theme, router, shapePreference, screenField, textField, preferences,
-            session, textures, paths, RememberShape, RememberOpen, RememberMinimized, placement, RememberPlacement);
+            session, textures, paths, RememberShape, RememberOpen, RememberMinimized, placement, RememberPlacement,
+            RequestPowerOff);
         shapePreference.Changed += OnShapeChanged;
         windowSystem.AddWindow(window);
 
@@ -227,13 +241,10 @@ public sealed class HandsetHost : IDisposable
         pluginInterface.UiBuilder.OpenMainUi += ToggleHandset;
         framework.Update += OnFrameworkUpdate;
 
-        if (pluginInterface.Reason is PluginLoadReason.Reload or PluginLoadReason.Update || config.HandsetOpen)
+        window.IsOpen = true;
+        if (config.HandsetMinimized)
         {
-            window.IsOpen = true;
-            if (config.HandsetMinimized)
-            {
-                window.SnapMinimized();
-            }
+            window.SnapMinimized();
         }
     }
 
@@ -283,6 +294,19 @@ public sealed class HandsetHost : IDisposable
         window.Restore();
     }
 
+    private void RequestPowerOff()
+    {
+        if (poweringOff)
+        {
+            return;
+        }
+
+        poweringOff = true;
+        RememberOpen(true);
+        RememberMinimized(false);
+        _ = Task.Run(() => PluginSwitch.TurnOff(pluginInterface));
+    }
+
     public void Dispose()
     {
         shapePreference.Changed -= OnShapeChanged;
@@ -316,8 +340,7 @@ public sealed class HandsetHost : IDisposable
     private void ApplyDisplayFace()
     {
         var snapshot = pearl.Current;
-        var unlocked = FounderFaces.Unlocked(snapshot.SignedIn, snapshot.FounderSeat, display.FounderFacesGranted,
-            isDevelopment);
+        var unlocked = isDevelopment || snapshot.IsPatron || display.TestingAccount;
         fonts.SetDisplayFace(FounderFaces.Active(display.DisplayFace, unlocked));
     }
 
@@ -405,6 +428,8 @@ public sealed class HandsetHost : IDisposable
         preferences.MicVolume = config.MicVolume;
         preferences.SpeakerId = config.SpeakerDeviceId;
         preferences.MicrophoneId = config.MicrophoneDeviceId;
+        preferences.CallSpeakerId = config.CallSpeakerDeviceId;
+        preferences.CallMicrophoneId = config.CallMicrophoneDeviceId;
         preferences.AutoRotate = config.AutoRotate;
         if (config.Replies.Length > 0)
         {
@@ -412,7 +437,8 @@ public sealed class HandsetHost : IDisposable
         }
 
         preferences.LoadAppShelf(config.InstalledApps, config.FavoriteApps, config.AppFolders, config.QuickApps,
-            config.SeenShelfApps);
+            config.SeenShelfApps, config.AppScreens, config.OwnedApps);
+        preferences.LoadStudioLayout(config.StudioWidgets, config.StudioApps);
     }
 
     private void RememberDisplay()
@@ -474,15 +500,21 @@ public sealed class HandsetHost : IDisposable
         config.MicVolume = display.MicVolume;
         config.SpeakerDeviceId = display.SpeakerId;
         config.MicrophoneDeviceId = display.MicrophoneId;
+        config.CallSpeakerDeviceId = display.CallSpeakerId;
+        config.CallMicrophoneDeviceId = display.CallMicrophoneId;
         config.AutoRotate = display.AutoRotate;
         config.Replies = display.Replies.ToArray();
         config.InstalledApps = display.InstalledApps.ToArray();
+        config.AppScreens = display.PackedAppScreens();
         config.FavoriteApps = display.FavoriteApps.ToArray();
         config.AppFolders = display.AppFolders.ToArray();
         config.QuickApps = display.QuickApps.ToArray();
         config.RecentAppIds = router.RecentIds.ToArray();
         config.RecentAppPlaces = router.RecentPlaces.ToArray();
         config.SeenShelfApps = display.SeenShelfApps.ToArray();
+        config.OwnedApps = display.OwnedApps.ToArray();
+        config.StudioWidgets = display.PackedStudioWidgets;
+        config.StudioApps = display.PackedStudioApps;
         pluginInterface.SavePluginConfig(config);
     }
 
@@ -495,7 +527,7 @@ public sealed class HandsetHost : IDisposable
         }
 
         broadcastSense.MicGain = display.MicVolume;
-        broadcastSense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+        broadcastSense.RoutePhone(display.ActiveCallSpeaker, display.ActiveCallMicrophone);
     }
 
     private void RememberRecents()

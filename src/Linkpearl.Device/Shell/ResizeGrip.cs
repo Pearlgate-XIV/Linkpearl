@@ -33,12 +33,13 @@ public sealed class ResizeGrip
 
     public Vector2 Anchor => anchor;
 
-    public ResizeCorner Update(Rect window, IInputProbe input, float scale, float caseRadius, bool roundCorners,
-        float minStep, float maxStep, ref float step)
+    public ResizeCorner Update(Rect window, Rect shell, IInputProbe input, float scale, float caseRadius,
+        bool roundCorners, float minStep, float maxStep, ref float step)
     {
         JustReleased = false;
         var pointer = input.Pointer;
-        var hovered = HitCorner(window, GripUnits * scale, caseRadius, roundCorners, pointer);
+        var hovered = HitCorner(shell.IsEmpty ? window : shell, GripUnits * scale, caseRadius, roundCorners,
+            pointer);
 
         if (dragging)
         {

@@ -7,7 +7,8 @@ namespace Linkpearl.Device.Shell.Studio;
 
 internal static class ExtraHomeSurface
 {
-    public static void Draw(in AppletFrame frame, Rect area, int index, int total, Action add, Action remove)
+    public static void Draw(in AppletFrame frame, Rect area, int index, int total, Action add, Action remove,
+        Action<AppletFrame, Rect> docks)
     {
         if (area.Width < 8f || area.Height < 8f)
         {
@@ -15,15 +16,14 @@ internal static class ExtraHomeSurface
         }
 
         var inset = area.Inset(new Edges(frame.Units(28f), frame.Units(44f), frame.Units(28f), frame.Units(28f)));
-        StudioChrome.DrawPanel(frame, inset);
         var inner = inset.Inset(new Edges(frame.Units(14f), frame.Units(16f), frame.Units(14f), frame.Units(16f)));
         var stack = new Stack(inner, StackAxis.Vertical, frame.Units(10f));
         var gold = frame.Theme.Palette.WarmAccent;
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "SCREEN " + (index + 2).ToString(),
             new TextStyle(FontRole.CaptionStrong, gold));
-        frame.Text.DrawWrapped(stack.Take(frame.Units(48f)),
-            "An extra home page. Swipe or use the left handle to move between screens.",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        var edit = frame.Units(total < AppsDock.ExtraCap ? 90f : 50f);
+        var board = stack.Take(MathF.Max(frame.Units(64f), stack.Remaining.Height - edit));
+        docks(frame.WithContent(board), board);
 
         if (total < AppsDock.ExtraCap)
         {

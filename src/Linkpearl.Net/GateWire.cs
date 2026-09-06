@@ -24,7 +24,8 @@ internal sealed record GateUserDto(
     bool? IsPatron,
     bool? Patreon,
     bool? PatreonActive,
-    string? PatreonUrl);
+    string? PatreonUrl,
+    string? PhoneNumber);
 
 internal sealed record VerifyReplyDto(bool Ok, string? Reason, string? Token, GateUserDto? User);
 
@@ -47,9 +48,15 @@ internal sealed record ContactDto(
     string? PhoneNumber,
     string? Alias,
     string? AvatarUrl,
-    bool IsMutual);
+    bool IsMutual,
+    string? Race,
+    string? World);
 
-internal sealed record ContactListDto(ContactDto[]? Contacts, string MyNumber);
+internal sealed record ContactListDto(
+    ContactDto[]? Contacts,
+    string? MyNumber,
+    string? PhoneNumber,
+    string? Number);
 
 internal sealed record AddContactBodyDto(string? Number, string? Alias, string? UserId);
 

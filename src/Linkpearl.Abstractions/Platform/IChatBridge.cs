@@ -85,9 +85,15 @@ public interface IChatBridge
 
     IReadOnlyList<GameFriend> Friends { get; }
 
+    bool ShouldOfferFriend(string characterName, string world);
+
+    void RequestFriend(string characterName, string world);
+
     void Send(GameChannel channel, int channelIndex, string body);
 
     void SendTell(string characterName, string world, string body);
+
+    void InviteToParty(string characterName, string world);
 
     void Print(string body);
 

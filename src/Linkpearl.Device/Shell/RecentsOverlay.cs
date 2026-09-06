@@ -2,12 +2,17 @@ using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Painting;
-using Linkpearl.Theming;
+using Linkpearl.Preferences;
+using Linkpearl.Time;
 
 namespace Linkpearl.Device.Shell;
 
 public sealed class RecentsOverlay
 {
+    private static readonly Vector4 CloseFill = new(0.16f, 0.16f, 0.18f, 0.78f);
+    private static readonly Vector4 CloseInk = new(0.96f, 0.96f, 0.97f, 1f);
+    private static readonly Vector4 Badge = new(0.12f, 0.12f, 0.14f, 0.92f);
+
     private bool open;
     private float slide;
     private bool tracking;
@@ -20,6 +25,8 @@ public sealed class RecentsOverlay
     private string tossingId = string.Empty;
 
     public bool IsOpen => open;
+
+    public bool HoldsPointer => open && (tracking || dragging);
 
     public void Open()
     {
@@ -42,7 +49,7 @@ public sealed class RecentsOverlay
     }
 
     public void Draw(in AppletFrame frame, Rect screen, RouteStack router, IReadOnlyList<IApplet> apps,
-        Action<string> resume)
+        DisplayPreferences display, IClock clock, Action<string> resume)
     {
         if (!open)
         {
@@ -52,25 +59,41 @@ public sealed class RecentsOverlay
         var paint = frame.Paint;
         var text = frame.Text;
         var input = frame.Input;
-        var theme = frame.Theme;
         var scale = frame.Scale;
-        paint.Fill(screen, theme.Palette.SurfaceSunken with { W = 0.42f });
+        PlateFrost.Draw(frame, screen, display, clock);
 
-        var panel = screen.Inset(new Edges(screen.Width * 0.08f, screen.Height * 0.16f, screen.Width * 0.08f,
-            screen.Height * 0.18f));
-        paint.Fill(panel, theme.Palette.SurfaceRaised with { W = 0.94f }, scale * 18f);
-        paint.Stroke(panel, theme.Palette.WarmAccent with { W = 0.22f }, MathF.Max(1f, scale), scale * 18f);
-
+        var nav = SoftKeyBar.Height(scale);
+        var appsIcon = scale * 36f;
+        var appsHead = scale * 16f;
+        var appsH = appsHead + scale * 8f + appsIcon + scale * 8f;
+        var icon = scale * 30f;
+        var cardW = screen.Width * 0.50f;
+        var cardH = MathF.Min(screen.Height * 0.45f, cardW * 2.15f);
+        var closeH = scale * 32f;
+        var closeW = MathF.Min(screen.Width * 0.42f, scale * 128f);
+        var closeGap = scale * 22f;
+        var appsGap = scale * 16f;
+        var field = new Rect(new Vector2(screen.Min.X, screen.Min.Y + scale * 8f),
+            new Vector2(screen.Max.X, screen.Max.Y - nav));
+        var stackH = icon + scale * 8f + cardH + closeGap + closeH + appsGap + appsH;
+        var stackTop = field.Center.Y - stackH * 0.5f;
+        var stage = new Rect(
+            new Vector2(screen.Min.X, stackTop + icon + scale * 8f),
+            new Vector2(screen.Max.X, stackTop + icon + scale * 8f + cardH));
+        var close = Rect.FromSize(
+            new Vector2(screen.Center.X - closeW * 0.5f, stage.Max.Y + closeGap),
+            new Vector2(closeW, closeH));
+        var appsBand = Rect.FromSize(
+            new Vector2(screen.Min.X, close.Max.Y + appsGap),
+            new Vector2(screen.Width, appsH));
         var tasks = router.Tasks;
-        var header = panel.TopSlice(scale * 28f).Inset(new Edges(scale * 12f, scale * 8f, scale * 12f, 0f));
-        text.DrawIn(header, "Recents", new TextStyle(FontRole.BodyStrong, theme.Palette.Ink));
 
         if (tasks.Count == 0)
         {
-            text.DrawWrapped(panel.Inset(scale * 16f),
+            text.DrawWrapped(screen.Inset(new Edges(scale * 28f, screen.Height * 0.38f, scale * 28f, nav)),
                 "Apps you open land here. Swipe a card up to close it, or use Close all.",
-                new TextStyle(FontRole.Caption, theme.Palette.InkMuted));
-            if (input.ConsumeClick(screen) && !panel.Contains(input.Pointer))
+                new TextStyle(FontRole.Caption, CloseInk with { W = 0.82f }));
+            if (input.ConsumeClick(screen))
             {
                 open = false;
             }
@@ -79,18 +102,7 @@ public sealed class RecentsOverlay
             return;
         }
 
-        var footer = panel.BottomSlice(scale * 40f);
-        var closeAll = footer.Inset(new Edges(panel.Width * 0.18f, scale * 8f, panel.Width * 0.18f, scale * 8f));
-        paint.Fill(closeAll, theme.Palette.SurfaceOverlay, closeAll.Height * 0.5f);
-        paint.Stroke(closeAll, theme.Palette.WarmAccent with { W = 0.35f }, MathF.Max(1f, scale),
-            closeAll.Height * 0.5f);
-        text.DrawIn(closeAll, "Close all",
-            new TextStyle(FontRole.CaptionStrong, theme.Palette.Ink, TextAlign.Center));
-
-        var stage = panel.Inset(new Edges(scale * 8f, scale * 32f, scale * 8f, scale * 44f));
-        var cardWidth = stage.Width * 0.62f;
-        var gap = stage.Width * 0.06f;
-        var pitch = cardWidth + gap;
+        var pitch = cardW * 0.36f;
         var maxSlide = MathF.Max(0f, (tasks.Count - 1) * pitch);
         slide = Math.Clamp(slide, 0f, maxSlide);
 
@@ -115,32 +127,49 @@ public sealed class RecentsOverlay
             }
         }
 
-        DriveCarousel(input, tasks, stage, cardWidth, pitch, maxSlide, scale);
+        var lane = new Rect(screen.Min, new Vector2(screen.Max.X, close.Min.Y - scale * 4f));
+        DriveCarousel(input, tasks, lane, stage, cardW, cardH, pitch, maxSlide, scale);
 
-        var opened = string.Empty;
-        for (var index = tasks.Count - 1; index >= 0; index--)
+        var focus = slide / MathF.Max(pitch, 1f);
+        var live = frame;
+        WalkDeck(tasks.Count, focus, backFirst: true, index =>
         {
             var task = tasks[index];
-            var x = stage.Min.X + (stage.Width - cardWidth) * 0.5f + index * pitch - slide;
-            var card = new Rect(new Vector2(x, stage.Min.Y + scale * 4f),
-                new Vector2(x + cardWidth, stage.Max.Y - scale * 2f));
+            var card = CardAt(stage, cardW, cardH, pitch, index);
             if (tossing && string.Equals(task.Id, tossingId, StringComparison.Ordinal))
             {
-                var lift = toss * stage.Height * 0.7f;
-                card = card.Translate(new Vector2(0f, -lift));
+                card = card.Translate(new Vector2(0f, -toss * cardH * 0.85f));
             }
 
             if (card.Max.X < screen.Min.X - 8f || card.Min.X > screen.Max.X + 8f)
             {
-                continue;
+                return;
             }
 
-            DrawCard(frame, card, Find(apps, task.Id), task.Id, router.PlaceOf(task.Id), theme, scale);
-            if (!tossing && !swept && opened.Length == 0 && input.ConsumeClick(card))
+            DrawCard(live, card, Find(apps, task.Id), task.Id, scale, MathF.Abs(index - focus) < 0.45f);
+        });
+        var opened = string.Empty;
+        if (!tossing && !swept)
+        {
+            WalkDeck(tasks.Count, focus, backFirst: false, index =>
             {
-                opened = task.Id;
-            }
+                if (opened.Length > 0)
+                {
+                    return;
+                }
+
+                var card = CardAt(stage, cardW, cardH, pitch, index);
+                if (input.ConsumeClick(card))
+                {
+                    opened = tasks[index].Id;
+                }
+            });
         }
+
+        paint.Fill(close, CloseFill, close.Height * 0.5f);
+        text.DrawIn(close, "Close all",
+            new TextStyle(FontRole.CaptionStrong, CloseInk, TextAlign.Center));
+        opened = TakeRecentApp(live, appsBand, tasks, scale, opened.Length == 0 && !tossing, opened);
 
         if (opened.Length > 0)
         {
@@ -150,7 +179,7 @@ public sealed class RecentsOverlay
             return;
         }
 
-        if (!tossing && !dragging && input.ConsumeClick(closeAll))
+        if (!tossing && !dragging && input.ConsumeClick(close))
         {
             router.DismissAll();
             open = false;
@@ -158,7 +187,7 @@ public sealed class RecentsOverlay
             return;
         }
 
-        if (!tossing && !swept && input.ConsumeClick(screen) && !panel.Contains(input.Pointer))
+        if (!tossing && !swept && !appsBand.Contains(input.Pointer) && input.ConsumeClick(screen))
         {
             open = false;
         }
@@ -166,16 +195,69 @@ public sealed class RecentsOverlay
         input.Claim(screen);
     }
 
-    private void DriveCarousel(IInputProbe input, IReadOnlyList<RecentTask> tasks, Rect stage, float cardWidth,
-        float pitch, float maxSlide, float scale)
+    private Rect CardAt(Rect stage, float cardWidth, float cardHeight, float pitch, int index)
+    {
+        var x = stage.Center.X - cardWidth * 0.5f - index * pitch + slide;
+        var y = stage.Center.Y - cardHeight * 0.5f;
+        var card = Rect.FromSize(new Vector2(x, y), new Vector2(cardWidth, cardHeight));
+        var dist = MathF.Abs(index - slide / MathF.Max(pitch, 1f));
+        var zoom = Math.Clamp(1f - dist * 0.07f, 0.90f, 1f);
+        if (zoom >= 0.999f)
+        {
+            return card;
+        }
+
+        var size = card.Size * zoom;
+        return Rect.FromSize(card.Center - size * 0.5f, size);
+    }
+
+    private static void WalkDeck(int count, float focus, bool backFirst, Action<int> visit)
+    {
+        var mid = Math.Clamp((int)MathF.Round(focus), 0, Math.Max(0, count - 1));
+        if (backFirst)
+        {
+            for (var index = 0; index < mid; index++)
+            {
+                visit(index);
+            }
+
+            for (var index = count - 1; index > mid; index--)
+            {
+                visit(index);
+            }
+
+            visit(mid);
+            return;
+        }
+
+        visit(mid);
+        for (var index = mid + 1; index < count; index++)
+        {
+            visit(index);
+        }
+
+        for (var index = mid - 1; index >= 0; index--)
+        {
+            visit(index);
+        }
+    }
+
+    private void DriveCarousel(IInputProbe input, IReadOnlyList<RecentTask> tasks, Rect lane, Rect stage,
+        float cardWidth, float cardHeight, float pitch, float maxSlide, float scale)
     {
         if (tossing)
         {
             return;
         }
 
-        var threshold = MathF.Max(8f, 10f * scale);
-        if (!tracking && input.WasPressed(stage))
+        if (!input.IsHeld() && !tracking)
+        {
+            swept = false;
+        }
+
+        var threshold = MathF.Max(3f, 3.5f * scale);
+        const float gain = 2.6f;
+        if (!tracking && input.WasPressed(lane))
         {
             tracking = true;
             dragging = false;
@@ -187,28 +269,29 @@ public sealed class RecentsOverlay
         if (tracking && input.IsHeld())
         {
             var delta = input.Pointer - grab;
-            if (!dragging && delta.Length() >= threshold)
+            if (!dragging && MathF.Abs(delta.X) >= threshold)
             {
                 dragging = true;
                 swept = true;
-                input.Claim(stage);
+                input.Claim(lane);
             }
 
             if (dragging)
             {
-                if (MathF.Abs(delta.Y) > MathF.Abs(delta.X) * 1.05f && delta.Y < -threshold)
+                if (MathF.Abs(delta.Y) > MathF.Abs(delta.X) * 2.1f && delta.Y < -threshold * 2f)
                 {
-                    var id = PickCard(tasks, stage, cardWidth, pitch, grab);
-                    tossingId = id;
-                    tossing = id.Length > 0;
+                    var id = PickCard(tasks, stage, cardWidth, cardHeight, pitch, grab);
+                    tossingId = id.Length > 0 ? id : tasks[Math.Clamp((int)MathF.Round(slide / MathF.Max(pitch, 1f)),
+                        0, tasks.Count - 1)].Id;
+                    tossing = tossingId.Length > 0;
                     toss = 0f;
                     tracking = false;
                     dragging = false;
                     return;
                 }
 
-                slide = Math.Clamp(grabSlide - delta.X, 0f, maxSlide);
-                input.Claim(stage);
+                slide = Math.Clamp(grabSlide + delta.X * gain, 0f, maxSlide);
+                input.Claim(lane);
             }
 
             return;
@@ -216,10 +299,11 @@ public sealed class RecentsOverlay
 
         if (!tracking)
         {
-            var wheel = input.IsHovering(stage) ? input.ScrollDelta : 0f;
+            var wheel = input.IsHovering(lane) ? input.ScrollDelta : 0f;
             if (MathF.Abs(wheel) > 0.01f)
             {
-                slide = Math.Clamp(slide - wheel * pitch * 0.35f, 0f, maxSlide);
+                slide = Math.Clamp(slide + wheel * pitch * 0.85f, 0f, maxSlide);
+                swept = true;
             }
 
             return;
@@ -227,89 +311,108 @@ public sealed class RecentsOverlay
 
         if (dragging)
         {
-            var delta = input.Pointer - grab;
-            var fling = MathF.Abs(delta.X) > pitch * 0.18f;
-            if (fling)
-            {
-                slide = Math.Clamp(grabSlide - MathF.Sign(delta.X) * pitch, 0f, maxSlide);
-            }
-
+            var coast = input.PointerDelta.X * gain * 4f;
+            slide = Math.Clamp(slide + coast, 0f, maxSlide);
             slide = MathF.Round(slide / MathF.Max(pitch, 1f)) * pitch;
             slide = Math.Clamp(slide, 0f, maxSlide);
-            input.Claim(stage);
+            input.Claim(lane);
         }
 
         tracking = false;
         dragging = false;
     }
 
-    private string PickCard(IReadOnlyList<RecentTask> tasks, Rect stage, float cardWidth, float pitch, Vector2 point)
+    private string PickCard(IReadOnlyList<RecentTask> tasks, Rect stage, float cardWidth, float cardHeight,
+        float pitch, Vector2 point)
     {
-        for (var index = 0; index < tasks.Count; index++)
+        var focus = slide / MathF.Max(pitch, 1f);
+        var id = string.Empty;
+        WalkDeck(tasks.Count, focus, backFirst: false, index =>
         {
-            var x = stage.Min.X + (stage.Width - cardWidth) * 0.5f + index * pitch - slide;
-            var card = new Rect(new Vector2(x, stage.Min.Y), new Vector2(x + cardWidth, stage.Max.Y));
-            if (card.Contains(point))
+            if (id.Length == 0 && CardAt(stage, cardWidth, cardHeight, pitch, index).Contains(point))
             {
-                return tasks[index].Id;
+                id = tasks[index].Id;
+            }
+        });
+        return id;
+    }
+
+    private static void DrawBackdrop(IPaintSurface paint, Rect card, float radius, float scale)
+    {
+        var drop = scale * 2.5f;
+        paint.Fill(card.Translate(new Vector2(0f, drop)).Expand(scale * 1.6f),
+            new Vector4(0f, 0f, 0f, 0.14f), radius + scale);
+        paint.Glow(card, new Vector4(0f, 0f, 0f, 0.20f), radius, scale * 9f);
+    }
+
+    private static void DrawCard(in AppletFrame frame, Rect card, IApplet? applet, string id, float scale, bool showIcon)
+    {
+        var radius = MathF.Min(card.Width, card.Height) * 0.14f;
+        DrawBackdrop(frame.Paint, card, radius, scale);
+        AppGround.Paint(frame, card, applet?.Manifest.Id ?? id, radius);
+        if (applet is not null)
+        {
+            try
+            {
+                frame.Paint.PushClip(card);
+                applet.Compose(frame.WithContent(card).WithInput(SilentInput.Instance));
+            }
+            catch
+            {
+                // A broken preview must not take the carousel down.
+            }
+            finally
+            {
+                frame.Paint.PopClip();
             }
         }
 
-        return string.Empty;
-    }
-
-    private static void DrawCard(in AppletFrame frame, Rect card, IApplet? applet, string id, string place,
-        ITheme theme, float scale)
-    {
-        var radius = scale * 14f;
-        frame.Paint.Fill(card, theme.Palette.SurfaceRaised, radius);
-        frame.Paint.Stroke(card, theme.Palette.WarmAccent with { W = 0.28f }, MathF.Max(1f, scale), radius);
-
-        var spec = AppShelf.Find(id);
-        var name = applet?.Manifest.DisplayNameKey ?? spec?.Name ?? TitleCase(id);
-        var markId = applet?.Manifest.Id ?? id;
-        var head = card.TopSlice(scale * 30f).Inset(new Edges(scale * 8f, scale * 5f, scale * 8f, scale * 3f));
-        var mark = head.LeftSlice(scale * 20f);
-        AppMarks.DrawFace(frame.Paint, frame.Textures, frame.Paths, mark, markId, false);
-        var title = head.Inset(new Edges(scale * 26f, 0f, 0f, 0f));
-        frame.Text.DrawEllipsized(title.TopSlice(scale * 14f), name,
-            new TextStyle(FontRole.CaptionStrong, theme.Palette.Ink));
-        if (place.Length > 0)
-        {
-            frame.Text.DrawEllipsized(title.BottomSlice(scale * 11f), TitleCase(place),
-                new TextStyle(FontRole.Caption, theme.Palette.InkMuted));
-        }
-
-        var body = card.Inset(new Edges(scale * 6f, scale * 32f, scale * 6f, scale * 6f));
-        frame.Paint.Fill(body, theme.Palette.SurfaceSunken with { W = 0.92f }, scale * 10f);
-        if (applet is null)
+        if (!showIcon)
         {
             return;
         }
 
-        try
-        {
-            frame.Paint.PushClip(body);
-            applet.Compose(frame.WithContent(body).WithInput(SilentInput.Instance));
-        }
-        catch
-        {
-            // A broken preview must not take the carousel down.
-        }
-        finally
-        {
-            frame.Paint.PopClip();
-        }
+        var icon = scale * 30f;
+        var badge = new Vector2(card.Center.X, card.Min.Y - scale * 8f - icon * 0.5f);
+        frame.Paint.FillCircle(badge, icon * 0.5f, Badge);
+        var mark = Rect.FromSize(badge - new Vector2(icon * 0.34f, icon * 0.34f),
+            new Vector2(icon * 0.68f, icon * 0.68f));
+        AppMarks.DrawFace(frame.Paint, frame.Textures, frame.Paths, mark, applet?.Manifest.Id ?? id, false);
     }
 
-    private static string TitleCase(string place)
+    private static string TakeRecentApp(in AppletFrame frame, Rect band, IReadOnlyList<RecentTask> tasks, float scale,
+        bool allowTap, string opened)
     {
-        if (place.Length == 0)
+        var head = band.TopSlice(scale * 16f).Inset(new Edges(scale * 16f, 0f));
+        frame.Text.DrawIn(head, "Most recent apps",
+            new TextStyle(FontRole.Caption, CloseInk with { W = 0.78f }));
+        var row = band.Inset(new Edges(scale * 16f, scale * 22f, scale * 16f, scale * 8f));
+        var shown = Math.Min(tasks.Count, 5);
+        if (shown == 0)
         {
-            return place;
+            return opened;
         }
 
-        return char.ToUpperInvariant(place[0]) + place[1..];
+        var cell = MathF.Min(scale * 48f, row.Width / shown);
+        var used = cell * shown;
+        var left = row.Center.X - used * 0.5f;
+        for (var index = 0; index < shown; index++)
+        {
+            var hit = Rect.FromSize(new Vector2(left + index * cell, row.Min.Y),
+                new Vector2(cell, row.Height));
+            var hover = frame.Input.IsHovering(hit);
+            var side = scale * (hover ? 38f : 36f);
+            var mark = Rect.FromSize(
+                new Vector2(hit.Center.X - side * 0.5f, hit.Center.Y - side * 0.5f),
+                new Vector2(side, side));
+            AppMarks.DrawFace(frame.Paint, frame.Textures, frame.Paths, mark, tasks[index].Id, hover);
+            if (allowTap && opened.Length == 0 && frame.Input.ConsumeClick(hit))
+            {
+                opened = tasks[index].Id;
+            }
+        }
+
+        return opened;
     }
 
     private static IApplet? Find(IReadOnlyList<IApplet> apps, string id)

@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
+using Linkpearl.Badges;
 using Linkpearl.Cards;
 using Linkpearl.Chassis;
+using Linkpearl.Destinations.Profile;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -26,13 +28,6 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         Ink = 5,
     }
 
-    private enum PlateAdd : byte
-    {
-        None = 0,
-        Ask = 1,
-        Gallery = 2,
-    }
-
     private readonly HandsetShapePreference shape;
     private readonly DisplayPreferences display;
     private readonly HostEnvironment environment;
@@ -41,20 +36,16 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private readonly DestinationHub hub;
     private readonly HostPaths paths;
     private readonly ITextureSource textures;
-    private readonly IFilePicker files;
     private readonly IAudioPorts audioPorts;
     private readonly IHandsetAudio audio;
+    private readonly ProfileChrome profile;
     private Part part;
     private bool flipped;
-    private string pictureError = string.Empty;
     private string bannerError = string.Empty;
-    private string plateFocus = string.Empty;
-    private string plateReplace = string.Empty;
     private string hoverHint = string.Empty;
     private delegate void SheetDraw(AppletFrame frame, ref Stack stack);
 
     private readonly HashSet<string> unfolded = new(StringComparer.Ordinal);
-    private PlateAdd plateAdd;
     private string listQuery = string.Empty;
     private bool creditsOpen;
     private string sliderDrag = string.Empty;
@@ -62,7 +53,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     public SettingsDestination(HandsetShapePreference shape, DisplayPreferences display, HostEnvironment environment,
         IGameSession game, IPearlHub pearl, DestinationHub hub, HostPaths paths, ITextureSource textures,
-        IFilePicker files, IAudioPorts audioPorts, IHandsetAudio audio)
+        IFilePicker files, IAudioPorts audioPorts, IHandsetAudio audio, BadgeBook badges,
+        HandsetProfileDesk profiles)
     {
         this.shape = shape;
         this.display = display;
@@ -72,9 +64,10 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         this.hub = hub;
         this.paths = paths;
         this.textures = textures;
-        this.files = files;
         this.audioPorts = audioPorts;
         this.audio = audio;
+        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, environment.IsDevelopment,
+            profiles);
     }
 
     public DestinationTab Tab => DestinationTab.Settings;
@@ -97,19 +90,18 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    public bool CanGoBack => creditsOpen || plateAdd != PlateAdd.None || part != Part.None || flipped;
+    public bool CanGoBack => profile.OverlayOpen || creditsOpen || part != Part.None || flipped;
 
     public bool Back()
     {
-        if (creditsOpen)
+        if (profile.Back())
         {
-            creditsOpen = false;
             return true;
         }
 
-        if (plateAdd != PlateAdd.None)
+        if (creditsOpen)
         {
-            plateAdd = PlateAdd.None;
+            creditsOpen = false;
             return true;
         }
 
@@ -131,6 +123,11 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     public float Compose(in AppletFrame frame)
     {
         hoverHint = string.Empty;
+        if (profile.OverlayOpen)
+        {
+            return profile.DrawOverlay(frame);
+        }
+
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
@@ -138,10 +135,6 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         if (creditsOpen)
         {
             DrawCreditsPanel(frame, ref stack);
-        }
-        else if (plateAdd == PlateAdd.Gallery)
-        {
-            DrawGalleryPick(frame, stack.TakeRemaining());
         }
         else
         {
@@ -167,25 +160,16 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
         else
         {
-            DrawYouMark(frame, lead);
+            profile.DrawFace(frame, lead);
             if (frame.Input.ConsumeClick(lead))
             {
-                hub.Open(DestinationTab.You);
+                profile.OpenEdit();
             }
         }
 
         frame.Text.DrawIn(row.Inset(new Edges(frame.Units(42f), 0f, 0f, 0f)),
             creditsOpen ? "Credits" : "Settings",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-    }
-
-    private void DrawYouMark(in AppletFrame frame, Rect area)
-    {
-        var name = pearl.Current.MeName.Length > 0 ? pearl.Current.MeName : game.Character.Name;
-        var glyph = name.Length > 0 ? name[0].ToString() : "?";
-        frame.Paint.FillCircle(area.Center, frame.Units(14f), frame.Theme.Palette.SurfaceRaised);
-        frame.Paint.StrokeCircle(area.Center, frame.Units(14f), frame.Theme.Palette.WarmAccent, frame.Units(1.2f));
-        frame.Text.DrawIn(area, glyph, new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
     }
 
     private void DrawBook(AppletFrame frame, ref Stack stack)
@@ -195,7 +179,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawTopic(frame, ref stack, "General", "Lock, combat, and how the phone behaves",
             "lock pin combat portraits cutscenes motion behavior", OptionBand(frame, 6), DrawGeneralPage);
         DrawTopic(frame, ref stack, "Appearance", "Themes, display, wallpaper, and home",
-            "theme display wallpaper home status crystal pearl style", AppearanceInnerHeight(frame),
+            "theme display wallpaper dim home status accent text default", AppearanceInnerHeight(frame),
             DrawAppearancePage);
         DrawTopic(frame, ref stack, "Sounds", "Speaker, microphone, and volume",
             "sound speaker mic volume silent vibration", SoundsHeight(frame), DrawSoundsPage);
@@ -207,23 +191,25 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             "phone call phonecalls wake portrait cutscene", OptionBand(frame, 3), DrawPhonePage);
         DrawTopic(frame, ref stack, "Languages", "Language and date and time",
             "language english clock 12 24 eorzea", OptionBand(frame, 6), DrawLanguagesPage);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Version " + environment.Version,
+            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
         DrawTopic(frame, ref stack, "Terms of service", "How this phone may be used", "tos terms legal",
             frame.Units(220f), DrawTosPage);
         DrawBoxedLink(frame, stack.Take(OptionHeight(frame)), "Join our Discord",
             () => OpenSite("https://discord.gg/KBf4wrzS6F"));
         DrawCreditsLink(frame, stack.Take(OptionHeight(frame)));
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), environment.Version,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint, TextAlign.Center));
     }
 
     private void DrawAppearancePage(AppletFrame frame, ref Stack stack)
     {
-        DrawTopic(frame, ref stack, "Themes", "Color, accent, text, and dark mode",
-            "theme color accent text dark", InkGroupHeight(frame), DrawInkControls);
-        DrawTopic(frame, ref stack, "Display", "Size, case, bezel, and brightness",
-            "display size case bezel brightness", DisplayInnerHeight(frame), DrawDisplayPage);
-        DrawTopic(frame, ref stack, "Wallpaper", "Lock screen and glass picture",
-            "wallpaper plate photo", PlateGroupHeight(frame), DrawPlateControls);
+        DrawTopic(frame, ref stack, "Themes", "Default theme, accent color, and text size",
+            "theme color accent text default", InkGroupHeight(frame), DrawInkControls);
+        DrawTopic(frame, ref stack, "Display", "Size, miniature, case, layout, and brightness",
+            "display size miniature minimized case layout brightness", DisplayInnerHeight(frame), DrawDisplayPage);
+        DrawTopic(frame, ref stack, "Wallpaper", "Bundled plates and Gallery background",
+            "wallpaper plate photo gallery desktop background", PlateGroupHeight(frame), DrawPlateControls);
+        DrawTopic(frame, ref stack, "Dim", "Light, medium, or dark overlay",
+            "dim shade overlay light medium dark", DimGroupHeight(frame), DrawDimControls);
         DrawTopic(frame, ref stack, "Home screen", "Greeting banner and extra screens",
             "home banner greeting screens extra", BannerGroupHeight(frame), DrawBannerControls);
         DrawTopic(frame, ref stack, "Status bar", "World name and status icons",
@@ -401,7 +387,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         frame.Text.DrawEllipsized(lines.Take(frame.Units(20f)), PlateLabel(),
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         frame.Text.DrawEllipsized(lines.Take(frame.Units(16f)),
-            ColorwayId.Label(display.Colorway) + " · " + CoreId.Label(display.Core),
+            ColorwayId.Label(display.Colorway) + " theme · " + CoreId.Label(display.Core),
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         var form = shape.Form == HandsetForm.Tablet ? "Tablet" : "Phone";
         var rim = shape.Finish == HandsetFinish.Etched ? "wide rim" : "slim rim";
@@ -473,8 +459,9 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var used = plate ?? ChassisCatalog.For(shape.Form, shape.Case);
-        var hole = used.ScreenOn(chassis);
+        var androidSkin = used.FileName == ChassisCatalog.Android.FileName;
         var glass = used.GlassOn(chassis);
+        var hole = used.ScreenOn(chassis);
         var skin = textures.FromFile(paths.Asset(Path.Combine(ChassisCatalog.Folder, used.FileName)));
         var strip = glass.TopSlice(glass.Height * 0.11f);
         var lockTab = new Rect(new Vector2(glass.Max.X - glass.Width * 0.18f, glass.Min.Y),
@@ -489,22 +476,33 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             frame.Paint.Stroke(chassis, gold with { W = lit == Part.Bezel ? 0.85f : 0.35f },
                 MathF.Max(1.2f, rim * 0.4f), chassis.Width * 0.08f);
         }
-        var holeRadius = used.ScreenRadiusOn(chassis);
         var glassRadius = used.GlassRadiusOn(chassis);
+        var holeRadius = used.ScreenRadiusOn(chassis);
+        var ink = new Vector4(0f, 0f, 0f, 1f);
         if (skin is { IsReady: true })
         {
-            CaseWash.StampSkin(frame.Paint, skin, chassis, used.CornerOn(chassis),
-                used.ScreenCorner > 0.0001f);
+            if (!androidSkin)
+            {
+                frame.Paint.FillSquircle(hole, ink, holeRadius);
+            }
+
+            CaseWash.StampSkin(frame.Paint, skin, chassis,
+                androidSkin ? 0f : used.CornerOn(chassis),
+                tint: androidSkin ? Vector4.One : null);
         }
 
-        frame.Paint.FillSquircle(hole, new Vector4(0f, 0f, 0f, 1f), holeRadius);
+        frame.Paint.FillSquircle(hole, ink, holeRadius);
         PaintPlate(frame, glass, glassRadius);
 
         var gasket = used.GasketOn(chassis);
-        var band = gasket > 0.5f ? Math.Max(gasket * 0.85f, 1.1f) : MathF.Max(0.723f, chassis.Width * 0.00434f);
-        frame.Paint.Stroke(glass, new Vector4(0f, 0f, 0f, 1f), band, glassRadius);
+        var band = gasket > 0.5f ? 1.2f : MathF.Max(0.723f, chassis.Width * 0.00434f);
+        var gasketRim = new Rect(glass.Min, glass.Max + new Vector2(1f, 1f));
+        frame.Paint.Stroke(gasketRim, new Vector4(0f, 0f, 0f, 1f), band, glassRadius);
 
-        CaseWash.Sheen(frame.Paint, body.IsEmpty ? chassis : body, glass, used.CornerOn(chassis));
+        if (used.FileName != ChassisCatalog.Android.FileName)
+        {
+            CaseWash.Sheen(frame.Paint, body.IsEmpty ? chassis : body, glass, used.CornerOn(chassis));
+        }
 
         if (lit == Part.Glass)
         {
@@ -616,19 +614,22 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         {
             case Part.Glass:
                 DrawOpenSheet(frame, ref stack, "Appearance",
-                    "Theme, accent, text size, and how the screen looks.",
+                    "Default theme, accent color, and text size.",
                     InkGroupHeight(frame), DrawInkControls);
                 break;
             case Part.Ink:
                 DrawOpenSheet(frame, ref stack, "Wallpaper",
-                    "Choose a wallpaper or one of your own photos.",
+                    "Choose a wallpaper. Photos in Gallery can switch the background.",
                     PlateGroupHeight(frame), DrawPlateControls);
+                DrawOpenSheet(frame, ref stack, "Dim",
+                    "Light, medium, or dark overlay.",
+                    DimGroupHeight(frame), DrawDimControls);
                 DrawOpenSheet(frame, ref stack, "Home screen", "Picture behind the Home greeting.",
                     BannerGroupHeight(frame), DrawBannerControls);
                 break;
             case Part.Bezel:
                 DrawOpenSheet(frame, ref stack, "Display",
-                    "Screen size, minimized size, layout, and bezel.",
+                    "Screen size, miniature size, and layout.",
                     SizeGroupHeight(frame), DrawBodyControls);
                 break;
             case Part.Strip:
@@ -644,38 +645,34 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private float PlateGroupHeight(in AppletFrame frame)
+    private static float PlateGroupHeight(in AppletFrame frame)
     {
-        var options = WallpaperCatalog.All.Count + 3;
-        var extra = PlateSlotHeight(frame);
-        if (FocusedPlate().Length > 0)
+        var rows = new List<float>();
+        for (var index = 0; index < WallpaperCatalog.All.Count; index++)
         {
-            extra += frame.Units(8f) + OptionBand(frame, 2);
+            rows.Add(OptionHeight(frame));
         }
 
-        if (plateAdd == PlateAdd.Ask)
-        {
-            extra += frame.Units(8f) + OptionBand(frame, 2);
-        }
-
-        if (pictureError.Length > 0)
-        {
-            extra += frame.Units(8f) + frame.Units(16f);
-        }
-
-        return OptionBand(frame, options) + frame.Units(8f) + extra;
+        rows.Add(frame.Units(16f));
+        rows.Add(frame.Units(32f));
+        return StackRun(frame, rows) + frame.Units(8f);
     }
+
+    private static float DimGroupHeight(in AppletFrame frame) =>
+        StackRun(frame, frame.Units(16f), frame.Units(36f)) + frame.Units(8f);
 
     private float InkGroupHeight(in AppletFrame frame)
     {
-        var options = ColorwayId.All.Length + CoreId.All.Length + 3 + 3 + 2 + FounderFaces.All.Length;
-        var extra = frame.Units(16f) + frame.Units(8f) + frame.Units(32f);
-        if (ShownName.Linked(game.Character.Name, pearl.Current.MeName).Length > 0)
+        var rows = new List<float>
         {
-            extra += frame.Units(8f) + frame.Units(16f);
-        }
-
-        return OptionBand(frame, options) + extra;
+            frame.Units(16f),
+            frame.Units(16f),
+            frame.Units(36f),
+            frame.Units(16f),
+            frame.Units(36f),
+            frame.Units(40f),
+        };
+        return StackRun(frame, rows) + frame.Units(8f);
     }
 
     private float BannerGroupHeight(in AppletFrame frame)
@@ -696,16 +693,20 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     }
 
     private static float SizeGroupHeight(in AppletFrame frame) =>
-        frame.Units(56f) + frame.Units(8f) +
-        OptionBand(frame, HandsetSizeCatalog.StepLabels.Count + HandsetShapePreference.PocketLabels.Length + 4) +
-        CasePickerHeight(frame);
-
-    private static float CasePickerHeight(in AppletFrame frame) => frame.Units(132f);
+        StackRun(frame,
+            frame.Units(16f),
+            frame.Units(108f),
+            frame.Units(16f),
+            frame.Units(36f),
+            frame.Units(56f),
+            frame.Units(36f),
+            frame.Units(16f),
+            frame.Units(36f)) + frame.Units(8f);
 
     private static float StatusGroupHeight(in AppletFrame frame) => OptionBand(frame, 2);
 
     private static float DisplayInnerHeight(in AppletFrame frame) =>
-        frame.Units(56f) + frame.Units(8f) + SizeGroupHeight(frame);
+        StackRun(frame, frame.Units(56f), SizeGroupHeight(frame));
 
     private void RefreshPorts()
     {
@@ -756,6 +757,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         return TopicCardHeight(frame, "Themes", InkGroupHeight(frame)) + gap +
             TopicCardHeight(frame, "Display", DisplayInnerHeight(frame)) + gap +
             TopicCardHeight(frame, "Wallpaper", PlateGroupHeight(frame)) + gap +
+            TopicCardHeight(frame, "Dim", DimGroupHeight(frame)) + gap +
             TopicCardHeight(frame, "Home screen", BannerGroupHeight(frame)) + gap +
             TopicCardHeight(frame, "Status bar", StatusGroupHeight(frame)) + gap +
             TopicCardHeight(frame, "Interactive tuner", TunerInnerHeight(frame));
@@ -858,71 +860,98 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawInkControls(AppletFrame frame, ref Stack stack)
     {
-        ExclusiveRow(frame, ref stack, "Crystal theme", display.Colorway == ColorwayId.Crystal,
-            () => display.Colorway = ColorwayId.Crystal, "Cool ice highlights.");
-        ExclusiveRow(frame, ref stack, "Pearl theme", display.Colorway == ColorwayId.Pearl,
-            () => display.Colorway = ColorwayId.Pearl, "Soft white and cream.");
-        ExclusiveRow(frame, ref stack, "Ember theme", display.Colorway == ColorwayId.Ember,
-            () => display.Colorway = ColorwayId.Ember, "Warm copper and dusk.");
-        ExclusiveRow(frame, ref stack, "Night theme", display.Colorway == ColorwayId.Night,
-            () => display.Colorway = ColorwayId.Night, "Deep ink and low light.");
-        ExclusiveRow(frame, ref stack, "Gold accent", display.Core == CoreId.Gold, () => display.Core = CoreId.Gold,
-            "Gold highlights.");
-        ExclusiveRow(frame, ref stack, "Violet accent", display.Core == CoreId.Violet, () => display.Core = CoreId.Violet,
-            "Violet highlights.");
-        ExclusiveRow(frame, ref stack, "Rose accent", display.Core == CoreId.Rose, () => display.Core = CoreId.Rose,
-            "Rose highlights.");
-        ExclusiveRow(frame, ref stack, "Sage accent", display.Core == CoreId.Sage, () => display.Core = CoreId.Sage,
-            "Sage highlights.");
-        ExclusiveRow(frame, ref stack, "Small text", display.Lettering == LetteringSize.Small,
-            () => display.Lettering = LetteringSize.Small, "Smaller Home text.");
-        ExclusiveRow(frame, ref stack, "Default text", display.Lettering == LetteringSize.Medium,
-            () => display.Lettering = LetteringSize.Medium, "Default Home text.");
-        ExclusiveRow(frame, ref stack, "Large text", display.Lettering == LetteringSize.Large,
-            () => display.Lettering = LetteringSize.Large, "Larger Home text.");
-        ExclusiveRow(frame, ref stack, "Light appearance", display.Appearance == AppearanceMode.Day,
-            () => display.Appearance = AppearanceMode.Day, "Always use the day look.");
-        ExclusiveRow(frame, ref stack, "Dark appearance", display.Appearance == AppearanceMode.Night,
-            () => display.Appearance = AppearanceMode.Night, "Always use the night look.");
-        ExclusiveRow(frame, ref stack, "Auto appearance", display.Appearance == AppearanceMode.FollowClock,
-            () => display.Appearance = AppearanceMode.FollowClock, "Follow the time of day.");
-        ExclusiveRow(frame, ref stack, "Show full name", display.NameStyle == NameStyle.Full,
-            () => display.NameStyle = NameStyle.Full, "Given name and family name.");
-        ExclusiveRow(frame, ref stack, "Show first name", display.NameStyle == NameStyle.Given,
-            () => display.NameStyle = NameStyle.Given, "Given name only.");
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Your name on Home.",
+        display.Colorway = ColorwayId.Night;
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Default theme",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Accent",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        display.OwnName = frame.TextField.Draw("tune-own-name", stack.Take(frame.Units(32f)), display.OwnName,
-            "Leave blank for your in-game name", ShownName.OwnNameLimit, out _);
-        var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        if (linked.Length > 0)
+        DrawAccentCircles(frame, stack.Take(frame.Units(36f)));
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Text size",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        DrawLetteringRow(frame, stack.Take(frame.Units(36f)));
+        frame.Text.DrawWrapped(stack.Take(frame.Units(40f)),
+            "Name, honorific, photo, banner, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and Daylight.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private void DrawAccentCircles(AppletFrame frame, Rect row)
+    {
+        var gap = frame.Units(6f);
+        var count = CoreId.All.Length;
+        var cell = (row.Width - gap * (count - 1)) / count;
+        var run = new Stack(row, StackAxis.Horizontal, gap);
+        for (var index = 0; index < count; index++)
         {
-            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)), "Linked: " + linked,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint));
+            var id = CoreId.All[index];
+            var cellRect = run.Take(cell);
+            var radius = MathF.Min(cellRect.Width, cellRect.Height) * 0.38f;
+            var selected = string.Equals(display.Core, id, StringComparison.Ordinal);
+            var fill = CoreId.Swatch(id);
+            frame.Paint.FillCircle(cellRect.Center, radius, fill);
+            var rim = selected ? frame.Theme.Palette.Ink : frame.Theme.Palette.InkFaint;
+            frame.Paint.StrokeCircle(cellRect.Center, radius, rim, selected ? frame.Units(2.2f) : frame.Units(1.1f));
+            if (frame.Input.ConsumeClick(cellRect))
+            {
+                display.Core = id;
+            }
         }
+    }
 
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)),
-            "Custom name, title, and title glow live on Edit Profile for Patreon subscribers.",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    private void DrawLetteringRow(AppletFrame frame, Rect row)
+    {
+        DrawChoiceChips(frame, row, new[] { "Small", "Default", "Large" }, (int)display.Lettering,
+            index => display.Lettering = (LetteringSize)index);
+    }
 
-        var unlocked = FounderFaces.Unlocked(pearl.Current.SignedIn, pearl.Current.FounderSeat,
-            display.FounderFacesGranted, environment.IsDevelopment);
-        ExclusiveRow(frame, ref stack, "Inter typeface",
-            unlocked && string.Equals(display.DisplayFace, FounderFaces.Inter, StringComparison.Ordinal), () =>
+    private void DrawPhoneSizeRow(AppletFrame frame, Rect row)
+    {
+        DrawChoiceChips(frame, row, new[] { "Small", "Medium", "Large" },
+            HandsetSizeCatalog.StepIndex(shape.ScaleStep),
+            index => shape.ScaleStep = HandsetSizeCatalog.ScaleSteps[index]);
+    }
+
+    private void DrawPocketSizeRow(AppletFrame frame, Rect row)
+    {
+        DrawChoiceChips(frame, row, HandsetShapePreference.PocketLabels, shape.PocketIndex(),
+            index => shape.PocketScale = HandsetShapePreference.PocketSteps[index]);
+    }
+
+    private void DrawLayoutRow(AppletFrame frame, Rect row)
+    {
+        DrawChoiceChips(frame, row, new[] { "Phone", "Tablet" },
+            shape.Form == HandsetForm.Tablet ? 1 : 0,
+            index => shape.Form = index == 1 ? HandsetForm.Tablet : HandsetForm.Phone);
+    }
+
+    private static void DrawChoiceChips(AppletFrame frame, Rect row, string[] labels, int selected, Action<int> pick)
+    {
+        var gap = frame.Units(6f);
+        var count = labels.Length;
+        var cell = (row.Width - gap * (count - 1)) / count;
+        var run = new Stack(row, StackAxis.Horizontal, gap);
+        for (var index = 0; index < count; index++)
+        {
+            var area = run.Take(cell);
+            var on = index == selected;
+            var radius = area.Height * 0.5f;
+            if (on)
             {
-                if (unlocked)
-                {
-                    display.DisplayFace = FounderFaces.Inter;
-                }
-            }, unlocked ? "Founder typeface on the Home name." : "Sign in. First 500 Pearlgate seats keep these faces.");
-        ExclusiveRow(frame, ref stack, "Dreams typeface",
-            unlocked && string.Equals(display.DisplayFace, FounderFaces.Dreams, StringComparison.Ordinal), () =>
+                frame.Paint.Fill(area, frame.Theme.Palette.Accent with { W = 0.92f }, radius);
+            }
+            else
             {
-                if (unlocked)
-                {
-                    display.DisplayFace = FounderFaces.Dreams;
-                }
-            }, unlocked ? "Founder typeface on the Home name." : "Sign in. First 500 Pearlgate seats keep these faces.");
+                frame.Paint.Fill(area, frame.Theme.Palette.SurfaceSunken with { W = 0.82f }, radius);
+                frame.Paint.Stroke(area, frame.Theme.Palette.InkFaint, frame.Theme.Metrics.Hairline, radius);
+            }
+
+            frame.Text.DrawIn(area, labels[index],
+                new TextStyle(FontRole.CaptionStrong, on ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.Ink,
+                    TextAlign.Center));
+            if (frame.Input.ConsumeClick(area))
+            {
+                pick(index);
+            }
+        }
     }
 
     private void DrawPlateControls(AppletFrame frame, ref Stack stack)
@@ -936,312 +965,22 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             {
                 display.CustomPlateFile = string.Empty;
                 display.WallpaperId = plate.Id;
-                plateAdd = PlateAdd.None;
-                pictureError = string.Empty;
             }, "Set as wallpaper.");
         }
 
-        ExclusiveRow(frame, ref stack, "Light dim", display.Shade == ShadeLevel.Light,
-            () => display.Shade = ShadeLevel.Light, "A light overlay on the wallpaper.");
-        ExclusiveRow(frame, ref stack, "Medium dim", display.Shade == ShadeLevel.Even,
-            () => display.Shade = ShadeLevel.Even, "A medium overlay on the wallpaper.");
-        ExclusiveRow(frame, ref stack, "Dark dim", display.Shade == ShadeLevel.Deep,
-            () => display.Shade = ShadeLevel.Deep, "A dark overlay on the wallpaper.");
-        DrawPlateSlots(frame, stack.Take(PlateSlotHeight(frame)));
-        var focus = FocusedPlate();
-        if (focus.Length > 0)
-        {
-            ActionRow(frame, ref stack, "Replace photo", "Swap the selected picture.", () =>
-            {
-                plateReplace = focus;
-                plateAdd = PlateAdd.Ask;
-                pictureError = string.Empty;
-            });
-            ActionRow(frame, ref stack, "Delete photo", "Remove the selected picture.", () => RemovePlate(focus));
-        }
-
-        if (plateAdd == PlateAdd.Ask)
-        {
-            ActionRow(frame, ref stack, "Choose from files", "Pick a picture from this computer.", BringFromPc);
-            ActionRow(frame, ref stack, "Choose from Gallery", "Pick a picture from Gallery.", () =>
-            {
-                plateAdd = PlateAdd.Gallery;
-                pictureError = string.Empty;
-            });
-        }
-
-        if (pictureError.Length > 0)
-        {
-            frame.Text.DrawIn(stack.Take(frame.Units(16f)), pictureError,
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.Negative));
-        }
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Set desktop background",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        frame.Text.DrawWrapped(stack.Take(frame.Units(32f)),
+            "Photos in Gallery can switch the background.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private static float PlateSlotHeight(in AppletFrame frame) => frame.Units(92f);
-
-    private void DrawPlateSlots(in AppletFrame frame, Rect row)
+    private void DrawDimControls(AppletFrame frame, ref Stack stack)
     {
-        PruneMissingPlates();
-        var gap = frame.Units(6f);
-        var count = PlateFiles.MaxSlots;
-        var width = (row.Width - gap * (count - 1)) / count;
-        var aspect = ChassisCatalog.Phone.Aspect;
-        var height = MathF.Min(row.Height, width / MathF.Max(aspect, 0.01f));
-        var y = row.Min.Y + (row.Height - height) * 0.5f;
-        var files = display.CustomPlateFiles;
-        for (var index = 0; index < count; index++)
-        {
-            var cell = Rect.FromSize(new Vector2(row.Min.X + index * (width + gap), y), new Vector2(width, height));
-            if (index < files.Count)
-            {
-                DrawFilledSlot(frame, cell, files[index]);
-                continue;
-            }
-
-            DrawPlusSlot(frame, cell);
-            if (frame.Input.ConsumeClick(cell))
-            {
-                plateReplace = string.Empty;
-                plateAdd = PlateAdd.Ask;
-                pictureError = string.Empty;
-            }
-        }
-    }
-
-    private void DrawPlusSlot(in AppletFrame frame, Rect cell)
-    {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var radius = MathF.Min(cell.Width, cell.Height) * 0.16f;
-        frame.Paint.Fill(cell, frame.Theme.Palette.SurfaceSunken with { W = 0.55f }, radius);
-        frame.Paint.Stroke(cell, gold with { W = 0.45f }, frame.Units(1.2f), radius);
-        frame.Text.DrawIn(cell, "+",
-            new TextStyle(FontRole.Title, gold, TextAlign.Center));
-    }
-
-    private void DrawFilledSlot(in AppletFrame frame, Rect cell, string fileName)
-    {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var radius = MathF.Min(cell.Width, cell.Height) * 0.16f;
-        var focus = string.Equals(FocusedPlate(), fileName, StringComparison.OrdinalIgnoreCase);
-        var on = string.Equals(display.CustomPlateFile, fileName, StringComparison.OrdinalIgnoreCase);
-        frame.Paint.PushClip(cell);
-        DrawFile(frame, cell, PlateFiles.Absolute(paths, fileName), 1f);
-        frame.Paint.PopClip();
-        frame.Paint.Stroke(cell, gold with { W = focus || on ? 0.9f : 0.28f },
-            focus || on ? frame.Units(1.8f) : frame.Units(1f), radius);
-        if (frame.Input.ConsumeClick(cell))
-        {
-            display.CustomPlateFile = fileName;
-            plateFocus = fileName;
-            plateReplace = string.Empty;
-            plateAdd = PlateAdd.None;
-            pictureError = string.Empty;
-        }
-    }
-
-    private string FocusedPlate()
-    {
-        var files = display.CustomPlateFiles;
-        if (PlateListed(plateFocus))
-        {
-            return plateFocus;
-        }
-
-        if (PlateListed(display.CustomPlateFile))
-        {
-            return display.CustomPlateFile;
-        }
-
-        return files.Count > 0 ? files[^1] : string.Empty;
-    }
-
-    private bool PlateListed(string fileName)
-    {
-        var files = display.CustomPlateFiles;
-        for (var index = 0; index < files.Count; index++)
-        {
-            if (string.Equals(files[index], fileName, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void RemovePlate(string fileName)
-    {
-        PlateFiles.Delete(paths, fileName);
-        display.RemoveCustomPlate(fileName);
-        if (string.Equals(plateFocus, fileName, StringComparison.OrdinalIgnoreCase))
-        {
-            plateFocus = string.Empty;
-        }
-
-        if (string.Equals(plateReplace, fileName, StringComparison.OrdinalIgnoreCase))
-        {
-            plateReplace = string.Empty;
-        }
-
-        plateAdd = PlateAdd.None;
-        pictureError = string.Empty;
-    }
-
-    private void BringFromPc()
-    {
-        plateAdd = PlateAdd.None;
-        var replacing = plateReplace.Length > 0;
-        var room = replacing ? 1 : PlateFiles.MaxSlots - display.CustomPlateFiles.Count;
-        if (room <= 0)
-        {
-            pictureError = "Four pictures at most.";
-            return;
-        }
-
-        var picked = files.PickImageFiles();
-        if (replacing)
-        {
-            if (picked.Count > 0 && PlateFiles.TryImport(paths, picked[0], out var fileName))
-            {
-                FinishReplace(fileName);
-                return;
-            }
-
-            pictureError = "Could not use that picture.";
-            return;
-        }
-
-        var added = 0;
-        var last = string.Empty;
-        for (var index = 0; index < picked.Count && added < room; index++)
-        {
-            if (!PlateFiles.TryImport(paths, picked[index], out var fileName))
-            {
-                continue;
-            }
-
-            display.AddCustomPlate(fileName);
-            last = fileName;
-            added++;
-        }
-
-        if (added > 0)
-        {
-            plateFocus = last;
-            pictureError = string.Empty;
-            return;
-        }
-
-        pictureError = "Could not use that picture.";
-    }
-
-    private void BringFromGallery(string path)
-    {
-        if (plateReplace.Length > 0)
-        {
-            if (!PlateFiles.TryImport(paths, path, out var swapped))
-            {
-                pictureError = "Could not use that picture.";
-                return;
-            }
-
-            FinishReplace(swapped);
-            return;
-        }
-
-        if (display.CustomPlateFiles.Count >= PlateFiles.MaxSlots)
-        {
-            pictureError = "Four pictures at most.";
-            plateAdd = PlateAdd.None;
-            return;
-        }
-
-        if (!PlateFiles.TryImport(paths, path, out var fileName))
-        {
-            pictureError = "Could not use that picture.";
-            return;
-        }
-
-        display.AddCustomPlate(fileName);
-        plateFocus = fileName;
-        pictureError = string.Empty;
-        plateAdd = PlateAdd.None;
-    }
-
-    private void FinishReplace(string fileName)
-    {
-        var previous = plateReplace;
-        display.SwapCustomPlate(previous, fileName);
-        PlateFiles.Delete(paths, previous);
-        plateFocus = fileName;
-        plateReplace = string.Empty;
-        plateAdd = PlateAdd.None;
-        pictureError = string.Empty;
-    }
-
-    private void DrawGalleryPick(in AppletFrame frame, Rect area)
-    {
-        var bar = area.TopSlice(frame.Units(36f));
-        Chip(frame, bar.LeftSlice(frame.Units(72f)), "Back", false, () => plateAdd = PlateAdd.Ask);
-        frame.Text.DrawIn(bar.Inset(new Edges(frame.Units(80f), 0f, 0f, 0f)), "Gallery",
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        var body = area.Inset(new Edges(0f, frame.Units(44f), 0f, 0f));
-        var shots = GalleryFiles.List(paths);
-        if (shots.Count == 0)
-        {
-            frame.Text.DrawWrapped(body.TopSlice(frame.Units(64f)),
-                "No pictures in Gallery yet. Open Camera, switch to Gallery, and upload from this PC.",
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-            return;
-        }
-
-        var columns = 3;
-        var gap = frame.Units(6f);
-        var cell = (body.Width - gap * (columns - 1)) / columns;
-        var rows = (shots.Count + columns - 1) / columns;
-        var grid = new TileGrid(Rect.FromSize(body.Min, new Vector2(body.Width, rows * (cell + gap) - gap)), columns,
-            Math.Max(rows, 1), gap);
-        frame.Paint.PushClip(body);
-        for (var index = 0; index < shots.Count; index++)
-        {
-            var tile = grid.CellAt(index);
-            if (!tile.Overlaps(body))
-            {
-                continue;
-            }
-
-            DrawFile(frame, tile, shots[index].Path, 1f);
-            frame.Paint.Stroke(tile, frame.Theme.Palette.Separator, frame.Units(1f));
-            if (frame.Input.ConsumeClick(tile))
-            {
-                BringFromGallery(shots[index].Path);
-            }
-        }
-
-        frame.Paint.PopClip();
-    }
-
-    private void PruneMissingPlates()
-    {
-        var files = display.CustomPlateFiles;
-        var kept = new List<string>(files.Count);
-        var missing = false;
-        for (var index = 0; index < files.Count; index++)
-        {
-            if (File.Exists(PlateFiles.Absolute(paths, files[index])))
-            {
-                kept.Add(files[index]);
-            }
-            else
-            {
-                missing = true;
-            }
-        }
-
-        if (missing)
-        {
-            display.ReplaceCustomPlates(kept);
-        }
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Dim",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        DrawChoiceChips(frame, stack.Take(frame.Units(36f)), new[] { "Light", "Medium", "Dark" },
+            (int)display.Shade, index => display.Shade = (ShadeLevel)index);
     }
 
     private void DrawBannerControls(AppletFrame frame, ref Stack stack)
@@ -1339,40 +1078,20 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void DrawBodyControls(AppletFrame frame, ref Stack stack)
     {
         DrawCasePicker(frame, ref stack);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Layout",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        DrawLayoutRow(frame, stack.Take(frame.Units(36f)));
         var sizeMin = HandsetSizeCatalog.MinScale;
         var sizeMax = Math.Max(HandsetSizeCatalog.MaxScale, shape.ScaleStep);
         var sizeSpan = MathF.Max(sizeMax - sizeMin, 0.01f);
         DrawSliderRow(frame, ref stack, "Phone size", (shape.ScaleStep - sizeMin) / sizeSpan, value =>
             shape.ScaleStep = HandsetSizeCatalog.ClampFree(sizeMin + Math.Clamp(value, 0f, 1f) * sizeSpan,
                 HandsetSizeCatalog.FreeCeiling));
-        var sizeNames = new[] { "Extra small", "Small", "Medium", "Large", "Extra large", "Largest" };
-        for (var index = 0; index < HandsetSizeCatalog.StepLabels.Count; index++)
-        {
-            var step = index;
-            ExclusiveRow(frame, ref stack, sizeNames[step],
-                HandsetSizeCatalog.StepIndex(shape.ScaleStep) == step,
-                () => shape.ScaleStep = HandsetSizeCatalog.ScaleSteps[step],
-                "Display size on your screen.");
-        }
+        DrawPhoneSizeRow(frame, stack.Take(frame.Units(36f)));
 
-        var pocketNames = new[] { "Small when minimized", "Medium when minimized", "Large when minimized" };
-        for (var index = 0; index < HandsetShapePreference.PocketLabels.Length; index++)
-        {
-            var step = index;
-            ExclusiveRow(frame, ref stack, pocketNames[step],
-                shape.PocketIndex() == step,
-                () => shape.PocketScale = HandsetShapePreference.PocketSteps[step],
-                "Size while the phone is minimized.");
-        }
-
-        ExclusiveRow(frame, ref stack, "Phone layout", shape.Form == HandsetForm.Phone,
-            () => shape.Form = HandsetForm.Phone, "Tall screen.");
-        ExclusiveRow(frame, ref stack, "Tablet layout", shape.Form == HandsetForm.Tablet,
-            () => shape.Form = HandsetForm.Tablet, "Wide screen.");
-        ExclusiveRow(frame, ref stack, "Thin bezel", shape.Finish == HandsetFinish.Crystal,
-            () => shape.Finish = HandsetFinish.Crystal, "A slim edge around the screen.");
-        ExclusiveRow(frame, ref stack, "Thick bezel", shape.Finish == HandsetFinish.Etched,
-            () => shape.Finish = HandsetFinish.Etched, "A wide etched edge around the screen.");
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Miniature size",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        DrawPocketSizeRow(frame, stack.Take(frame.Units(36f)));
     }
 
     private void DrawStripControls(AppletFrame frame, ref Stack stack)
@@ -1423,6 +1142,26 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
 
         return count * OptionHeight(frame) + (count - 1) * frame.Units(8f);
+    }
+
+    private static float StackRun(in AppletFrame frame, params float[] heights) =>
+        StackRun(frame, (IReadOnlyList<float>)heights);
+
+    private static float StackRun(in AppletFrame frame, IReadOnlyList<float> heights)
+    {
+        if (heights.Count == 0)
+        {
+            return 0f;
+        }
+
+        var gap = frame.Units(8f);
+        var total = heights[0];
+        for (var index = 1; index < heights.Count; index++)
+        {
+            total += gap + heights[index];
+        }
+
+        return total;
     }
 
     private void DrawTopic(AppletFrame frame, ref Stack stack, string title, string blurb, string haystack,

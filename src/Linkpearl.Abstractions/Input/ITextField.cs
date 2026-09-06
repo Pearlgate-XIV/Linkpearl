@@ -25,4 +25,6 @@ public interface ITextField
     void Focus(string id);
 
     void Release();
+
+    string ClipboardText();
 }

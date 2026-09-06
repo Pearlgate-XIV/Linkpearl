@@ -29,6 +29,7 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
     private readonly HttpClient http;
     private readonly object gate = new();
     private List<StationRow> rows = new();
+    private readonly Dictionary<string, LikeMark> publicLikes = new(StringComparer.OrdinalIgnoreCase);
     private string ownedId = string.Empty;
     private bool broadcasting;
     private string notice = string.Empty;
@@ -212,6 +213,65 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
 
     public void EndLive() => _ = Task.Run(EndLiveAsync);
 
+    public int StationLikes(string stationId)
+    {
+        var id = BareStationId(stationId);
+        if (id.Length == 0)
+        {
+            return 0;
+        }
+
+        lock (gate)
+        {
+            var row = rows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (row is not null)
+            {
+                return Math.Max(0, row.Likes);
+            }
+
+            return publicLikes.TryGetValue(id, out var mark) ? Math.Max(0, mark.Count) : 0;
+        }
+    }
+
+    public bool StationLiked(string stationId)
+    {
+        var id = BareStationId(stationId);
+        if (id.Length == 0)
+        {
+            return false;
+        }
+
+        lock (gate)
+        {
+            var row = rows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (row is not null)
+            {
+                return row.Liked;
+            }
+
+            return publicLikes.TryGetValue(id, out var mark) && mark.Mine;
+        }
+    }
+
+    public void ToggleStationLike(string stationId)
+    {
+        var id = BareStationId(stationId);
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        bool liked;
+        lock (gate)
+        {
+            liked = !StationLikedLocked(id);
+            ApplyLikeLocked(id, liked, StationLikesLocked(id) + (liked ? 1 : -1));
+            SaveBookLocked();
+        }
+
+        _ = Task.Run(() => PushLikeAsync(id, liked));
+    }
+
     public void Dispose()
     {
         writeLock.Dispose();
@@ -224,11 +284,13 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         {
             ApplyAuth();
             var community = await GetList("radio/community").ConfigureAwait(false);
+            var live = await GetList("radio/live").ConfigureAwait(false);
             var owned = SignedIn ? await GetList("radio/mine").ConfigureAwait(false) : [];
             lock (gate)
             {
                 var keepLive = broadcasting;
                 MergeRemote(community, owned: false);
+                MergeRemote(live, owned: false);
                 MergeRemote(owned, owned: true);
                 if (ownedId.Length == 0)
                 {
@@ -584,6 +646,17 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             existing.IngestUrl = body.IngestUrl ?? existing.IngestUrl;
             existing.Mount = body.Mount is { Length: > 0 } ? NormalizeMount(body.Mount, existing.Name) : existing.Mount;
             existing.Listeners = body.Listeners;
+            if (body.Likes is { } likes)
+            {
+                existing.Likes = Math.Max(0, likes);
+                RememberLikeLocked(id, existing.Likes, body.Liked ?? existing.Liked);
+            }
+
+            if (body.Liked is { } liked)
+            {
+                existing.Liked = liked;
+            }
+
             existing.Owned |= owned;
             if (owned)
             {
@@ -628,6 +701,18 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             }
 
             rows = book.Stations ?? new List<StationRow>();
+            publicLikes.Clear();
+            if (book.PublicLikes is { Count: > 0 })
+            {
+                foreach (var mark in book.PublicLikes)
+                {
+                    if (mark.Id is { Length: > 0 })
+                    {
+                        publicLikes[mark.Id] = new LikeMark { Count = Math.Max(0, mark.Count), Mine = mark.Mine };
+                    }
+                }
+            }
+
             ownedId = book.OwnedId ?? string.Empty;
             broadcasting = rows.Any(row => row.Live && (row.Owned || string.Equals(row.Id, ownedId, StringComparison.Ordinal)));
         }
@@ -653,6 +738,12 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             {
                 OwnedId = ownedId,
                 Stations = rows,
+                PublicLikes = publicLikes.Select(static pair => new LikeRow
+                {
+                    Id = pair.Key,
+                    Count = pair.Value.Count,
+                    Mine = pair.Value.Mine,
+                }).ToList(),
             }, Json));
         }
         catch (IOException)
@@ -671,7 +762,9 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
             row.Listeners,
             row.Bio,
             row.ArtPath,
-            row.Mount)).ToArray();
+            row.Mount,
+            row.Likes,
+            row.Liked)).ToArray();
 
     private void ApplyAuth()
     {
@@ -726,6 +819,98 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         if (body.Mount is { Length: > 0 })
         {
             row.Mount = NormalizeMount(body.Mount, row.Name);
+        }
+
+        if (body.Likes is { } likes)
+        {
+            row.Likes = Math.Max(0, likes);
+        }
+
+        if (body.Liked is { } liked)
+        {
+            row.Liked = liked;
+        }
+    }
+
+    private static string BareStationId(string stationId)
+    {
+        var id = stationId.Trim();
+        return id.StartsWith("live:", StringComparison.OrdinalIgnoreCase) ? id["live:".Length..] : id;
+    }
+
+    private int StationLikesLocked(string id)
+    {
+        var row = rows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (row is not null)
+        {
+            return Math.Max(0, row.Likes);
+        }
+
+        return publicLikes.TryGetValue(id, out var mark) ? Math.Max(0, mark.Count) : 0;
+    }
+
+    private bool StationLikedLocked(string id)
+    {
+        var row = rows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (row is not null)
+        {
+            return row.Liked;
+        }
+
+        return publicLikes.TryGetValue(id, out var mark) && mark.Mine;
+    }
+
+    private void ApplyLikeLocked(string id, bool liked, int count)
+    {
+        count = Math.Max(0, count);
+        var row = rows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (row is not null)
+        {
+            row.Liked = liked;
+            row.Likes = count;
+        }
+
+        RememberLikeLocked(id, count, liked);
+    }
+
+    private void RememberLikeLocked(string id, int count, bool mine)
+    {
+        publicLikes[id] = new LikeMark { Count = Math.Max(0, count), Mine = mine };
+    }
+
+    private async Task PushLikeAsync(string id, bool liked)
+    {
+        if (!SignedIn)
+        {
+            return;
+        }
+
+        try
+        {
+            ApplyAuth();
+            var path = "radio/stations/" + Uri.EscapeDataString(id) + "/likes";
+            using var response = liked
+                ? await http.PostAsync(path, null).ConfigureAwait(false)
+                : await http.DeleteAsync(path).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<LikeBody>().ConfigureAwait(false);
+            if (body is null)
+            {
+                return;
+            }
+
+            lock (gate)
+            {
+                ApplyLikeLocked(id, body.Liked ?? liked, body.Likes ?? StationLikesLocked(id));
+                SaveBookLocked();
+            }
+        }
+        catch (Exception)
+        {
         }
     }
 
@@ -842,6 +1027,33 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         public string? OwnedId { get; set; }
 
         public List<StationRow>? Stations { get; set; }
+
+        public List<LikeRow>? PublicLikes { get; set; }
+    }
+
+    private sealed class LikeRow
+    {
+        public string Id { get; set; } = string.Empty;
+
+        public int Count { get; set; }
+
+        public bool Mine { get; set; }
+    }
+
+    private sealed class LikeMark
+    {
+        public int Count { get; set; }
+
+        public bool Mine { get; set; }
+    }
+
+    private sealed class LikeBody
+    {
+        [JsonPropertyName("likes")]
+        public int? Likes { get; set; }
+
+        [JsonPropertyName("liked")]
+        public bool? Liked { get; set; }
     }
 
     private sealed class StationRow
@@ -867,6 +1079,10 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         public string Mount { get; set; } = string.Empty;
 
         public int Listeners { get; set; }
+
+        public int Likes { get; set; }
+
+        public bool Liked { get; set; }
 
         public bool Owned { get; set; }
     }
@@ -905,6 +1121,12 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
 
         [JsonPropertyName("listeners")]
         public int Listeners { get; set; }
+
+        [JsonPropertyName("likes")]
+        public int? Likes { get; set; }
+
+        [JsonPropertyName("liked")]
+        public bool? Liked { get; set; }
     }
 
     private sealed class LiveBody

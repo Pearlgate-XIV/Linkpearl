@@ -10,7 +10,9 @@ public readonly record struct CommunityStation(
     int Listeners,
     string Bio = "",
     string ArtPath = "",
-    string Mount = "");
+    string Mount = "",
+    int Likes = 0,
+    bool Liked = false);
 
 public interface ICommunityRadio
 {
@@ -43,4 +45,10 @@ public interface ICommunityRadio
     void GoLive(string name, string genre);
 
     void EndLive();
+
+    int StationLikes(string stationId);
+
+    bool StationLiked(string stationId);
+
+    void ToggleStationLike(string stationId);
 }

@@ -1,10 +1,10 @@
+using System.Globalization;
 using Linkpearl.Applets;
-using Linkpearl.Cards;
 using Linkpearl.Geometry;
-using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Time;
+using Linkpearl.Weather;
 
 namespace Linkpearl.Applets.Life.Weather;
 
@@ -21,20 +21,21 @@ public sealed class WeatherApplet : IApplet
 
     private readonly IGameSession game;
     private readonly IClock clock;
+    private readonly IWeatherOracle oracle;
+    private float scroll;
 
-    public WeatherApplet(IGameSession game, IClock clock)
+    public WeatherApplet(IGameSession game, IClock clock, IWeatherOracle oracle)
     {
         this.game = game;
         this.clock = clock;
+        this.oracle = oracle;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
 
     public AppletBadge Badge => AppletBadge.None;
 
-    public void Enter(AppletEntry entry)
-    {
-    }
+    public void Enter(AppletEntry entry) => scroll = 0f;
 
     public void Leave()
     {
@@ -42,25 +43,91 @@ public sealed class WeatherApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
-        var content = frame.Content.Inset(frame.Units(16f));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
-        frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Weather",
-            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Sky over the zone you stand in.",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-
-        var face = stack.Take(frame.Units(120f));
-        CardChrome.DrawGold(frame, face);
-        var inset = face.Inset(frame.Units(14f));
-        var weather = game.IsLoggedIn && game.WeatherName.Length > 0 ? game.WeatherName : "Unknown skies";
-        frame.Text.DrawIn(inset.TopSlice(frame.Units(28f)), weather,
-            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink, TextAlign.Center));
-        var zone = game.ZoneName.Length > 0 ? game.ZoneName : "Not logged in";
-        frame.Text.DrawIn(inset.Inset(new Edges(0f, frame.Units(32f), 0f, frame.Units(28f))), zone,
-            new TextStyle(FontRole.Body, frame.Theme.Palette.InkMuted, TextAlign.Center));
         var bells = EorzeaTime.FromUnix(clock.UtcNow.ToUnixTimeSeconds());
-        var sky = bells.Hour is >= 6 and < 18 ? "Eorzea day" : "Eorzea night";
-        frame.Text.DrawIn(inset.BottomSlice(frame.Units(22f)), bells.Format() + " · " + sky,
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        var night = SkyChrome.IsNight(bells);
+        var hours = game.IsLoggedIn && game.TerritoryId != 0
+            ? oracle.Forecast((ushort)game.TerritoryId, WeatherChrome.ForecastHours)
+            : [];
+        var current = hours.Count > 0 ? hours[0] : default;
+        var condition = First(game.IsLoggedIn ? game.WeatherName : "", current.Name, "Unknown skies");
+        var place = First(game.ZoneName, game.MapPlace, game.Character.WorldName, "Not logged in");
+        var runs = Runs(hours);
+
+        SkyChrome.Paint(frame, frame.Content, condition, night);
+        var inner = frame.Content.Inset(new Edges(frame.Units(16f), frame.Units(8f), frame.Units(16f),
+            frame.Units(10f)));
+        var page = inner.Translate(new Vector2(0f, -scroll));
+        frame.Paint.PushClip(inner);
+        var content = WeatherChrome.App(frame, page, place, condition, current.IconId, bells, hours, runs,
+            NextSky(hours));
+        frame.Paint.PopClip();
+        if (frame.Input.IsHovering(inner) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
+        {
+            scroll -= frame.Input.ScrollDelta * frame.Units(28f);
+        }
+
+        scroll = Math.Clamp(scroll, 0f, MathF.Max(0f, content - inner.Height));
+    }
+
+    private string NextSky(IReadOnlyList<WeatherWindow> hours)
+    {
+        if (hours.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        var opening = hours[0].Name ?? string.Empty;
+        for (var index = 1; index < hours.Count; index++)
+        {
+            var name = hours[index].Name ?? string.Empty;
+            if (name.Length == 0 || string.Equals(name, opening, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var minutes = (hours[index].Starts - clock.UtcNow).TotalMinutes;
+            return minutes < 1.0
+                ? name
+                : name + " in " + ((int)MathF.Round((float)minutes)).ToString(CultureInfo.InvariantCulture) + " min";
+        }
+
+        return string.Empty;
+    }
+
+    private static List<WeatherWindow> Runs(IReadOnlyList<WeatherWindow> hours)
+    {
+        var runs = new List<WeatherWindow>();
+        for (var index = 0; index < hours.Count; index++)
+        {
+            var row = hours[index];
+            if (string.IsNullOrEmpty(row.Name))
+            {
+                continue;
+            }
+
+            if (runs.Count > 0 && string.Equals(runs[^1].Name, row.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                var last = runs[^1];
+                runs[^1] = new WeatherWindow(last.Name, last.IconId, last.Starts, row.Ends);
+                continue;
+            }
+
+            runs.Add(row);
+        }
+
+        return runs;
+    }
+
+    private static string First(params string[] values)
+    {
+        for (var index = 0; index < values.Length; index++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[index]))
+            {
+                return values[index];
+            }
+        }
+
+        return string.Empty;
     }
 }

@@ -1,9 +1,12 @@
+using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Phone;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
@@ -18,22 +21,26 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         ("Feed", SocialPane.Feed),
         ("Direct", SocialPane.Messages),
         ("Messages", SocialPane.Linkshells),
-        ("People", SocialPane.People),
+        ("Friends", SocialPane.People),
     };
 
     private readonly IPearlHub pearl;
     private readonly ITalk talk;
+    private readonly IChatBridge chat;
     private readonly MessagesSurface messages;
     private readonly LiveChatSurface feed;
     private readonly PhonePad phone = new();
-    private int selectedSection = SocialPane.Feed;
+    private int selectedSection = SocialPane.Messages;
     private string peopleQuery = string.Empty;
+    private float peopleScroll;
+    private FriendMenu? menu;
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
-        ITalkPopouts popouts)
+        ITalkPopouts popouts, IChatBridge chat)
     {
         this.pearl = pearl;
         this.talk = talk;
+        this.chat = chat;
         messages = new MessagesSurface(talk, clock, game, display, pearl, popouts);
         feed = new LiveChatSurface(talk, display);
     }
@@ -54,6 +61,8 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             : SocialPane.Feed;
         messages.ShowInbox(selectedSection);
         messages.Close();
+        menu = null;
+        menu = null;
     }
 
     public void OpenThread(string threadId)
@@ -73,9 +82,18 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public void OpenProfile(string peerId) => messages.OpenProfile(peerId);
 
-    public bool CanGoBack => messages.ProfileOpen || messages.ThreadOpen;
+    public bool CanGoBack => menu is not null || messages.ProfileOpen || messages.ThreadOpen;
 
-    public bool Back() => messages.Back();
+    public bool Back()
+    {
+        if (menu is not null)
+        {
+            menu = null;
+            return true;
+        }
+
+        return messages.Back();
+    }
 
     public float Compose(in AppletFrame frame)
     {
@@ -209,105 +227,58 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             DrawFindFriends(frame, ref stack, snapshot);
         }
 
-        var peers = talk.Peers();
-        var friends = talk.Friends();
-        var query = peopleQuery.Trim();
-        var shownEorzea = DrawEorzeaFriends(frame, ref stack, friends, peers, query);
-        var hints = talk.SuggestTells();
-        if (peers.Count > 0)
+        var body = stack.TakeRemaining();
+        if (body.Height <= 0f)
         {
-            frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Talked to",
-                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
-            for (var index = 0; index < peers.Count; index++)
-            {
-                var peer = peers[index];
-                var row = stack.Take(frame.Units(56f));
-                CardChrome.DrawGold(frame, row);
-                DrawPeer(frame, row.Inset(frame.Units(12f)), peer);
-                if (frame.Input.ConsumeClick(row))
-                {
-                    messages.OpenProfile(peer.Id);
-                }
-            }
-        }
-
-        if (hints.Count > 0)
-        {
-            frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Nearby to tell",
-                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
-            for (var index = 0; index < hints.Count; index++)
-            {
-                var hint = hints[index];
-                if (AlreadyPeer(peers, hint.Name) || AlreadyGameFriend(friends, hint.Name))
-                {
-                    continue;
-                }
-
-                var row = stack.Take(frame.Units(56f));
-                CardChrome.DrawGold(frame, row);
-                DrawHint(frame, row.Inset(frame.Units(12f)), hint);
-                if (frame.Input.ConsumeClick(row))
-                {
-                    messages.OpenProfile(TalkIds.Tell(hint.Name, hint.World));
-                }
-            }
-        }
-
-        if (!snapshot.SignedIn)
-        {
-            if (peers.Count == 0 && hints.Count == 0 && shownEorzea == 0)
-            {
-                DrawEmpty(frame, stack.Take(frame.Units(72f)),
-                    "Eorzea friends show up here. Sign in from You to add Pearlgate contacts too.");
-            }
-
             return;
         }
 
-        var shownGate = 0;
-        for (var index = 0; index < snapshot.People.Length; index++)
+        var query = peopleQuery.Trim();
+        var peers = talk.Peers();
+        var friends = talk.Friends();
+        var hints = talk.SuggestTells();
+        var shifted = body.Translate(new Vector2(0f, -peopleScroll));
+        var plane = Math.Max(body.Height + 1f,
+            frame.Units(80f) * (friends.Count + peers.Count + hints.Count + snapshot.People.Length + 8));
+        var list = new Stack(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
+            frame.Units(10f));
+        frame.Paint.PushClip(body);
+
+        var shownEorzea = DrawEorzeaFriends(frame, ref list, friends, query);
+        var shownPeers = DrawTalkedPeers(frame, ref list, peers, friends, query);
+        var shownHints = DrawNearbyHints(frame, ref list, hints, peers, friends, query);
+        var shownGate = snapshot.SignedIn
+            ? DrawGateFriends(frame, ref list, snapshot, peers, friends, query)
+            : 0;
+
+        if (shownEorzea + shownPeers + shownHints + shownGate == 0)
         {
-            if (AlreadyPeer(peers, snapshot.People[index].DisplayName))
-            {
-                continue;
-            }
-
-            if (shownGate == 0)
-            {
-                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Friends",
-                    new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
-            }
-
-            var person = snapshot.People[index];
-            var row = stack.Take(frame.Units(72f));
-            CardChrome.DrawGold(frame, row);
-            var inner = row.Inset(frame.Units(12f));
-            DrawPerson(frame, inner.Inset(new Edges(0f, 0f, frame.Units(72f), 0f)), person);
-            if (Chip(frame, inner.RightSlice(frame.Units(64f)).TopSlice(frame.Units(28f)), "Remove"))
-            {
-                pearl.RemoveFriend(person.Id);
-            }
-            else if (frame.Input.ConsumeClick(row))
-            {
-                messages.OpenProfile(TalkIds.Person(person.Id));
-            }
-
-            shownGate++;
+            var copy = snapshot.SignedIn && query.Length < 2
+                ? "No friends yet. Game friends appear here; search a name or Pearlgate number to add more."
+                : snapshot.SignedIn
+                    ? "No one matches that search."
+                    : "Eorzea friends show up here. Sign in from You to add Pearlgate contacts too.";
+            DrawEmpty(frame, list.Take(frame.Units(72f)), copy);
         }
 
-        if (peers.Count == 0 && hints.Count == 0 && shownGate == 0 && shownEorzea == 0 &&
-            peopleQuery.Trim().Length < 2)
+        var listHeight = plane - list.Remaining.Height;
+        frame.Paint.PopClip();
+
+        if (menu is null && frame.Input.IsHovering(body) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
         {
-            DrawEmpty(frame, stack.Take(frame.Units(72f)),
-                "No friends yet. Game friends appear here; search a name or Pearlgate number to add more.");
+            peopleScroll -= frame.Input.ScrollDelta * frame.Units(28f);
         }
+
+        peopleScroll = Math.Clamp(peopleScroll, 0f, MathF.Max(0f, listHeight - body.Height));
+        DrawFriendMenu(frame, body);
     }
 
     private void DrawFindFriends(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
     {
         if (snapshot.MyNumber.Length > 0)
         {
-            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)), "Your number " + snapshot.MyNumber,
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)),
+                "Your number " + LineNumbers.Show(snapshot.MyNumber),
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
 
@@ -412,17 +383,12 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     }
 
     private int DrawEorzeaFriends(in AppletFrame frame, ref Stack stack, IReadOnlyList<GameFriend> friends,
-        IReadOnlyList<TalkPeer> peers, string query)
+        string query)
     {
         var shown = 0;
         for (var index = 0; index < friends.Count; index++)
         {
             var friend = friends[index];
-            if (AlreadyPeer(peers, friend.Name))
-            {
-                continue;
-            }
-
             if (query.Length >= 2 &&
                 !friend.Name.Contains(query, StringComparison.OrdinalIgnoreCase) &&
                 !friend.World.Contains(query, StringComparison.OrdinalIgnoreCase))
@@ -432,16 +398,130 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
             if (shown == 0)
             {
-                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Eorzea",
+                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Friends",
                     new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
             }
 
             var row = stack.Take(frame.Units(56f));
             CardChrome.DrawGold(frame, row);
             DrawGameFriend(frame, row.Inset(frame.Units(12f)), friend);
-            if (frame.Input.ConsumeClick(row))
+            HandleFriendRow(frame, row, friend.Name, friend.World, () =>
+                OpenTellFromPeople(friend.Name, friend.World));
+            shown++;
+        }
+
+        return shown;
+    }
+
+    private int DrawTalkedPeers(in AppletFrame frame, ref Stack stack, IReadOnlyList<TalkPeer> peers,
+        IReadOnlyList<GameFriend> friends, string query)
+    {
+        var shown = 0;
+        for (var index = 0; index < peers.Count; index++)
+        {
+            var peer = peers[index];
+            if (AlreadyGameFriend(friends, peer.Name))
             {
-                messages.OpenProfile(TalkIds.Tell(friend.Name, friend.World));
+                continue;
+            }
+
+            if (query.Length >= 2 &&
+                !peer.Name.Contains(query, StringComparison.OrdinalIgnoreCase) &&
+                !peer.World.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (shown == 0)
+            {
+                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Talked to",
+                    new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+            }
+
+            var row = stack.Take(frame.Units(56f));
+            CardChrome.DrawGold(frame, row);
+            DrawPeer(frame, row.Inset(frame.Units(12f)), peer);
+            HandleFriendRow(frame, row, peer.Name, peer.World, () => messages.OpenProfile(peer.Id));
+            shown++;
+        }
+
+        return shown;
+    }
+
+    private int DrawNearbyHints(in AppletFrame frame, ref Stack stack, IReadOnlyList<GamePeerHint> hints,
+        IReadOnlyList<TalkPeer> peers, IReadOnlyList<GameFriend> friends, string query)
+    {
+        var shown = 0;
+        for (var index = 0; index < hints.Count; index++)
+        {
+            var hint = hints[index];
+            if (AlreadyPeer(peers, hint.Name) || AlreadyGameFriend(friends, hint.Name))
+            {
+                continue;
+            }
+
+            if (query.Length >= 2 &&
+                !hint.Name.Contains(query, StringComparison.OrdinalIgnoreCase) &&
+                !hint.World.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (shown == 0)
+            {
+                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Nearby to tell",
+                    new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+            }
+
+            var row = stack.Take(frame.Units(56f));
+            CardChrome.DrawGold(frame, row);
+            DrawHint(frame, row.Inset(frame.Units(12f)), hint);
+            HandleFriendRow(frame, row, hint.Name, hint.World, () =>
+                OpenTellFromPeople(hint.Name, hint.World));
+            shown++;
+        }
+
+        return shown;
+    }
+
+    private int DrawGateFriends(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot,
+        IReadOnlyList<TalkPeer> peers, IReadOnlyList<GameFriend> friends, string query)
+    {
+        var shown = 0;
+        for (var index = 0; index < snapshot.People.Length; index++)
+        {
+            var person = snapshot.People[index];
+            if (AlreadyPeer(peers, person.DisplayName) || AlreadyGameFriend(friends, person.DisplayName))
+            {
+                continue;
+            }
+
+            if (query.Length >= 2 &&
+                !person.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) &&
+                !person.Handle.Contains(query, StringComparison.OrdinalIgnoreCase) &&
+                !person.PhoneNumber.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (shown == 0)
+            {
+                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Linkpearl",
+                    new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+            }
+
+            var row = stack.Take(frame.Units(72f));
+            CardChrome.DrawGold(frame, row);
+            var inner = row.Inset(frame.Units(12f));
+            DrawPerson(frame, inner.Inset(new Edges(0f, 0f, frame.Units(72f), 0f)), person);
+            if (Chip(frame, inner.RightSlice(frame.Units(64f)).TopSlice(frame.Units(28f)), "Remove"))
+            {
+                pearl.RemoveFriend(person.Id);
+            }
+            else
+            {
+                HandleFriendRow(frame, row, person.DisplayName, string.Empty, () =>
+                    messages.OpenProfile(TalkIds.Person(person.Id)));
             }
 
             shown++;
@@ -449,6 +529,131 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
         return shown;
     }
+
+    private void OpenTellFromPeople(string name, string world)
+    {
+        selectedSection = SocialPane.Messages;
+        messages.Open(talk.StartTell(name, world));
+    }
+
+    private void HandleFriendRow(in AppletFrame frame, Rect row, string name, string world, Action primary)
+    {
+        if (menu is not null)
+        {
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(row, PointerButton.Secondary))
+        {
+            menu = new FriendMenu(name, world, ContactId(name), frame.Input.Pointer);
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(row))
+        {
+            primary();
+        }
+    }
+
+    private void DrawFriendMenu(in AppletFrame frame, Rect bounds)
+    {
+        if (menu is not { } open)
+        {
+            return;
+        }
+
+        var labels = new List<string> { "Send tell", "Invite to party" };
+        if (open.ContactId.Length > 0)
+        {
+            labels.Add("Linkpearl contact");
+        }
+
+        var width = frame.Units(176f);
+        var rowH = frame.Units(34f);
+        var height = rowH * labels.Count + frame.Units(8f);
+        var left = Math.Clamp(open.At.X, bounds.Min.X, bounds.Max.X - width);
+        var top = Math.Clamp(open.At.Y, bounds.Min.Y, bounds.Max.Y - height);
+        var box = Rect.FromSize(new Vector2(left, top), new Vector2(width, height));
+        var gold = frame.Theme.Palette.WarmAccent;
+        var radius = frame.Units(10f);
+        frame.Paint.Fill(box, frame.Theme.Palette.SurfaceRaised with { W = 0.98f }, radius);
+        frame.Paint.Stroke(box, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, radius);
+        for (var index = 0; index < labels.Count; index++)
+        {
+            var row = Rect.FromSize(box.Min + new Vector2(0f, frame.Units(4f) + index * rowH),
+                new Vector2(width, rowH)).Inset(new Edges(frame.Units(4f), 0f));
+            var hover = frame.Input.IsHovering(row);
+            if (hover)
+            {
+                frame.Paint.Fill(row, gold with { W = 0.20f }, frame.Units(8f));
+            }
+
+            frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f)), labels[index],
+                new TextStyle(FontRole.CaptionStrong, hover ? gold : frame.Theme.Palette.Ink));
+            if (frame.Input.ConsumeClick(row))
+            {
+                RunFriendMenu(labels[index], open);
+                return;
+            }
+        }
+
+        frame.Input.ConsumeClick(box);
+        frame.Input.ConsumeClick(box, PointerButton.Secondary);
+        frame.Input.Claim(box);
+        if (frame.Input.ConsumeClick(bounds) || frame.Input.ConsumeClick(bounds, PointerButton.Secondary))
+        {
+            menu = null;
+        }
+    }
+
+    private void RunFriendMenu(string label, FriendMenu open)
+    {
+        menu = null;
+        if (label == "Send tell" && open.Name.Length > 0)
+        {
+            OpenTellFromPeople(open.Name, open.World);
+            return;
+        }
+
+        if (label == "Invite to party" && open.Name.Length > 0)
+        {
+            chat.InviteToParty(open.Name, open.World);
+            return;
+        }
+
+        if (label == "Linkpearl contact" && open.ContactId.Length > 0)
+        {
+            messages.OpenProfile(open.ContactId);
+        }
+    }
+
+    private string ContactId(string name)
+    {
+        var snapshot = pearl.Current;
+        if (snapshot.SignedIn)
+        {
+            for (var index = 0; index < snapshot.People.Length; index++)
+            {
+                if (snapshot.People[index].DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return TalkIds.Person(snapshot.People[index].Id);
+                }
+            }
+        }
+
+        var peers = talk.Peers();
+        for (var index = 0; index < peers.Count; index++)
+        {
+            if (peers[index].OnPearlgate && peers[index].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return peers[index].Id;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private readonly record struct FriendMenu(string Name, string World, string ContactId, Vector2 At);
 
     private static void DrawGameFriend(in AppletFrame frame, Rect inset, GameFriend friend)
     {

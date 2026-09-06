@@ -16,7 +16,7 @@ public static class ShownName
         return pearlName.Length > 0 ? pearlName : string.Empty;
     }
 
-    public static string ForGlass(DisplayPreferences display, string linked, bool allowCustom = false)
+    public static string Source(DisplayPreferences display, string linked, bool allowCustom = true)
     {
         if (allowCustom)
         {
@@ -27,16 +27,41 @@ public static class ShownName
             }
         }
 
-        return ApplyStyle(linked, display.NameStyle);
+        return linked.Trim();
+    }
+
+    public static string ForGlass(DisplayPreferences display, string linked, bool allowCustom = false) =>
+        ApplyStyle(Source(display, linked, allowCustom), display.NameStyle);
+
+    public static string Preferred(DisplayPreferences display, string linked, string stored, string fallback)
+    {
+        var handset = Source(display, linked);
+        var local = Sanitize(stored);
+        var raw = local.Length > 0 ? local : handset;
+        if (display.NameStyle == NameStyle.Full &&
+            local.IndexOf(' ') < 0 &&
+            handset.IndexOf(' ') >= 0 &&
+            (local.Length == 0 || handset.StartsWith(local, StringComparison.Ordinal)))
+        {
+            raw = handset;
+        }
+
+        return raw.Length > 0 ? ApplyStyle(raw, display.NameStyle) : fallback;
     }
 
     public static string ApplyStyle(string name, NameStyle style)
     {
-        if (name.Length == 0 || style != NameStyle.Given)
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0)
         {
             return name;
         }
 
+        return style == NameStyle.Given ? FirstToken(trimmed) : trimmed;
+    }
+
+    private static string FirstToken(string name)
+    {
         var space = name.IndexOf(' ');
         return space < 0 ? name : name[..space];
     }

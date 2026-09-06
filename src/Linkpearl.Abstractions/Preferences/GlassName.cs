@@ -31,6 +31,12 @@ public static class GlassName
     public static string Resolve(DisplayPreferences display, string linked, bool patron) =>
         ShownName.ForGlass(display, linked, patron);
 
+    public static string ProfileName(DisplayPreferences display, string linked) =>
+        ShownName.ForGlass(display, linked, allowCustom: true);
+
+    public static string Honorific(DisplayPreferences display) =>
+        ShownName.ClampTitle(display.OwnTitle).Trim();
+
     public static TextStyle Title(Palette palette, DisplayPreferences display, bool patron,
         FontRole role = FontRole.Display, TextAlign align = TextAlign.Left, float unit = 1f)
     {

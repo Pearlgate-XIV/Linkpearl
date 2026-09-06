@@ -15,10 +15,9 @@ internal enum SocialMode : byte
 internal enum NightTab : byte
 {
     Home = 0,
-    Discover = 1,
-    Messages = 2,
-    Alerts = 3,
-    Profile = 4,
+    Feed = 1,
+    Discover = 2,
+    Profile = 3,
 }
 
 internal enum NightPage : byte
@@ -50,6 +49,8 @@ internal enum NightPage : byte
     PhotoPick = 24,
     PhotoView = 25,
     ShareSend = 26,
+    Inbox = 27,
+    Alerts = 28,
 }
 
 internal enum FilterPole : byte
@@ -72,6 +73,18 @@ internal sealed class AfterDarkState
     public bool Discoverable { get; set; } = true;
 
     public string DisplayName { get; set; } = string.Empty;
+
+    public string Honorific { get; set; } = string.Empty;
+
+    public bool UsesHandsetProfile { get; set; } = true;
+
+    public bool UsesHandsetIdentity { get; set; } = true;
+
+    public string ProfileFacePath { get; set; } = string.Empty;
+
+    public string ProfileBannerPath { get; set; } = string.Empty;
+
+    public bool PickingBanner { get; set; }
 
     public string Handle { get; set; } = string.Empty;
 
@@ -220,6 +233,11 @@ internal sealed class AfterDarkState
                     state.Onboarded = dto.Onboarded;
                     state.Discoverable = dto.Discoverable;
                     state.DisplayName = dto.DisplayName ?? string.Empty;
+                    state.Honorific = dto.Honorific ?? string.Empty;
+                    state.UsesHandsetProfile = dto.UsesHandsetProfile ?? true;
+                    state.UsesHandsetIdentity = dto.UsesHandsetIdentity ?? state.UsesHandsetProfile;
+                    state.ProfileFacePath = dto.ProfileFacePath ?? string.Empty;
+                    state.ProfileBannerPath = dto.ProfileBannerPath ?? string.Empty;
                     state.Handle = dto.Handle ?? string.Empty;
                     state.Pronouns = dto.Pronouns ?? string.Empty;
                     state.About = dto.About ?? string.Empty;
@@ -296,6 +314,11 @@ internal sealed class AfterDarkState
                 Onboarded = Onboarded,
                 Discoverable = Discoverable,
                 DisplayName = DisplayName,
+                Honorific = Honorific,
+                UsesHandsetProfile = UsesHandsetProfile,
+                UsesHandsetIdentity = UsesHandsetIdentity,
+                ProfileFacePath = ProfileFacePath,
+                ProfileBannerPath = ProfileBannerPath,
                 Handle = Handle,
                 Pronouns = Pronouns,
                 About = About,
@@ -857,6 +880,16 @@ internal sealed class AfterDarkState
         public bool Discoverable { get; set; }
 
         public string? DisplayName { get; set; }
+
+        public string? Honorific { get; set; }
+
+        public bool? UsesHandsetProfile { get; set; }
+
+        public bool? UsesHandsetIdentity { get; set; }
+
+        public string? ProfileFacePath { get; set; }
+
+        public string? ProfileBannerPath { get; set; }
 
         public string? Handle { get; set; }
 

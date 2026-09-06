@@ -17,33 +17,30 @@ internal static class AfterDarkChrome
     public static readonly Vector4 Online = new(0.000f, 0.902f, 0.463f, 1f);
 
     public static readonly NightPalette Night = new(
-        new Vector4(0.020f, 0.020f, 0.022f, 1f),
-        new Vector4(0.071f, 0.071f, 0.075f, 1f),
-        new Vector4(0.102f, 0.102f, 0.110f, 1f),
-        new Vector4(1.000f, 0.000f, 0.498f, 1f),
-        new Vector4(1.000f, 0.000f, 0.498f, 0.18f),
+        new Vector4(0.035f, 0.035f, 0.040f, 1f),
+        new Vector4(0.090f, 0.090f, 0.098f, 1f),
+        new Vector4(0.130f, 0.130f, 0.140f, 1f),
+        new Vector4(0.950f, 0.320f, 0.480f, 1f),
+        new Vector4(0.950f, 0.320f, 0.480f, 0.16f),
         new Vector4(1.000f, 1.000f, 1.000f, 1f),
-        new Vector4(1.000f, 1.000f, 1.000f, 1f),
-        new Vector4(0.533f, 0.533f, 0.545f, 1f),
+        new Vector4(0.960f, 0.960f, 0.970f, 1f),
+        new Vector4(0.560f, 0.560f, 0.580f, 1f),
         new Vector4(1.000f, 1.000f, 1.000f, 0.08f),
         new Vector4(0.910f, 0.361f, 0.400f, 1f));
 
     public static readonly NightPalette Day = new(
-        new Vector4(0.780f, 0.745f, 0.690f, 1f),
-        new Vector4(0.860f, 0.830f, 0.780f, 1f),
-        new Vector4(0.810f, 0.780f, 0.730f, 1f),
-        new Vector4(0.280f, 0.470f, 0.580f, 1f),
-        new Vector4(0.280f, 0.470f, 0.580f, 0.18f),
+        new Vector4(0.965f, 0.955f, 0.945f, 1f),
         new Vector4(1.000f, 1.000f, 1.000f, 1f),
-        new Vector4(0.145f, 0.133f, 0.122f, 1f),
-        new Vector4(0.380f, 0.360f, 0.340f, 1f),
-        new Vector4(0.120f, 0.110f, 0.100f, 0.20f),
+        new Vector4(0.940f, 0.930f, 0.918f, 1f),
+        new Vector4(0.900f, 0.260f, 0.400f, 1f),
+        new Vector4(0.900f, 0.260f, 0.400f, 0.12f),
+        new Vector4(1.000f, 1.000f, 1.000f, 1f),
+        new Vector4(0.120f, 0.110f, 0.105f, 1f),
+        new Vector4(0.460f, 0.430f, 0.410f, 1f),
+        new Vector4(0.000f, 0.000f, 0.000f, 0.08f),
         new Vector4(0.780f, 0.280f, 0.320f, 1f));
 
     public static NightPalette Tone(bool night) => night ? Night : Day;
-
-    public static void Fill(in AppletFrame frame, bool night) =>
-        frame.Paint.Fill(frame.Content, Tone(night).Ground);
 
     public static void Wash(in AppletFrame frame, float elapsed, bool toNight)
     {
@@ -76,6 +73,20 @@ internal static class AfterDarkChrome
         var tone = Tone(night);
         frame.Paint.Fill(area, tone.Accent, frame.Units(12f));
         frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, tone.AccentInk, TextAlign.Center));
+    }
+
+    public static bool Segment(in AppletFrame frame, Rect area, string label, bool on, bool night)
+    {
+        var tone = Tone(night);
+        frame.Text.DrawIn(area, label,
+            new TextStyle(FontRole.CaptionStrong, on ? tone.Ink : tone.Mute, TextAlign.Center));
+        if (on)
+        {
+            var bar = area.BottomSlice(frame.Units(2.4f)).Inset(new Edges(frame.Units(12f), 0f));
+            frame.Paint.Fill(bar, tone.Accent, frame.Units(1.2f));
+        }
+
+        return frame.Input.ConsumeClick(area);
     }
 
     public static bool Chip(in AppletFrame frame, Rect area, string label, bool on, bool night)

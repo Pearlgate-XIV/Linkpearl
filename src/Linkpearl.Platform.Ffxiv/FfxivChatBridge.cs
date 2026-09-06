@@ -4,10 +4,12 @@ using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
+using CSGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
@@ -28,8 +30,14 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     private readonly IFramework framework;
     private readonly IPluginLog log;
     private readonly object friendGate = new();
+    private readonly object commandGate = new();
+    private readonly Queue<OutgoingLine> outgoing = new();
+    private readonly HashSet<string> offeredFriends = new(StringComparer.OrdinalIgnoreCase);
     private GameFriend[] friends = [];
+    private GameFriend[] pendingFriends = [];
     private bool askedFriendList;
+    private string pendingAddTarget = string.Empty;
+    private int pendingAddWait;
     private string pendingTellName = string.Empty;
     private string pendingTellWorld = string.Empty;
 
@@ -136,6 +144,43 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
     }
 
+    public bool ShouldOfferFriend(string characterName, string world)
+    {
+        if (!TryFormatPlayer(characterName, world, out var target))
+        {
+            return false;
+        }
+
+        lock (friendGate)
+        {
+            return !NamedFriend(friends, characterName, world) && !offeredFriends.Contains(target);
+        }
+    }
+
+    public void RequestFriend(string characterName, string world)
+    {
+        if (!TryFormatPlayer(characterName, world, out var target))
+        {
+            return;
+        }
+
+        SplitFriendTarget(target, out var name, out var home);
+        lock (friendGate)
+        {
+            if (NamedFriend(friends, name, home))
+            {
+                return;
+            }
+
+            offeredFriends.Add(target);
+            pendingAddTarget = target;
+            pendingAddWait = 60;
+        }
+
+        QueueFriend("accept", name, home);
+        chat.Print("Adding " + name + " as a friend.", "Linkpearl");
+    }
+
     public void Send(GameChannel channel, int channelIndex, string body)
     {
         var text = SanitizeBody(body);
@@ -193,6 +238,49 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         pendingTellWorld = home;
         var target = home.Length == 0 ? name : name + "@" + home;
         Queue("/tell " + target + " " + text);
+    }
+
+    public void InviteToParty(string characterName, string world)
+    {
+        if (!TryFormatPlayer(characterName, world, out var target))
+        {
+            return;
+        }
+
+        Queue("/invite " + target);
+    }
+
+    private bool TryFormatPlayer(string characterName, string world, out string target)
+    {
+        target = string.Empty;
+        var name = characterName.Trim();
+        var home = world.Trim();
+        if (name.Length == 0)
+        {
+            return false;
+        }
+
+        PeelWorld(ref name, home);
+        if (name.Length == 0)
+        {
+            return false;
+        }
+
+        if (TryResolvePlayer(name, out var liveName, out var liveWorld))
+        {
+            name = liveName;
+            if (liveWorld.Length > 0)
+            {
+                home = liveWorld;
+            }
+        }
+        else
+        {
+            name = CanonicalName(name);
+        }
+
+        target = home.Length == 0 ? name : name + "@" + home;
+        return true;
     }
 
     public void Print(string body)
@@ -285,13 +373,53 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             lock (friendGate)
             {
                 friends = [];
+                pendingFriends = [];
+                offeredFriends.Clear();
                 askedFriendList = false;
+                pendingAddTarget = string.Empty;
+                pendingAddWait = 0;
+            }
+
+            lock (commandGate)
+            {
+                outgoing.Clear();
             }
 
             return;
         }
 
         RefreshFriends();
+        FinishFriendAdd();
+        PumpCommand();
+    }
+
+    private void FinishFriendAdd()
+    {
+        string target;
+        lock (friendGate)
+        {
+            if (pendingAddWait <= 0 || pendingAddTarget.Length == 0)
+            {
+                return;
+            }
+
+            pendingAddWait--;
+            if (pendingAddWait > 0)
+            {
+                return;
+            }
+
+            target = pendingAddTarget;
+            pendingAddTarget = string.Empty;
+            SplitFriendTarget(target, out var name, out var home);
+            if (NamedFriend(friends, name, home))
+            {
+                return;
+            }
+        }
+
+        SplitFriendTarget(target, out var player, out var world);
+        QueueFriend("add", player, world);
     }
 
     private unsafe void RefreshFriends()
@@ -310,16 +438,17 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
         var local = session.Character.Name;
         var next = new List<GameFriend>((int)Math.Min(proxy->EntryCount, 200u));
+        var pending = new List<GameFriend>();
         var count = proxy->GetEntryCount();
+        if (count == 0)
+        {
+            return;
+        }
+
         for (uint index = 0; index < count; index++)
         {
             var entry = proxy->GetEntry(index);
             if (entry is null || entry->ContentId == 0)
-            {
-                continue;
-            }
-
-            if ((entry->ExtraFlags & 0x20) != 0)
             {
                 continue;
             }
@@ -333,13 +462,79 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             var home = WorldName(entry->HomeWorld);
             var current = WorldName(entry->CurrentWorld);
             var online = FriendOnline(entry->State);
-            next.Add(new GameFriend(name, home, FriendPlace(entry, online, home, current), online));
+            var row = new GameFriend(name, home, FriendPlace(entry, online, home, current), online);
+            var waiting = (entry->ExtraFlags & 0x20) != 0 ||
+                (entry->State & InfoProxyCommonList.CharacterData.OnlineStatus.WaitingForFriendListApproval) != 0;
+            if (waiting)
+            {
+                pending.Add(row);
+                continue;
+            }
+
+            next.Add(row);
         }
 
         lock (friendGate)
         {
             friends = next.ToArray();
+            pendingFriends = pending.ToArray();
+            ForgetOfferedFriends();
         }
+    }
+
+    private void ForgetOfferedFriends()
+    {
+        if (offeredFriends.Count == 0)
+        {
+            return;
+        }
+
+        offeredFriends.RemoveWhere(target =>
+        {
+            SplitFriendTarget(target, out var name, out var world);
+            return NamedFriend(friends, name, world);
+        });
+    }
+
+    private static bool NamedFriend(IReadOnlyList<GameFriend> roster, string name, string world)
+    {
+        var trimmedName = name.Trim();
+        var trimmedWorld = world.Trim();
+        if (trimmedName.Length == 0)
+        {
+            return false;
+        }
+
+        PeelWorld(ref trimmedName, trimmedWorld);
+        for (var index = 0; index < roster.Count; index++)
+        {
+            if (!roster[index].Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (trimmedWorld.Length == 0 || roster[index].World.Length == 0 ||
+                roster[index].World.Equals(trimmedWorld, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void SplitFriendTarget(string target, out string name, out string world)
+    {
+        var at = target.LastIndexOf('@');
+        if (at < 0)
+        {
+            name = target;
+            world = string.Empty;
+            return;
+        }
+
+        name = target[..at];
+        world = target[(at + 1)..];
     }
 
     private unsafe string FriendPlace(InfoProxyCommonList.CharacterData* entry, bool online, string home,
@@ -822,18 +1017,143 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
 
         log.Information("Sending chat: {0}", command);
-        _ = framework.RunOnTick(() =>
+        lock (commandGate)
         {
-            try
+            outgoing.Enqueue(new OutgoingLine(command, string.Empty, string.Empty, string.Empty));
+        }
+    }
+
+    private void QueueFriend(string verb, string name, string world)
+    {
+        if (verb.Length == 0 || name.Length == 0)
+        {
+            return;
+        }
+
+        log.Information("Friend list {0}: {1}@{2}", verb, name, world);
+        lock (commandGate)
+        {
+            outgoing.Enqueue(new OutgoingLine(string.Empty, verb, name, world));
+        }
+    }
+
+    private void PumpCommand()
+    {
+        OutgoingLine line;
+        lock (commandGate)
+        {
+            if (outgoing.Count == 0)
             {
-                ExecuteNow(command);
+                return;
             }
-            catch (Exception failure)
+
+            line = outgoing.Dequeue();
+        }
+
+        try
+        {
+            if (line.FriendVerb.Length > 0)
             {
-                log.Error(failure, "Chat send failed");
-                chat.Print("Linkpearl could not send: " + failure.Message, "Linkpearl");
+                ExecuteFriend(line.FriendVerb, line.FriendName, line.FriendWorld);
             }
-        });
+            else
+            {
+                ExecuteNow(line.Command);
+            }
+        }
+        catch (Exception failure)
+        {
+            log.Error(failure, "Chat send failed");
+            chat.Print("Linkpearl could not send: " + failure.Message, "Linkpearl");
+        }
+    }
+
+    private readonly record struct OutgoingLine(string Command, string FriendVerb, string FriendName, string FriendWorld);
+
+    private unsafe void ExecuteFriend(string verb, string name, string world)
+    {
+        if (TryAimAtPlayer(name, world))
+        {
+            ExecuteNow("/friendlist " + verb);
+            return;
+        }
+
+        var built = new SeStringBuilder();
+        built.AddText("/friendlist " + verb + " ");
+        built.AddText(name);
+        if (world.Length > 0)
+        {
+            built.Add(new RawPayload([0x02, 0x12, 0x02, 0x59, 0x03]));
+            built.AddText(world);
+        }
+
+        ExecutePayload(built.Build().Encode());
+    }
+
+    private unsafe bool TryAimAtPlayer(string name, string world)
+    {
+        foreach (var obj in objects)
+        {
+            if (obj is not IPlayerCharacter player)
+            {
+                continue;
+            }
+
+            if (!player.Name.TextValue.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var home = WorldName(player.HomeWorld.RowId);
+            if (world.Length > 0 && home.Length > 0 &&
+                !home.Equals(world, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var sys = TargetSystem.Instance();
+            if (sys is null)
+            {
+                return false;
+            }
+
+            sys->Target = (CSGameObject*)obj.Address;
+            return true;
+        }
+
+        return false;
+    }
+
+    private unsafe void ExecutePayload(byte[] encoded)
+    {
+        if (encoded.Length == 0 || encoded.Length > MaxCommandBytes)
+        {
+            chat.Print("Linkpearl could not send: the message is empty or too long.", "Linkpearl");
+            return;
+        }
+
+        var ui = UIModule.Instance();
+        if (ui is null)
+        {
+            chat.Print("Linkpearl could not send: the game UI is not ready.", "Linkpearl");
+            return;
+        }
+
+        var text = Utf8String.FromSequence(encoded);
+        if (text is null)
+        {
+            chat.Print("Linkpearl could not send: the game UI is not ready.", "Linkpearl");
+            return;
+        }
+
+        try
+        {
+            ui->ProcessChatBoxEntry(text);
+        }
+        finally
+        {
+            text->Dtor(true);
+        }
     }
 
     private unsafe void ExecuteNow(string command)
@@ -870,6 +1190,25 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         {
             text->Dtor(true);
         }
+    }
+
+    private uint WorldRowId(string name)
+    {
+        if (name.Length == 0)
+        {
+            return 0;
+        }
+
+        var sheet = data.GetExcelSheet<WorldSheet>();
+        foreach (var world in sheet)
+        {
+            if (world.Name.ExtractText().Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return world.RowId;
+            }
+        }
+
+        return 0;
     }
 
     private static unsafe void FillLinkshellNames(string[] names)

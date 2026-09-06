@@ -6,6 +6,8 @@ public interface IBroadcastSense : IDisposable
 {
     const string DefaultMixId = "mix";
 
+    const string DefaultMicId = "talk";
+
     IReadOnlyList<AudioPoint> Points { get; }
 
     string SelectedId { get; }

@@ -35,7 +35,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     public HomeDestination(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
         DisplayPreferences display, HostPaths paths, ITextureSource textures, BadgeBook badges, IFilePicker files,
-        IWeatherOracle weather, NoticeLedger notices, bool development)
+        IWeatherOracle weather, NoticeLedger notices, bool development, HandsetProfileDesk profiles)
     {
         this.clock = clock;
         this.game = game;
@@ -48,7 +48,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         this.badges = badges;
         this.development = development;
         this.notices = notices;
-        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development);
+        profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development, profiles);
         announcements = new AnnouncementShelf(pearl, talk, clock, hub, notices);
         this.weather = new HomeWeatherCard(game, clock, weather);
     }
@@ -85,6 +85,12 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
         announcements.Close();
         profile.Close();
+    }
+
+    public void OpenAnnouncement(string announcementId)
+    {
+        profile.Close();
+        announcements.ShowNotice(announcementId);
     }
 
     public bool CanGoBack => profile.OverlayOpen || announcements.IsOpen;
@@ -124,7 +130,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             new Vector2(frame.Content.Max.X, header.Max.Y)));
         DrawHeader(frame, header, snapshot);
 
-        weather.Draw(frame, CardBand(stack.Take(frame.Units(85f))));
+        weather.Draw(frame, CardBand(stack.Take(frame.Units(132f))));
         DrawHero(frame, CardBand(stack.Take(frame.Units(48f))), snapshot);
 
         var gridBudget = stack.Remaining.Height;
@@ -177,8 +183,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
-        var name = GlassName.Resolve(display, ShownName.Linked(game.Character.Name, snapshot.MeName),
-            GlassName.IsPatron(badges, snapshot, display, development));
+        var name = GlassName.ProfileName(display, ShownName.Linked(game.Character.Name, snapshot.MeName));
         if (name.Length == 0)
         {
             name = "Linkpearl";

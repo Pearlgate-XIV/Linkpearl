@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.IO;
 using Linkpearl.Applets;
+using Linkpearl.Badges;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -7,10 +9,11 @@ using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Preferences;
 
 namespace Linkpearl.Applets.Life.AfterDark;
 
-public sealed partial class AfterDarkApplet : IApplet
+public sealed partial class AfterDarkApplet : IApplet, IHandsetProfileSink
 {
     public static readonly AppletManifest Manifest = new()
     {
@@ -22,20 +25,94 @@ public sealed partial class AfterDarkApplet : IApplet
         Capabilities = AppletCapabilities.AgeRestricted | AppletCapabilities.RequiresAccount,
     };
 
-    private static readonly string[] Tabs = { "Home", "Discover", "Messages", "Alerts", "Profile" };
+    private static readonly string[] Tabs = { "Home", "Feed", "Discover", "Profile" };
 
     private readonly IGameSession game;
     private readonly HostPaths paths;
     private readonly IPearlHub pearl;
+    private readonly DisplayPreferences display;
+    private readonly BadgeBook badges;
     private readonly AfterDarkState state;
+    private float nameClock;
+    private int profileStamp;
 
-    public AfterDarkApplet(IGameSession game, HostPaths paths, IPearlHub pearl)
+    public AfterDarkApplet(IGameSession game, HostPaths paths, IPearlHub pearl, DisplayPreferences display,
+        BadgeBook badges, HandsetProfileDesk profiles)
     {
         this.game = game;
         this.paths = paths;
         this.pearl = pearl;
+        this.display = display;
+        this.badges = badges;
         state = AfterDarkState.Load(paths, game.Character.Name);
+        profiles.Add(this);
+        if (state.UsesHandsetIdentity || state.UsesHandsetProfile)
+        {
+            AcceptHandsetProfile(HandsetName(), HandsetLook.Honorific(display));
+        }
     }
+
+    private string HandsetName()
+    {
+        var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
+        var name = HandsetLook.Name(display, linked);
+        return name.Length > 0 ? name : game.Character.Name;
+    }
+
+    private string ProfileName()
+    {
+        var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
+        return ShownName.Preferred(display, linked, state.DisplayName, "You");
+    }
+
+    private string EditableName()
+    {
+        var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
+        var handset = ShownName.Source(display, linked);
+        var stored = state.DisplayName.Trim();
+        if (stored.Length > 0)
+        {
+            return stored;
+        }
+
+        return handset.Length > 0 ? handset : "You";
+    }
+
+    private string ProfileHonorific() => state.Honorific.Trim();
+
+    private bool FancyName() =>
+        GlassName.IsPatron(badges, pearl.Current, display.TestingAccount);
+
+    private void DrawFlowName(in AppletFrame frame, Rect area, string name, bool night) =>
+        NameMark.DrawName(frame, area, name, display, AfterDarkChrome.Tone(night).Ink, FancyName(), nameClock);
+
+    public void AcceptHandsetProfile(string name, string honorific)
+    {
+        var shown = name.Trim();
+        if (shown.Length == 0)
+        {
+            shown = HandsetName();
+        }
+
+        if (shown.Length > 0)
+        {
+            state.DisplayName = shown;
+        }
+
+        state.Honorific = ShownName.ClampTitle(honorific);
+        state.ProfileFacePath = HandsetLook.ReplaceStill(paths, state.ProfileFacePath,
+            HandsetLook.PortraitFile(paths, badges), "afterdark-profile-face");
+        state.ProfileBannerPath = HandsetLook.ReplaceStill(paths, state.ProfileBannerPath,
+            HandsetLook.BannerFile(paths, display), "afterdark-profile-banner");
+        state.UsesHandsetProfile = false;
+        state.UsesHandsetIdentity = false;
+        profileStamp++;
+        state.Save(paths);
+    }
+
+    private string OwnFacePath() => state.ProfileFacePath;
+
+    private string OwnBannerPath() => state.ProfileBannerPath;
 
     AppletManifest IApplet.Manifest => Manifest;
 
@@ -114,8 +191,9 @@ public sealed partial class AfterDarkApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
+        nameClock += frame.DeltaSeconds;
         state.Bind(pearl.Current);
-        AfterDarkChrome.Fill(frame, state.Night);
+        frame.Paint.Fill(frame.Content, AfterDarkChrome.Tone(state.Night).Ground);
         if (state.Page == NightPage.Gate)
         {
             DrawGate(frame, frame.Content.Inset(frame.Units(16f)));
@@ -171,21 +249,18 @@ public sealed partial class AfterDarkApplet : IApplet
         var shifted = body.Translate(new Vector2(0f, -state.Scroll));
         switch (state.Tab)
         {
+            case NightTab.Feed:
+                pearl.WatchFeed(state.FeedEveryone ? "foryou" : "following");
+                DrawFeed(frame, shifted);
+                break;
             case NightTab.Discover:
                 DrawDiscover(frame, shifted);
-                break;
-            case NightTab.Messages:
-                DrawMessages(frame, shifted);
-                break;
-            case NightTab.Alerts:
-                DrawAlerts(frame, shifted);
                 break;
             case NightTab.Profile:
                 pearl.WatchProfile("me");
                 DrawMe(frame, shifted);
                 break;
             default:
-                pearl.WatchFeed(state.FeedEveryone ? "foryou" : "following");
                 DrawHome(frame, shifted);
                 break;
         }
@@ -200,9 +275,12 @@ public sealed partial class AfterDarkApplet : IApplet
         var snap = pearl.Current;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
         var head = stack.Take(frame.Units(28f));
-        DrawModeMark(frame, head.LeftSlice(head.Width * 0.62f));
-        var search = head.RightSlice(frame.Units(56f)).LeftSlice(frame.Units(26f));
-        var bell = head.RightSlice(frame.Units(26f));
+        DrawModeMark(frame, head.LeftSlice(head.Width * 0.52f));
+        var tools = head.RightSlice(frame.Units(86f));
+        var search = tools.LeftSlice(frame.Units(26f));
+        var mail = Rect.FromSize(new Vector2(tools.Min.X + frame.Units(30f), tools.Min.Y),
+            new Vector2(frame.Units(26f), tools.Height));
+        var bell = tools.RightSlice(frame.Units(26f));
         frame.Paint.StrokeCircle(search.Center, frame.Units(7f), tone.Ink, frame.Units(1.4f));
         frame.Paint.Line(search.Center + new Vector2(frame.Units(5f), frame.Units(5f)),
             search.Center + new Vector2(frame.Units(10f), frame.Units(10f)), tone.Ink, frame.Units(1.4f));
@@ -210,6 +288,18 @@ public sealed partial class AfterDarkApplet : IApplet
         {
             state.Search = string.Empty;
             state.Open(NightPage.Search);
+        }
+
+        DrawMailGlyph(frame, mail.Center, frame.Units(8f), tone.Ink);
+        if (snap.UnreadTotal > 0 || state.Connected.Count > 0)
+        {
+            frame.Paint.FillCircle(mail.Max - new Vector2(frame.Units(4f), frame.Units(16f)), frame.Units(3.5f),
+                tone.Accent);
+        }
+
+        if (frame.Input.ConsumeClick(mail))
+        {
+            state.Open(NightPage.Inbox);
         }
 
         DrawBellGlyph(frame, bell.Center, frame.Units(9f), tone.Ink);
@@ -221,134 +311,56 @@ public sealed partial class AfterDarkApplet : IApplet
 
         if (frame.Input.ConsumeClick(bell))
         {
-            state.Tab = NightTab.Alerts;
+            state.Open(NightPage.Alerts);
         }
 
         AfterDarkChrome.Kicker(frame, stack.Take(frame.Units(14f)), "STORIES", night);
-        var stories = stack.Take(frame.Units(64f));
-        var storyPeople = StoryPeople();
-        var own = state.OwnStory.Length > 0 ? 1 : 0;
-        var slots = 1 + own + Math.Min(4, storyPeople.Count);
-        var storyW = stories.Width / Math.Max(slots, 1);
-        var addCell = Rect.FromSize(stories.Min, new Vector2(storyW - frame.Units(6f), stories.Height));
-        DrawStoryAdd(frame, addCell, night);
-        if (frame.Input.ConsumeClick(addCell))
-        {
-            state.Caption = state.OwnStory;
-            state.StoryMedia = string.Empty;
-            state.Open(NightPage.StoryCompose);
-        }
+        DrawStoryRail(frame, stack.Take(frame.Units(64f)), night);
 
-        var slot = 1;
-        if (own == 1)
-        {
-            var self = Rect.FromSize(new Vector2(stories.Min.X + storyW, stories.Min.Y),
-                new Vector2(storyW - frame.Units(6f), stories.Height));
-            var seen = state.ViewedStories.Contains(-1);
-            AfterDarkChrome.StoryRing(frame, self.TopSlice(frame.Units(40f)).Center, frame.Units(16f), seen, night);
-            DrawFace(frame, self.TopSlice(frame.Units(40f)).Center, frame.Units(14f), snap.MeAvatarUrl, tone.Accent,
-                night);
-            AfterDarkChrome.Mute(frame, self.BottomSlice(frame.Units(16f)), "You", night);
-            if (frame.Input.ConsumeClick(self))
-            {
-                state.StoryIndex = -1;
-                state.ViewedStories.Add(-1);
-                state.Open(NightPage.Story);
-                state.Save(paths);
-            }
-
-            slot++;
-        }
-
-        for (var index = 0; index < storyPeople.Count && index < 4; index++)
-        {
-            var person = storyPeople[index];
-            var cell = Rect.FromSize(new Vector2(stories.Min.X + storyW * (slot + index), stories.Min.Y),
-                new Vector2(storyW - frame.Units(6f), stories.Height));
-            var seen = state.ViewedStories.Contains(person.Id);
-            AfterDarkChrome.StoryRing(frame, cell.TopSlice(frame.Units(40f)).Center, frame.Units(16f), seen, night);
-            DrawFace(frame, cell.TopSlice(frame.Units(40f)).Center, frame.Units(14f), person.AvatarUrl, person.Wash,
-                night);
-            AfterDarkChrome.Mute(frame, cell.BottomSlice(frame.Units(16f)), person.Name, night);
-            if (frame.Input.ConsumeClick(cell))
-            {
-                state.StoryIndex = person.Id;
-                state.ViewedStories.Add(person.Id);
-                state.Open(NightPage.Story);
-                state.Save(paths);
-            }
-        }
-
-        var checkin = stack.Take(frame.Units(44f));
-        AfterDarkChrome.Plate(frame, checkin, frame.Units(16f), night);
-        AfterDarkChrome.Mute(frame, checkin.Inset(new Edges(frame.Units(12f), 0f, frame.Units(72f), 0f)),
-            night ? "What's the vibe tonight?" : "What's on your mind?", night);
-        var postBtn = checkin.RightSlice(frame.Units(64f)).Inset(frame.Units(6f));
-        AfterDarkChrome.Primary(frame, postBtn, "Post", night);
-        if (frame.Input.ConsumeClick(postBtn) || frame.Input.ConsumeClick(checkin))
-        {
-            state.Caption = string.Empty;
-            state.QuoteOf = string.Empty;
-            state.DraftMedia.Clear();
-            state.Open(NightPage.Compose);
-        }
-
-        var tabs = stack.Take(frame.Units(32f));
-        if (AfterDarkChrome.Chip(frame, tabs.LeftSlice(tabs.Width * 0.48f), "Following", !state.FeedEveryone, night))
-        {
-            state.FeedEveryone = false;
-            pearl.WatchFeed("following");
-        }
-
-        if (AfterDarkChrome.Chip(frame, tabs.RightSlice(tabs.Width * 0.48f), "For You", state.FeedEveryone, night))
-        {
-            state.FeedEveryone = true;
-            pearl.WatchFeed("foryou");
-        }
-
-        var tags = LiveHashes(snap.Feed);
-        if (tags.Count > 0)
-        {
-            AfterDarkChrome.Kicker(frame, stack.Take(frame.Units(14f)), "TRENDING", night);
-            var row = stack.Take(frame.Units(28f));
-            var tw = row.Width / tags.Count;
-            for (var index = 0; index < tags.Count; index++)
-            {
-                var chip = Rect.FromSize(new Vector2(row.Min.X + tw * index + frame.Units(2f), row.Min.Y),
-                    new Vector2(tw - frame.Units(4f), row.Height));
-                if (AfterDarkChrome.Chip(frame, chip, tags[index], state.Hashtag == tags[index], night))
-                {
-                    state.Hashtag = state.Hashtag == tags[index] ? string.Empty : tags[index];
-                    state.Tab = NightTab.Discover;
-                    state.DiscoverPane = 1;
-                    state.Scroll = 0f;
-                }
-            }
-        }
-
+        AfterDarkChrome.Kicker(frame, stack.Take(frame.Units(14f)),
+            night ? "WHO'S AROUND" : "PEOPLE NEAR YOU", night);
         if (!snap.SignedIn)
         {
-            AfterDarkChrome.Mute(frame, stack.Take(frame.Units(36f)), "Sign in from You to load the feed.", night);
+            AfterDarkChrome.Mute(frame, stack.Take(frame.Units(36f)),
+                "Sign in from You to meet people nearby.", night);
             return;
         }
 
-        if (!snap.FeedLive)
+        var featured = FirstPassable();
+        if (featured is { } match)
         {
-            AfterDarkChrome.Mute(frame, stack.Take(frame.Units(36f)),
-                "Pearlgate is not hosting a public feed yet. You can still write a post.", night);
+            DrawMatchCard(frame, stack.Take(frame.Units(196f)), match, night);
+        }
+        else
+        {
+            var empty = stack.Take(frame.Units(72f));
+            AfterDarkChrome.Plate(frame, empty, frame.Units(16f), night);
+            AfterDarkChrome.Mute(frame, empty.Inset(frame.Units(12f)),
+                "Nobody new nearby yet. Check Discover.", night);
         }
 
-        var shown = 0;
-        foreach (var wallPost in VisibleFeed(snap.Feed))
+        AfterDarkChrome.Kicker(frame, stack.Take(frame.Units(14f)), "MORE PEOPLE", night);
+        var listed = 0;
+        for (var index = 0; index < state.Roster.Count && listed < 6; index++)
         {
-            DrawPearlCard(frame, stack.Take(frame.Units(PostCardHeight(frame, wallPost))), wallPost);
-            shown++;
+            var person = state.Roster[index];
+            if (featured is { } shown && person.Id == shown.Id)
+            {
+                continue;
+            }
+
+            if (state.Connected.Contains(person.Id) || !state.Passes(person))
+            {
+                continue;
+            }
+
+            DrawMayKnow(frame, stack.Take(frame.Units(56f)), person);
+            listed++;
         }
 
-        if (shown == 0 && snap.FeedLive)
+        if (listed == 0 && featured is null)
         {
-            AfterDarkChrome.Mute(frame, stack.Take(frame.Units(36f)), "Nothing on the feed yet. Be the first to post.",
-                night);
+            AfterDarkChrome.Mute(frame, stack.Take(frame.Units(28f)), "You're caught up around here.", night);
         }
     }
 
@@ -374,21 +386,20 @@ public sealed partial class AfterDarkApplet : IApplet
         }
 
         var panes = stack.Take(frame.Units(32f));
-        if (AfterDarkChrome.Chip(frame, panes.LeftSlice(panes.Width / 3f).Inset(new Edges(frame.Units(2f), 0f)),
-                "People", state.DiscoverPane == 0, night))
+        if (AfterDarkChrome.Segment(frame, panes.LeftSlice(panes.Width / 3f), "People", state.DiscoverPane == 0, night))
         {
             state.DiscoverPane = 0;
         }
 
-        if (AfterDarkChrome.Chip(frame, Rect.FromSize(new Vector2(panes.Min.X + panes.Width / 3f, panes.Min.Y),
-                new Vector2(panes.Width / 3f, panes.Height)).Inset(new Edges(frame.Units(2f), 0f)),
-                "Posts", state.DiscoverPane == 2, night))
+        if (AfterDarkChrome.Segment(frame,
+                Rect.FromSize(new Vector2(panes.Min.X + panes.Width / 3f, panes.Min.Y),
+                    new Vector2(panes.Width / 3f, panes.Height)), "Posts", state.DiscoverPane == 2, night))
         {
             state.DiscoverPane = 2;
         }
 
-        if (AfterDarkChrome.Chip(frame, panes.RightSlice(panes.Width / 3f).Inset(new Edges(frame.Units(2f), 0f)),
-                "Hashtags", state.DiscoverPane == 1, night))
+        if (AfterDarkChrome.Segment(frame, panes.RightSlice(panes.Width / 3f), "Hashtags", state.DiscoverPane == 1,
+                night))
         {
             state.DiscoverPane = 1;
         }
@@ -449,7 +460,7 @@ public sealed partial class AfterDarkApplet : IApplet
             return;
         }
 
-        if (night)
+        if (state.DiscoverPane == 0)
         {
             AfterDarkChrome.Kicker(frame, stack.Take(frame.Units(14f)), "WHO'S AROUND", night);
             var featured = 0;
@@ -542,25 +553,27 @@ public sealed partial class AfterDarkApplet : IApplet
         }
 
         var head = stack.Take(frame.Units(32f));
-        if (AfterDarkChrome.Chip(frame, head.LeftSlice(head.Width * 0.42f), "Following", !state.FeedEveryone, night))
-        {
-            state.FeedEveryone = false;
-        }
-
-        if (AfterDarkChrome.Chip(frame,
-                Rect.FromSize(new Vector2(head.Min.X + head.Width * 0.42f, head.Min.Y),
-                    new Vector2(head.Width * 0.42f, head.Height)), "For You", state.FeedEveryone, night))
+        if (AfterDarkChrome.Segment(frame, head.LeftSlice(head.Width * 0.38f), "For You", state.FeedEveryone, night))
         {
             state.FeedEveryone = true;
+            pearl.WatchFeed("foryou");
+        }
+
+        if (AfterDarkChrome.Segment(frame,
+                Rect.FromSize(new Vector2(head.Min.X + head.Width * 0.38f, head.Min.Y),
+                    new Vector2(head.Width * 0.38f, head.Height)), "Following", !state.FeedEveryone, night))
+        {
+            state.FeedEveryone = false;
+            pearl.WatchFeed("following");
         }
 
         var compose = head.RightSlice(frame.Units(36f));
-        AfterDarkChrome.Glow(frame, compose, frame.Units(10f), true, night);
-        frame.Text.DrawIn(compose, "+",
-            new TextStyle(FontRole.Title, AfterDarkChrome.Tone(night).Accent, TextAlign.Center));
+        AfterDarkChrome.Primary(frame, compose, "+", night);
         if (frame.Input.ConsumeClick(compose))
         {
             state.Caption = string.Empty;
+            state.QuoteOf = string.Empty;
+            state.DraftMedia.Clear();
             state.AudienceEveryone = true;
             state.Open(NightPage.Compose);
         }
@@ -585,6 +598,13 @@ public sealed partial class AfterDarkApplet : IApplet
         var night = state.Night;
         var snapshot = pearl.Current;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        if (state.Page == NightPage.Inbox &&
+            AfterDarkChrome.Back(frame, stack.Take(frame.Units(28f)), "Messages", night))
+        {
+            state.Back();
+            return;
+        }
+
         AfterDarkChrome.Title(frame, stack.Take(frame.Units(28f)), "Messages", night);
         if (!snapshot.SignedIn)
         {
@@ -637,6 +657,13 @@ public sealed partial class AfterDarkApplet : IApplet
     {
         var night = state.Night;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        if (state.Page == NightPage.Alerts &&
+            AfterDarkChrome.Back(frame, stack.Take(frame.Units(28f)), "Notifications", night))
+        {
+            state.Back();
+            return;
+        }
+
         var head = stack.Take(frame.Units(28f));
         AfterDarkChrome.Title(frame, head.LeftSlice(head.Width * 0.7f), "Notifications", night);
 
@@ -718,18 +745,38 @@ public sealed partial class AfterDarkApplet : IApplet
         var tone = AfterDarkChrome.Tone(night);
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
         var cover = stack.Take(frame.Units(88f));
-        frame.Paint.Fill(cover, tone.AccentDim, frame.Units(16f));
+        if (!DrawLocalStill(frame, cover, OwnBannerPath(), night))
+        {
+            frame.Paint.Fill(cover, tone.AccentDim, frame.Units(16f));
+        }
+
         DrawFace(frame, new Vector2(cover.Min.X + frame.Units(36f), cover.Max.Y - frame.Units(8f)), frame.Units(26f),
-            pearl.Current.MeAvatarUrl, tone.Accent, night);
-        if (frame.Input.ConsumeClick(Rect.FromSize(
-                new Vector2(cover.Min.X + frame.Units(10f), cover.Max.Y - frame.Units(42f)),
-                new Vector2(frame.Units(52f), frame.Units(52f)))))
+            OwnFacePath().Length > 0 ? string.Empty : pearl.Current.MeAvatarUrl, tone.Accent, night, OwnFacePath());
+        var faceHit = Rect.FromSize(
+            new Vector2(cover.Min.X + frame.Units(10f), cover.Max.Y - frame.Units(42f)),
+            new Vector2(frame.Units(52f), frame.Units(52f)));
+        if (frame.Input.ConsumeClick(faceHit))
         {
             state.PickingAvatar = true;
+            state.PickingBanner = false;
+            state.Open(NightPage.PhotoPick);
+        }
+        else if (frame.Input.ConsumeClick(cover))
+        {
+            state.PickingAvatar = false;
+            state.PickingBanner = true;
             state.Open(NightPage.PhotoPick);
         }
 
-        AfterDarkChrome.Title(frame, stack.Take(frame.Units(24f)), state.DisplayName, night);
+        var honor = ProfileHonorific();
+        if (honor.Length > 0)
+        {
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(20f)), honor,
+                new TextStyle(FontRole.CaptionStrong, tone.Mute));
+        }
+
+        var nameH = MathF.Max(frame.Units(24f), frame.Text.LineHeight(FontRole.Display));
+        DrawFlowName(frame, stack.Take(nameH), ProfileName(), night);
         AfterDarkChrome.Mute(frame, stack.Take(frame.Units(18f)), state.Handle, night);
         AfterDarkChrome.Mute(frame, stack.Take(frame.Units(32f)),
             state.About.Length > 0 ? state.About : "Tap Edit Profile to write a bio.", night);
@@ -803,12 +850,12 @@ public sealed partial class AfterDarkApplet : IApplet
         }
 
         var panes = stack.Take(frame.Units(32f));
-        if (AfterDarkChrome.Chip(frame, panes.LeftSlice(panes.Width * 0.48f), "Posts", state.ProfilePane == 0, night))
+        if (AfterDarkChrome.Segment(frame, panes.LeftSlice(panes.Width * 0.5f), "Posts", state.ProfilePane == 0, night))
         {
             state.ProfilePane = 0;
         }
 
-        if (AfterDarkChrome.Chip(frame, panes.RightSlice(panes.Width * 0.48f), "Photos", state.ProfilePane == 1, night))
+        if (AfterDarkChrome.Segment(frame, panes.RightSlice(panes.Width * 0.5f), "Photos", state.ProfilePane == 1, night))
         {
             state.ProfilePane = 1;
         }
@@ -838,7 +885,8 @@ public sealed partial class AfterDarkApplet : IApplet
         var night = state.Night;
         var tone = AfterDarkChrome.Tone(night);
         frame.Input.Claim(strip);
-        frame.Paint.Fill(strip, tone.Card);
+        frame.Paint.Fill(strip, tone.Ground);
+        frame.Paint.Fill(strip.TopSlice(frame.Units(1f)), tone.Faint);
         var width = strip.Width / Tabs.Length;
         for (var index = 0; index < Tabs.Length; index++)
         {
@@ -846,15 +894,9 @@ public sealed partial class AfterDarkApplet : IApplet
                 new Vector2(width, strip.Height));
             var on = state.Page == NightPage.Tabs && (int)state.Tab == index;
             var ink = on ? tone.Accent : tone.Mute;
-            DrawTabGlyph(frame, cell.TopSlice(frame.Units(26f)).Center, frame.Units(8f), index, ink);
+            DrawTabGlyph(frame, cell.TopSlice(frame.Units(28f)).Center, frame.Units(8.5f), index, ink);
             frame.Text.DrawIn(cell.BottomSlice(frame.Units(16f)), Tabs[index],
                 new TextStyle(FontRole.Caption, ink, TextAlign.Center));
-            if (index == 2 && (state.Connected.Count > 0 || pearl.Current.UnreadTotal > 0))
-            {
-                frame.Paint.FillCircle(cell.Center + new Vector2(frame.Units(10f), -frame.Units(10f)), frame.Units(3.5f),
-                    tone.Accent);
-            }
-
             if (frame.Input.WasClicked(cell))
             {
                 state.Tab = (NightTab)index;
@@ -959,6 +1001,130 @@ public sealed partial class AfterDarkApplet : IApplet
         }
     }
 
+    private void DrawStoryRail(in AppletFrame frame, Rect stories, bool night)
+    {
+        var snap = pearl.Current;
+        var tone = AfterDarkChrome.Tone(night);
+        var storyPeople = StoryPeople();
+        var own = state.OwnStory.Length > 0 ? 1 : 0;
+        var slots = 1 + own + Math.Min(4, storyPeople.Count);
+        var storyW = stories.Width / Math.Max(slots, 1);
+        var addCell = Rect.FromSize(stories.Min, new Vector2(storyW - frame.Units(6f), stories.Height));
+        DrawStoryAdd(frame, addCell, night);
+        if (frame.Input.ConsumeClick(addCell))
+        {
+            state.Caption = state.OwnStory;
+            state.StoryMedia = string.Empty;
+            state.Open(NightPage.StoryCompose);
+        }
+
+        var slot = 1;
+        if (own == 1)
+        {
+            var self = Rect.FromSize(new Vector2(stories.Min.X + storyW, stories.Min.Y),
+                new Vector2(storyW - frame.Units(6f), stories.Height));
+            var seen = state.ViewedStories.Contains(-1);
+            AfterDarkChrome.StoryRing(frame, self.TopSlice(frame.Units(40f)).Center, frame.Units(16f), seen, night);
+            DrawFace(frame, self.TopSlice(frame.Units(40f)).Center, frame.Units(14f), snap.MeAvatarUrl, tone.Accent,
+                night);
+            AfterDarkChrome.Mute(frame, self.BottomSlice(frame.Units(16f)), "You", night);
+            if (frame.Input.ConsumeClick(self))
+            {
+                state.StoryIndex = -1;
+                state.ViewedStories.Add(-1);
+                state.Open(NightPage.Story);
+                state.Save(paths);
+            }
+
+            slot++;
+        }
+
+        for (var index = 0; index < storyPeople.Count && index < 4; index++)
+        {
+            var person = storyPeople[index];
+            var cell = Rect.FromSize(new Vector2(stories.Min.X + storyW * (slot + index), stories.Min.Y),
+                new Vector2(storyW - frame.Units(6f), stories.Height));
+            var seen = state.ViewedStories.Contains(person.Id);
+            AfterDarkChrome.StoryRing(frame, cell.TopSlice(frame.Units(40f)).Center, frame.Units(16f), seen, night);
+            DrawFace(frame, cell.TopSlice(frame.Units(40f)).Center, frame.Units(14f), person.AvatarUrl, person.Wash,
+                night);
+            AfterDarkChrome.Mute(frame, cell.BottomSlice(frame.Units(16f)), person.Name, night);
+            if (frame.Input.ConsumeClick(cell))
+            {
+                state.StoryIndex = person.Id;
+                state.ViewedStories.Add(person.Id);
+                state.Open(NightPage.Story);
+                state.Save(paths);
+            }
+        }
+    }
+
+    private ScenePerson? FirstPassable()
+    {
+        for (var index = 0; index < state.Roster.Count; index++)
+        {
+            var person = state.Roster[index];
+            if (!state.Connected.Contains(person.Id) && state.Passes(person))
+            {
+                return person;
+            }
+        }
+
+        return null;
+    }
+
+    private void DrawMatchCard(in AppletFrame frame, Rect area, ScenePerson person, bool night)
+    {
+        var tone = AfterDarkChrome.Tone(night);
+        frame.Paint.Fill(area, person.Wash, frame.Units(18f));
+        frame.Paint.FillGradient(area, new Vector4(0f, 0f, 0f, 0.05f), new Vector4(0f, 0f, 0f, 0.78f),
+            GradientAxis.Vertical);
+        var copy = area.Inset(new Edges(frame.Units(14f), 0f, frame.Units(14f), frame.Units(14f)));
+        var name = copy.BottomSlice(frame.Units(86f)).TopSlice(frame.Units(24f));
+        frame.Text.DrawEllipsized(name, person.Name,
+            new TextStyle(FontRole.Title, AfterDarkChrome.Night.Ink));
+        AfterDarkChrome.Mute(frame, copy.BottomSlice(frame.Units(62f)).TopSlice(frame.Units(16f)),
+            person.World + (person.Online ? " · Online" : ""), night);
+        var line = person.Line.Length > 0 ? person.Line : person.Handle;
+        frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(46f)).TopSlice(frame.Units(16f)), line,
+            new TextStyle(FontRole.Caption, AfterDarkChrome.Night.Mute));
+        var actions = copy.BottomSlice(frame.Units(36f));
+        var pass = actions.LeftSlice(actions.Width * 0.46f);
+        var like = actions.RightSlice(actions.Width * 0.46f);
+        frame.Paint.Fill(pass, new Vector4(1f, 1f, 1f, 0.16f), pass.Height * 0.5f);
+        frame.Text.DrawIn(pass, "Pass",
+            new TextStyle(FontRole.CaptionStrong, AfterDarkChrome.Night.Ink, TextAlign.Center));
+        frame.Paint.Fill(like, tone.Accent, like.Height * 0.5f);
+        frame.Text.DrawIn(like, LinkVerb(night),
+            new TextStyle(FontRole.CaptionStrong, tone.AccentInk, TextAlign.Center));
+        if (frame.Input.ConsumeClick(like))
+        {
+            state.FollowPerson(person, pearl, true);
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(pass))
+        {
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(area))
+        {
+            OpenPerson(person.GateId);
+        }
+    }
+
+    private static void DrawMailGlyph(in AppletFrame frame, Vector2 center, float size, Vector4 ink)
+    {
+        var stroke = MathF.Max(1.3f, size * 0.18f);
+        var box = Rect.FromSize(center - new Vector2(size, size * 0.7f), new Vector2(size * 2f, size * 1.4f));
+        frame.Paint.Stroke(box, ink, stroke, size * 0.22f);
+        frame.Paint.Line(box.Min + new Vector2(size * 0.15f, size * 0.2f), center + new Vector2(0f, size * 0.15f), ink,
+            stroke);
+        frame.Paint.Line(center + new Vector2(0f, size * 0.15f), box.Max - new Vector2(size * 0.15f, size * 1.0f), ink,
+            stroke);
+    }
+
     private static void DrawStoryAdd(in AppletFrame frame, Rect area, bool night)
     {
         var tone = AfterDarkChrome.Tone(night);
@@ -1001,16 +1167,16 @@ public sealed partial class AfterDarkApplet : IApplet
                     ink, stroke);
                 break;
             case 1:
+                frame.Paint.Line(center + new Vector2(-size, -size * 0.55f), center + new Vector2(size, -size * 0.55f),
+                    ink, stroke);
+                frame.Paint.Line(center + new Vector2(-size, 0f), center + new Vector2(size * 0.35f, 0f), ink, stroke);
+                frame.Paint.Line(center + new Vector2(-size, size * 0.55f), center + new Vector2(size * 0.7f, size * 0.55f),
+                    ink, stroke);
+                break;
+            case 2:
                 frame.Paint.StrokeCircle(center, size * 0.7f, ink, stroke);
                 frame.Paint.Line(center + new Vector2(size * 0.5f, size * 0.5f),
                     center + new Vector2(size * 0.95f, size * 0.95f), ink, stroke);
-                break;
-            case 2:
-                frame.Paint.Stroke(Rect.FromSize(center - new Vector2(size, size * 0.55f),
-                    new Vector2(size * 2f, size * 1.2f)), ink, stroke, size * 0.35f);
-                break;
-            case 3:
-                DrawBellGlyph(frame, center, size, ink);
                 break;
             default:
                 frame.Paint.StrokeCircle(center + new Vector2(0f, -size * 0.25f), size * 0.4f, ink, stroke);
@@ -1256,8 +1422,45 @@ public sealed partial class AfterDarkApplet : IApplet
         return height;
     }
 
-    private void DrawFace(in AppletFrame frame, Vector2 center, float radius, string url, Vector4 wash, bool night)
+    private bool DrawLocalStill(in AppletFrame frame, Rect area, string path, bool night)
     {
+        if (path.Length == 0 || !File.Exists(path))
+        {
+            return false;
+        }
+
+        var texture = frame.Textures.FromFile(path);
+        if (texture is not { IsReady: true })
+        {
+            return false;
+        }
+
+        var uv = CoverFit.Uv(texture.Size, area.Size);
+        frame.Paint.ImageRounded(texture, area, uv.Min, uv.Max, Vector4.One, frame.Units(16f));
+        _ = night;
+        return true;
+    }
+
+    private void DrawFace(in AppletFrame frame, Vector2 center, float radius, string url, Vector4 wash, bool night,
+        string localPath = "")
+    {
+        if (localPath.Length > 0 && File.Exists(localPath))
+        {
+            var texture = frame.Textures.FromFile(localPath);
+            if (texture is { IsReady: true })
+            {
+                var dest = Rect.FromSize(center - new Vector2(radius, radius),
+                    new Vector2(radius * 2f, radius * 2f));
+                var handsetFace = HandsetLook.PortraitFile(paths, badges);
+                var crop = badges.PortraitFile.Length > 0 &&
+                           string.Equals(localPath, handsetFace, StringComparison.OrdinalIgnoreCase)
+                    ? CoverFit.Framed(texture.Size, dest.Size, badges.PortraitZoom, badges.PortraitFocus)
+                    : CoverFit.Uv(texture.Size, dest.Size);
+                frame.Paint.ImageRounded(texture, dest, crop.Min, crop.Max, Vector4.One, radius);
+                return;
+            }
+        }
+
         if (url.Length > 0)
         {
             pearl.PrefetchMedia(url);

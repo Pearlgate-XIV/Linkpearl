@@ -3,6 +3,7 @@ using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
+using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
@@ -11,7 +12,7 @@ using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Camera;
 
-public sealed class CameraApplet : IApplet
+public sealed partial class CameraApplet : IApplet
 {
     public static readonly AppletManifest Manifest = new()
     {
@@ -25,6 +26,7 @@ public sealed class CameraApplet : IApplet
 
     private readonly IClock clock;
     private readonly IGameSession game;
+    private readonly HostPaths paths;
     private readonly ITextureSource textures;
     private readonly IFilePicker files;
     private readonly DisplayPreferences display;
@@ -35,12 +37,38 @@ public sealed class CameraApplet : IApplet
     private float scroll;
     private string viewingId = string.Empty;
     private string lastStill = string.Empty;
+    private string place = string.Empty;
+    private string folderDraft = string.Empty;
+    private string cropSource = string.Empty;
+    private string cropExisting = string.Empty;
+    private string cropKey = string.Empty;
+    private byte[]? cropPreview;
+    private float cropX;
+    private float cropY;
+    private float cropW = 1f;
+    private float cropH = 1f;
+    private int cropTurns;
+    private CropDrag cropDrag;
+    private Vector2 cropGrab;
+    private float grabX;
+    private float grabY;
+    private float grabW;
+    private float grabH;
+    private bool confirmRemove;
+    private bool confirmDropFolder;
+    private bool confirmBulkRemove;
+    private bool picking;
+    private readonly HashSet<string> picked = new(StringComparer.Ordinal);
+    private string menuShotId = string.Empty;
+    private Vector2 menuAt;
+    private bool uploadWait;
 
     public CameraApplet(IClock clock, IGameSession game, HostPaths paths, ITextureSource textures, IFilePicker files,
         DisplayPreferences display)
     {
         this.clock = clock;
         this.game = game;
+        this.paths = paths;
         this.textures = textures;
         this.files = files;
         this.display = display;
@@ -70,18 +98,61 @@ public sealed class CameraApplet : IApplet
     {
         mode = Mode.Page;
         viewingId = string.Empty;
+        menuShotId = string.Empty;
+        EndPick();
         display.Landscape = false;
         library.Save();
     }
 
-    public bool CanGoBack => mode == Mode.Viewer || pane != Pane.Camera;
+    public bool CanGoBack => picking || confirmBulkRemove || mode != Mode.Page || pane != Pane.Camera ||
+        place.Length > 0;
 
     public bool Back()
     {
+        if (menuShotId.Length > 0)
+        {
+            menuShotId = string.Empty;
+            return true;
+        }
+
+        if (confirmRemove || confirmDropFolder || confirmBulkRemove)
+        {
+            confirmRemove = false;
+            confirmDropFolder = false;
+            confirmBulkRemove = false;
+            return true;
+        }
+
+        if (picking)
+        {
+            EndPick();
+            return true;
+        }
+
+        if (mode == Mode.Crop)
+        {
+            CancelCrop();
+            return true;
+        }
+
+        if (mode is Mode.Move or Mode.MakeFolder)
+        {
+            mode = viewingId.Length > 0 ? Mode.Viewer : Mode.Page;
+            folderDraft = string.Empty;
+            return true;
+        }
+
         if (mode == Mode.Viewer)
         {
             mode = Mode.Page;
             viewingId = string.Empty;
+            return true;
+        }
+
+        if (place.Length > 0)
+        {
+            place = string.Empty;
+            scroll = 0f;
             return true;
         }
 
@@ -97,10 +168,22 @@ public sealed class CameraApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
-        PhotosChrome.Fill(frame);
+        FinishUpload();
+        if (mode == Mode.Crop)
+        {
+            DrawCrop(frame);
+            return;
+        }
+
         if (mode == Mode.Viewer)
         {
             DrawViewer(frame);
+            return;
+        }
+
+        if (mode == Mode.Move)
+        {
+            DrawMove(frame);
             return;
         }
 
@@ -121,14 +204,35 @@ public sealed class CameraApplet : IApplet
             frame.Units(10f), frame.Units(2f)));
         var gap = frame.Units(6f);
         var cell = (row.Width - gap) * 0.5f;
-        var camera = row.LeftSlice(cell);
-        var gallery = row.RightSlice(cell);
-        Chip(frame, camera, "Camera", pane == Pane.Camera, () => pane = Pane.Camera);
-        Chip(frame, gallery, "Gallery", pane == Pane.Gallery, () =>
+        Chip(frame, row.LeftSlice(cell), "Camera", pane == Pane.Camera, () =>
+        {
+            EndPick();
+            pane = Pane.Camera;
+        });
+        Chip(frame, row.RightSlice(cell), "Gallery", pane == Pane.Gallery, () =>
         {
             pane = Pane.Gallery;
             scroll = 0f;
         });
+    }
+
+    private void EndPick()
+    {
+        picking = false;
+        confirmBulkRemove = false;
+        picked.Clear();
+    }
+
+    private void BeginPick(string firstId)
+    {
+        picking = true;
+        confirmBulkRemove = false;
+        menuShotId = string.Empty;
+        mode = Mode.Page;
+        if (firstId.Length > 0)
+        {
+            picked.Add(firstId);
+        }
     }
 
     private static void Chip(in AppletFrame frame, Rect area, string label, bool on, Action pick)
@@ -178,217 +282,6 @@ public sealed class CameraApplet : IApplet
             new TextStyle(FontRole.Caption, PhotosChrome.Mute));
     }
 
-    private void DrawGallery(in AppletFrame frame)
-    {
-        var upload = frame.Content.TopSlice(frame.Units(36f)).RightSlice(frame.Units(78f)).Inset(
-            new Edges(0f, frame.Units(4f), frame.Units(8f), frame.Units(4f)));
-        var head = frame.Content.TopSlice(frame.Units(36f)).Inset(new Edges(frame.Units(12f), frame.Units(6f),
-            frame.Units(90f), 0f));
-        frame.Text.DrawIn(head, "Gallery", new TextStyle(FontRole.Title, PhotosChrome.Ink));
-        frame.Paint.Fill(upload, PhotosChrome.Accent, frame.Units(12f));
-        frame.Text.DrawIn(upload, "Upload",
-            new TextStyle(FontRole.CaptionStrong, PhotosChrome.AccentInk, TextAlign.Center));
-        if (frame.Input.ConsumeClick(upload))
-        {
-            var picked = files.PickImageFiles();
-            if (picked.Count > 0)
-            {
-                library.Import(picked, clock.Now);
-                RebuildAlbums();
-                scroll = 0f;
-            }
-
-            return;
-        }
-
-        var body = frame.Content.Inset(new Edges(frame.Units(8f), frame.Units(40f), frame.Units(8f), frame.Units(8f)));
-        var content = DrawAlbums(frame, body);
-        PhotosChrome.Wheel(frame, body, ref scroll, content);
-    }
-
-    private float DrawAlbums(in AppletFrame frame, Rect viewport)
-    {
-        frame.Paint.PushClip(viewport);
-        if (albums.Count == 0)
-        {
-            frame.Text.DrawIn(viewport.TopSlice(frame.Units(28f)), "No photos yet",
-                new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink, TextAlign.Center));
-            frame.Text.DrawWrapped(viewport.Inset(new Edges(frame.Units(16f), frame.Units(40f), frame.Units(16f), 0f)),
-                "Tap Upload to open a Windows file window. Pictures go into an album named for today’s date.",
-                new TextStyle(FontRole.Caption, PhotosChrome.Mute, TextAlign.Center));
-            frame.Paint.PopClip();
-            return viewport.Height;
-        }
-
-        var columns = 3;
-        var gap = frame.Units(3f);
-        var cell = (viewport.Width - gap * (columns - 1)) / columns;
-        var cursor = viewport.Min.Y - scroll;
-        var total = 0f;
-
-        for (var album = 0; album < albums.Count; album++)
-        {
-            var group = albums[album];
-            var header = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
-                new Vector2(viewport.Width, frame.Units(28f)));
-            if (header.Overlaps(viewport))
-            {
-                frame.Text.DrawIn(header, group.Title,
-                    new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink));
-                frame.Text.DrawIn(header.RightSlice(frame.Units(48f)),
-                    group.Items.Count.ToString(CultureInfo.CurrentCulture),
-                    new TextStyle(FontRole.Caption, PhotosChrome.Mute, TextAlign.Right));
-            }
-
-            cursor += frame.Units(30f);
-            total += frame.Units(30f);
-            var rowsNeeded = (group.Items.Count + columns - 1) / columns;
-            var gridArea = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
-                new Vector2(viewport.Width, rowsNeeded * (cell + gap) - gap));
-            var grid = new TileGrid(gridArea, columns, Math.Max(rowsNeeded, 1), gap);
-            for (var item = 0; item < group.Items.Count; item++)
-            {
-                var tile = grid.CellAt(item);
-                if (tile.Overlaps(viewport))
-                {
-                    DrawThumb(frame, tile, group.Items[item]);
-                }
-            }
-
-            var block = rowsNeeded * (cell + gap) - gap + frame.Units(12f);
-            cursor += block;
-            total += block;
-        }
-
-        frame.Paint.PopClip();
-        return MathF.Max(total, viewport.Height);
-    }
-
-    private void DrawThumb(in AppletFrame frame, Rect tile, PhotoShot shot)
-    {
-        var path = library.Absolute(shot);
-        var texture = textures.FromFile(path);
-        if (texture is not null && texture.IsReady)
-        {
-            frame.Paint.PushClip(tile);
-            PhotosChrome.Cover(frame, tile, texture);
-            frame.Paint.PopClip();
-        }
-        else
-        {
-            PhotosChrome.Placeholder(frame, tile);
-        }
-
-        if (frame.Input.ConsumeClick(tile))
-        {
-            viewingId = shot.Id;
-            mode = Mode.Viewer;
-        }
-    }
-
-    private void DrawViewer(in AppletFrame frame)
-    {
-        PhotoShot? shot = null;
-        var shots = library.Shots;
-        for (var index = 0; index < shots.Count; index++)
-        {
-            if (string.Equals(shots[index].Id, viewingId, StringComparison.Ordinal))
-            {
-                shot = shots[index];
-                break;
-            }
-        }
-
-        if (shot is null)
-        {
-            mode = Mode.Page;
-            viewingId = string.Empty;
-            return;
-        }
-
-        var bar = frame.Content.TopSlice(frame.Units(40f));
-        frame.Text.DrawIn(bar.LeftSlice(frame.Units(28f)), "‹",
-            new TextStyle(FontRole.Title, PhotosChrome.Accent, TextAlign.Center));
-        frame.Text.DrawEllipsized(bar.Inset(new Edges(frame.Units(32f), frame.Units(8f), frame.Units(8f), 0f)),
-            AlbumTitle(shot.Album) + "  ·  " + shot.Title,
-            new TextStyle(FontRole.CaptionStrong, PhotosChrome.Ink));
-        if (frame.Input.ConsumeClick(bar))
-        {
-            mode = Mode.Page;
-            pane = Pane.Gallery;
-            viewingId = string.Empty;
-            return;
-        }
-
-        var stage = frame.Content.Inset(new Edges(frame.Units(8f), frame.Units(44f), frame.Units(8f), frame.Units(8f)));
-        var texture = textures.FromFile(library.Absolute(shot));
-        if (texture is not null && texture.IsReady)
-        {
-            PhotosChrome.Contain(frame, stage, texture);
-        }
-        else
-        {
-            PhotosChrome.Placeholder(frame, stage);
-        }
-
-        LandscapeHold.Draw(frame, display);
-        if (frame.Input.ConsumeClick(stage))
-        {
-            mode = Mode.Page;
-            pane = Pane.Gallery;
-            viewingId = string.Empty;
-        }
-    }
-
-    private void RebuildAlbums()
-    {
-        albums.Clear();
-        Dictionary<string, List<PhotoShot>> map = new(StringComparer.Ordinal);
-        var shots = library.Shots;
-        for (var index = 0; index < shots.Count; index++)
-        {
-            var shot = shots[index];
-            if (!map.TryGetValue(shot.Album, out var list))
-            {
-                list = new List<PhotoShot>();
-                map[shot.Album] = list;
-            }
-
-            list.Add(shot);
-        }
-
-        var keys = new List<string>(map.Keys);
-        keys.Sort(static (left, right) => string.CompareOrdinal(right, left));
-        for (var index = 0; index < keys.Count; index++)
-        {
-            var key = keys[index];
-            albums.Add((key, AlbumTitle(key), map[key]));
-        }
-    }
-
-    private string AlbumTitle(string key)
-    {
-        if (!DateTime.TryParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None,
-                out var day))
-        {
-            return key;
-        }
-
-        var today = DateOnly.FromDateTime(clock.Now.LocalDateTime);
-        var album = DateOnly.FromDateTime(day);
-        if (album == today)
-        {
-            return "Today";
-        }
-
-        if (album == today.AddDays(-1))
-        {
-            return "Yesterday";
-        }
-
-        return day.ToString("MMMM d, yyyy", CultureInfo.CurrentCulture);
-    }
-
     private enum Pane : byte
     {
         Camera = 0,
@@ -399,5 +292,18 @@ public sealed class CameraApplet : IApplet
     {
         Page = 0,
         Viewer = 1,
+        Crop = 2,
+        Move = 3,
+        MakeFolder = 4,
+    }
+
+    private enum CropDrag : byte
+    {
+        None = 0,
+        Move = 1,
+        NorthWest = 2,
+        NorthEast = 3,
+        SouthWest = 4,
+        SouthEast = 5,
     }
 }

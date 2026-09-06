@@ -154,7 +154,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
 
     public void Play(HandsetTune tune)
     {
-        if (tune.StreamUrl.Length == 0)
+        if (string.IsNullOrEmpty(tune.StreamUrl))
         {
             lock (gate)
             {

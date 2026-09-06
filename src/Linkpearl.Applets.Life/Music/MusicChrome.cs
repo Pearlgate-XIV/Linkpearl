@@ -1,21 +1,46 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
+using Linkpearl.Media;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Applets.Life.Music;
 
 internal static class MusicChrome
 {
-    public static readonly Vector4 Bg = new(0.039f, 0.039f, 0.059f, 1f);
-    public static readonly Vector4 Card = new(0.071f, 0.071f, 0.094f, 1f);
-    public static readonly Vector4 CardHi = new(0.102f, 0.102f, 0.133f, 1f);
-    public static readonly Vector4 Purple = new(0.659f, 0.333f, 0.969f, 1f);
-    public static readonly Vector4 PurpleDim = new(0.659f, 0.333f, 0.969f, 0.18f);
-    public static readonly Vector4 Live = new(0.133f, 0.773f, 0.369f, 1f);
-    public static readonly Vector4 Ink = new(1f, 1f, 1f, 1f);
-    public static readonly Vector4 Mute = new(0.63f, 0.64f, 0.70f, 1f);
-    public static readonly Vector4 Faint = new(1f, 1f, 1f, 0.10f);
+    public static readonly Vector4 Ground = new(0.16f, 0.58f, 0.82f, 1f);
+    public static readonly Vector4 GroundMid = new(0.06f, 0.18f, 0.28f, 1f);
+    public static readonly Vector4 GroundHi = new(0f, 0f, 0f, 1f);
+    public static readonly Vector4 Card = new(0.08f, 0.08f, 0.08f, 0.96f);
+    public static readonly Vector4 CardHi = new(0.12f, 0.12f, 0.12f, 1f);
+    public static readonly Vector4 Purple = new(1f, 1f, 1f, 1f);
+    public static readonly Vector4 PurpleDim = new(1f, 1f, 1f, 0.18f);
+    public static readonly Vector4 DockBlue = new(0.18f, 0.86f, 1f, 1f);
+    public static readonly Vector4 Live = new(1f, 1f, 1f, 1f);
+    public static readonly Vector4 LiveOn = new(0.28f, 0.82f, 0.42f, 1f);
+    public static readonly Vector4 LiveOff = new(0.62f, 0.62f, 0.68f, 1f);
+    public static readonly Vector4 LikePink = new(1f, 0.36f, 0.56f, 1f);
+    public static readonly Vector4 StarGold = new(1f, 0.84f, 0.18f, 1f);
+    public static readonly Vector4 FollowGreen = new(0.28f, 0.82f, 0.42f, 1f);
+    public static readonly Vector4 Ink = new(0.96f, 0.96f, 0.98f, 0.96f);
+    public static readonly Vector4 Mute = new(0.70f, 0.70f, 0.76f, 0.88f);
+    public static readonly Vector4 Faint = new(0.96f, 0.96f, 0.98f, 0.08f);
+
+    public static void ArtShadow(in AppletFrame frame, Rect area)
+    {
+        if (area.Width < 12f || area.Height < 12f)
+        {
+            return;
+        }
+
+        var radius = frame.Units(8f);
+        var drop = area.Translate(new Vector2(0f, frame.Units(4f)));
+        frame.Paint.Glow(drop, new Vector4(0f, 0f, 0f, 0.18f), radius, frame.Units(10f));
+        frame.Paint.Fill(drop, new Vector4(0f, 0f, 0f, 0.08f), radius);
+    }
+
+    public static void PaintGround(in AppletFrame frame, Rect area) =>
+        AppGround.MusicWash(frame, area);
 
     public static void Plate(in AppletFrame frame, Rect area, float radius)
     {
@@ -32,7 +57,7 @@ internal static class MusicChrome
     public static void Primary(in AppletFrame frame, Rect area, string label)
     {
         frame.Paint.Fill(area, Purple, frame.Units(12f));
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Ink, TextAlign.Center));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, GroundHi, TextAlign.Center));
     }
 
     public static void LiveMark(in AppletFrame frame, Rect area)
@@ -65,7 +90,7 @@ internal static class MusicChrome
     {
         frame.Paint.Fill(area, on ? Purple : CardHi, frame.Units(12f));
         frame.Text.DrawIn(area, label,
-            new TextStyle(FontRole.CaptionStrong, on ? Ink : Mute, TextAlign.Center));
+            new TextStyle(FontRole.CaptionStrong, on ? GroundHi : Mute, TextAlign.Center));
         return frame.Input.PressedInside(area) || frame.Input.ConsumeClick(area);
     }
 
@@ -88,12 +113,114 @@ internal static class MusicChrome
 
     public static void Kicker(in AppletFrame frame, Rect area, string label)
     {
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.CaptionStrong, Purple));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Ink));
+    }
+
+    public static bool SeeAll(in AppletFrame frame, Rect area)
+    {
+        frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
+        frame.Text.DrawIn(area, "See all", new TextStyle(FontRole.Caption, Ink, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
+    }
+
+    public static bool Section(in AppletFrame frame, Rect area, string title)
+    {
+        var see = area.RightSlice(frame.Units(58f));
+        Kicker(frame, area.Inset(new Edges(0f, 0f, see.Width + frame.Units(8f), 0f)), title);
+        return SeeAll(frame, see);
+    }
+
+    public static bool SoftPill(in AppletFrame frame, Rect area, string label, bool on)
+    {
+        if (on)
+        {
+            frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
+        }
+
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, on ? Ink : Mute, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
+    }
+
+    public static void GenreTile(in AppletFrame frame, Rect area, string label, Vector4 tint, bool on)
+    {
+        frame.Paint.Fill(area, new Vector4(0.04f, 0.04f, 0.04f, 1f), frame.Units(12f));
+        var waves = area.Inset(frame.Units(4f));
+        var origin = new Vector2(waves.Max.X + waves.Width * 0.08f, waves.Max.Y + waves.Height * 0.12f);
+        var span = MathF.Max(waves.Width, waves.Height);
+        for (var ring = 0; ring < 6; ring++)
+        {
+            frame.Paint.StrokeCircle(origin, span * (0.28f + ring * 0.16f), tint with { W = on ? 0.42f : 0.22f },
+                MathF.Max(1.2f, frame.Units(1.4f)));
+        }
+
+        frame.Paint.FillCircle(area.Center + new Vector2(area.Width * 0.18f, area.Height * 0.10f),
+            MathF.Min(area.Width, area.Height) * 0.28f, tint with { W = 0.55f });
+        frame.Paint.Stroke(area, tint, frame.Units(1.8f), frame.Units(12f));
+        frame.Text.DrawEllipsized(area.Inset(frame.Units(10f)).TopSlice(frame.Units(22f)), label,
+            new TextStyle(FontRole.CaptionStrong, Ink));
+    }
+
+    public static Vector4 GenreTint(int index)
+    {
+        return (index % 12) switch
+        {
+            0 => new Vector4(0.62f, 0.28f, 1f, 1f),
+            1 => new Vector4(1f, 0.32f, 0.62f, 1f),
+            2 => new Vector4(1f, 0.86f, 0.16f, 1f),
+            3 => new Vector4(0.18f, 0.82f, 0.78f, 1f),
+            4 => new Vector4(1f, 0.42f, 0.08f, 1f),
+            5 => new Vector4(0.12f, 0.72f, 0.68f, 1f),
+            6 => new Vector4(0.42f, 0.92f, 0.22f, 1f),
+            7 => new Vector4(1f, 0.18f, 0.55f, 1f),
+            8 => new Vector4(0.92f, 0.28f, 0.72f, 1f),
+            9 => new Vector4(0.18f, 0.86f, 1f, 1f),
+            10 => new Vector4(1f, 0.55f, 0.12f, 1f),
+            _ => new Vector4(0.72f, 1f, 0.32f, 1f),
+        };
+    }
+
+    public static void PlayRing(in AppletFrame frame, Rect area, bool playing, float progress)
+    {
+        var radius = MathF.Min(area.Width, area.Height) * 0.42f;
+        frame.Paint.StrokeCircle(area.Center, radius, Purple, MathF.Max(1.4f, radius * 0.12f));
+        frame.Paint.FillCircle(area.Center, radius * 0.78f, Ink);
+        frame.Text.DrawIn(area, playing ? "❚❚" : "▶",
+            new TextStyle(FontRole.CaptionStrong, GroundHi, TextAlign.Center));
+        _ = progress;
     }
 
     public static void Title(in AppletFrame frame, Rect area, string label)
     {
         frame.Text.DrawEllipsized(area, label, new TextStyle(FontRole.Title, Ink));
+    }
+
+    public static void HomeGear(in AppletFrame frame, Rect area)
+    {
+        var texture = frame.Textures.FromFile(AppIconCatalog.Glyph(frame.Paths, "settings.png"));
+        if (texture is not { IsReady: true })
+        {
+            texture = frame.Textures.FromFile(AppIconCatalog.Absolute(frame.Paths, "settings.png"));
+        }
+
+        if (texture is { IsReady: true })
+        {
+            var side = MathF.Min(area.Width, area.Height) * 0.86f;
+            var dest = Rect.FromSize(area.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
+            frame.Paint.Image(texture, dest, Ink);
+            return;
+        }
+
+        var center = area.Center;
+        var radius = MathF.Min(area.Width, area.Height) * 0.28f;
+        var stroke = MathF.Max(1.2f, frame.Units(1.5f));
+        frame.Paint.StrokeCircle(center, radius, Ink, stroke);
+        frame.Paint.StrokeCircle(center, radius * 0.42f, Ink, stroke);
+        for (var tooth = 0; tooth < 8; tooth++)
+        {
+            var angle = tooth * (MathF.PI * 2f / 8f);
+            var tip = center + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * (radius * 1.22f);
+            frame.Paint.FillCircle(tip, stroke * 0.9f, Ink);
+        }
     }
 
     public static bool Back(in AppletFrame frame, Rect row, string label)
@@ -142,6 +269,202 @@ internal static class MusicChrome
         }
 
         state.Scroll = Math.Clamp(state.Scroll, 0f, max);
+    }
+
+    public static void Wave(in AppletFrame frame, Rect area, float pulse, Vector4 ink)
+    {
+        DockWave(frame, area, string.Empty, pulse, pulse * 9f, ink);
+    }
+
+    public static void DockWave(in AppletFrame frame, Rect area, string id, float glow, float travel, Vector4 ink)
+    {
+        if (area.Width < 8f || area.Height < 6f)
+        {
+            return;
+        }
+
+        var count = Math.Clamp((int)(area.Width / frame.Units(3.2f)), 18, 56);
+        var pitch = area.Width / count;
+        var barW = MathF.Max(1.2f, pitch * 0.52f);
+        var mid = area.Center.Y;
+        var seed = unchecked((uint)StringComparer.Ordinal.GetHashCode(id.Length > 0 ? id : "idle"));
+        glow = Math.Clamp(glow, 0f, 0.5f);
+        var first = (int)MathF.Floor(travel) - 1;
+        var last = first + count + 3;
+        frame.Paint.PushClip(area);
+        try
+        {
+            for (var sample = first; sample <= last; sample++)
+            {
+                var n = seed * 1664525u + unchecked((uint)sample) * 1013904223u;
+                n ^= n >> 13;
+                n *= 2246822519u;
+                var shape = 0.22f + 0.78f * ((n & 255u) / 255f);
+                var half = area.Height * 0.5f * shape;
+                var x = area.Min.X + (sample - travel) * pitch + (pitch - barW) * 0.5f;
+                if (x + barW < area.Min.X || x > area.Max.X)
+                {
+                    continue;
+                }
+
+                var along = (x + barW * 0.5f - area.Min.X) / area.Width;
+                var t = Math.Clamp((along - (glow - 0.04f)) / 0.05f, 0f, 1f);
+                var mix = 1f - t * t * (3f - 2f * t);
+                frame.Paint.Fill(new Rect(new Vector2(x, mid - half), new Vector2(x + barW, mid + half)),
+                    ink with { W = 0.22f + 0.70f * mix }, barW * 0.45f);
+            }
+        }
+        finally
+        {
+            frame.Paint.PopClip();
+        }
+    }
+
+    public static bool LiveMarkHit(in AppletFrame frame, Rect area)
+    {
+        return area.Width > 4f && area.Height > 4f && frame.Input.ConsumeClick(area);
+    }
+
+    public static void SaveStar(in AppletFrame frame, Rect area, bool on)
+    {
+        if (area.IsEmpty)
+        {
+            return;
+        }
+
+        var ink = on ? StarGold : Ink;
+        if (TryGlyph(frame, area, "music-save.png", ink))
+        {
+            return;
+        }
+
+        frame.Text.DrawIn(area, "★", new TextStyle(FontRole.Title, ink, TextAlign.Center));
+    }
+
+    public static void FollowPerson(in AppletFrame frame, Rect area, bool on)
+    {
+        if (area.IsEmpty)
+        {
+            return;
+        }
+
+        var ink = on ? FollowGreen : Ink;
+        if (TryGlyph(frame, area, "music-follow.png", ink))
+        {
+            return;
+        }
+
+        var side = MathF.Min(area.Width, area.Height);
+        var head = new Vector2(area.Center.X - side * 0.16f, area.Center.Y - side * 0.18f);
+        frame.Paint.FillCircle(head, side * 0.13f, ink);
+        var torso = Rect.FromSize(new Vector2(head.X - side * 0.22f, head.Y + side * 0.12f),
+            new Vector2(side * 0.44f, side * 0.28f));
+        frame.Paint.Fill(torso, ink, side * 0.22f, Corner.Bottom);
+        var plus = new Vector2(area.Center.X + side * 0.22f, area.Center.Y + side * 0.04f);
+        var bar = MathF.Max(1.6f, side * 0.07f);
+        var arm = side * 0.12f;
+        frame.Paint.Fill(Rect.FromSize(new Vector2(plus.X - arm, plus.Y - bar * 0.5f), new Vector2(arm * 2f, bar)), ink,
+            bar * 0.5f);
+        frame.Paint.Fill(Rect.FromSize(new Vector2(plus.X - bar * 0.5f, plus.Y - arm), new Vector2(bar, arm * 2f)), ink,
+            bar * 0.5f);
+    }
+
+    public static void DockVolume(in AppletFrame frame, Rect row, float value, ref bool dragging, Action<float> set)
+    {
+        if (row.Width < 8f || row.Height < 8f)
+        {
+            return;
+        }
+
+        var amount = Math.Clamp(value, 0f, 1f);
+        var radius = row.Height * 0.5f;
+        var track = new Vector4(0.16f, 0.16f, 0.18f, 0.90f);
+        var fill = new Vector4(0.97f, 0.97f, 0.99f, 0.98f);
+        var knob = new Vector4(0.86f, 0.86f, 0.89f, 1f);
+        var markOn = new Vector4(0.14f, 0.14f, 0.16f, 1f);
+        var markOff = new Vector4(0.94f, 0.94f, 0.96f, 1f);
+        frame.Paint.Fill(row, track, radius);
+        frame.Paint.Fill(row.LeftSlice(MathF.Max(row.Height, row.Width * amount)), fill, radius);
+        var knobX = Math.Clamp(row.Min.X + row.Width * amount, row.Min.X + radius, row.Max.X - radius);
+        var center = new Vector2(knobX, row.Center.Y);
+        frame.Paint.FillCircle(center, row.Height * 0.20f, knob);
+        frame.Paint.FillCircle(center + new Vector2(-row.Height * 0.04f, -row.Height * 0.05f), row.Height * 0.07f,
+            new Vector4(1f, 1f, 1f, 0.72f));
+        var inset = row.Height * 0.18f;
+        var mark = row.Height * 0.558f;
+        var left = Rect.FromSize(new Vector2(row.Min.X + inset, row.Center.Y - mark * 0.5f), new Vector2(mark, mark));
+        var right = Rect.FromSize(new Vector2(row.Max.X - inset - mark, row.Center.Y - mark * 0.5f),
+            new Vector2(mark, mark));
+        DockNote(frame.Paint, left, amount > 0.12f ? markOn : markOff);
+        DockSpeaker(frame.Paint, right, amount > 0.88f ? markOn : markOff);
+        var input = frame.Input;
+        if (input.WasPressed(row) || (input.IsHeld() && row.Contains(input.Pointer) && !dragging))
+        {
+            dragging = true;
+        }
+
+        if (dragging && input.IsHeld())
+        {
+            var next = Math.Clamp((input.Pointer.X - row.Min.X) / MathF.Max(row.Width, 1f), 0f, 1f);
+            set(next);
+            input.Claim(row);
+            input.ConsumeClick(row);
+            return;
+        }
+
+        dragging = false;
+        input.ConsumeClick(row);
+    }
+
+    private static void DockNote(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var c = area.Center;
+        var s = MathF.Min(area.Width, area.Height) * 0.32f;
+        var stroke = MathF.Max(1.3f, s * 0.22f);
+        paint.FillCircle(c + new Vector2(-s * 0.28f, s * 0.42f), s * 0.22f, ink);
+        paint.Line(c + new Vector2(-s * 0.08f, s * 0.42f), c + new Vector2(-s * 0.08f, -s * 0.62f), ink, stroke);
+        paint.Line(c + new Vector2(-s * 0.08f, -s * 0.62f), c + new Vector2(s * 0.55f, -s * 0.38f), ink, stroke);
+    }
+
+    private static void DockSpeaker(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var c = area.Center;
+        var s = MathF.Min(area.Width, area.Height) * 0.28f;
+        var stroke = MathF.Max(1.1f, s * 0.22f);
+        paint.Fill(Rect.FromSize(c + new Vector2(-s * 0.72f, -s * 0.28f), new Vector2(s * 0.42f, s * 0.56f)), ink,
+            s * 0.08f);
+        paint.Line(c + new Vector2(-s * 0.30f, -s * 0.28f), c + new Vector2(s * 0.18f, -s * 0.72f), ink, stroke);
+        paint.Line(c + new Vector2(-s * 0.30f, s * 0.28f), c + new Vector2(s * 0.18f, s * 0.72f), ink, stroke);
+        paint.StrokeCircle(c + new Vector2(s * 0.12f, 0f), s * 0.42f, ink, stroke);
+        paint.StrokeCircle(c + new Vector2(s * 0.12f, 0f), s * 0.68f, ink with { W = ink.W * 0.7f }, stroke);
+    }
+
+    public static void ReportFlag(in AppletFrame frame, Rect area)
+    {
+        if (TryGlyph(frame, area, "music-report.png", Ink))
+        {
+            return;
+        }
+
+        frame.Text.DrawIn(area, "⚑", new TextStyle(FontRole.Title, Ink, TextAlign.Center));
+    }
+
+    private static bool TryGlyph(in AppletFrame frame, Rect area, string file, Vector4 ink)
+    {
+        var texture = frame.Textures.FromFile(AppIconCatalog.Glyph(frame.Paths, file));
+        if (texture is not { IsReady: true } || texture.Handle == 0)
+        {
+            return false;
+        }
+
+        var dest = CoverFit.Contained(texture.Size, CoverFit.InscribedSquare(area.Inset(area.Height * 0.04f)));
+        if (dest.IsEmpty)
+        {
+            return false;
+        }
+
+        frame.Paint.Image(texture, dest, ink);
+        return true;
     }
 
     public static void Rail(in AppletFrame frame, Rect track, float offset, float content, float view)

@@ -1,10 +1,13 @@
 using Linkpearl.Applets;
 using Linkpearl.Destinations;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
 using Linkpearl.Shell;
+using Linkpearl.Talk;
+using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 
@@ -14,52 +17,118 @@ public sealed class AppsDrawer
     {
         Shelf = 0,
         Manage = 1,
-        Library = 2,
     }
 
     private readonly IReadOnlyList<IApplet> applets;
     private readonly DestinationHub hub;
     private readonly DisplayPreferences display;
+    private readonly GlassEdit glass;
+    private readonly ITalk talk;
+    private readonly Action rememberReturn;
     private readonly ScrollState scroll = new();
-    private readonly HashSet<string> selected = new(StringComparer.Ordinal);
     private readonly HashSet<AppGroup> openGroups = [];
     private readonly List<string> visible = new();
+    private readonly List<Rect> cells = new();
+    private readonly List<Rect> icons = new();
     private Page page;
     private AppChip chip;
     private string query = string.Empty;
-    private bool reorder;
-    private string? reorderHold;
     private string? openFolder;
+    private string? pressId;
+    private long pressAt;
+    private Vector2 pressPoint;
+    private string? dragId;
+    private bool skipOpen;
+    private float jiggle;
+    private int screen;
+    private int pageNudge;
+    private long edgeAt;
+    private bool menuOpen;
+    private Vector2 menuAt;
+    private string? menuFolder;
 
-    public AppsDrawer(IReadOnlyList<IApplet> applets, DestinationHub hub, DisplayPreferences display)
+    public AppsDrawer(IReadOnlyList<IApplet> applets, DestinationHub hub, DisplayPreferences display, GlassEdit glass,
+        ITalk talk, Action rememberReturn)
     {
         this.applets = applets;
         this.hub = hub;
         this.display = display;
+        this.glass = glass;
+        this.talk = talk;
+        this.rememberReturn = rememberReturn;
     }
 
-    public bool OnInnerPage => page != Page.Shelf || openFolder is not null;
+    public bool Editing => glass.Active;
+
+    public bool OnInnerPage => page != Page.Shelf || openFolder is not null || glass.Active;
+
+    public bool BlocksPager(Vector2 at, bool held)
+    {
+        if (page != Page.Shelf)
+        {
+            return false;
+        }
+
+        if (pressId is not null || dragId is not null || menuOpen)
+        {
+            return true;
+        }
+
+        return held && HitsIcon(at);
+    }
+
+    public int PageNudge => pageNudge;
+
+    public string? FlyingId => dragId;
+
+    public void ClearNudge() => pageNudge = 0;
+
+    public void EnterEdit() => glass.Active = true;
+
+    public void AdoptDrag(string id)
+    {
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        glass.Active = true;
+        dragId = id;
+        skipOpen = true;
+        pressId = id;
+        pressAt = Environment.TickCount64;
+        pressPoint = new Vector2(float.MinValue, 0f);
+    }
+
+    public void ReleaseDrag()
+    {
+        pressId = null;
+        dragId = null;
+    }
 
     public bool Back()
     {
+        if (menuOpen)
+        {
+            menuOpen = false;
+            return true;
+        }
+
+        if (glass.Active)
+        {
+            StopEdit();
+            return true;
+        }
+
         if (openFolder is not null)
         {
             openFolder = null;
             return true;
         }
 
-        if (page == Page.Library)
-        {
-            page = Page.Manage;
-            query = string.Empty;
-            return true;
-        }
-
         if (page == Page.Manage)
         {
             page = Page.Shelf;
-            reorder = false;
-            selected.Clear();
             query = string.Empty;
             return true;
         }
@@ -71,9 +140,10 @@ public sealed class AppsDrawer
     {
         page = Page.Shelf;
         openFolder = null;
-        reorder = false;
-        selected.Clear();
         query = string.Empty;
+        StopEdit();
+        menuOpen = false;
+        menuFolder = null;
         scroll.Reset();
     }
 
@@ -81,118 +151,116 @@ public sealed class AppsDrawer
     {
         page = Page.Manage;
         openFolder = null;
-        reorder = false;
-        selected.Clear();
         query = string.Empty;
+        StopEdit();
+        menuOpen = false;
         scroll.Reset();
     }
 
-    public void Draw(in AppletFrame frame, Rect area, bool hush)
+    public void Draw(in AppletFrame frame, Rect area, bool hush, int screenIndex = 0, bool interact = true)
     {
+        screen = screenIndex;
+        if (page == Page.Manage)
+        {
+            frame.Paint.Fill(area, Palette.AppGround);
+        }
+
         var gold = frame.Theme.Palette.WarmAccent;
         var pad = frame.Units(14f);
         var inner = area.Inset(new Edges(pad, frame.Units(8f), pad, frame.Units(6f)));
         var cursor = inner.Min.Y;
 
-        if (page == Page.Manage || page == Page.Library)
+        if (page == Page.Manage)
         {
             cursor = DrawManageHeader(frame, inner, gold, cursor);
+            cursor = DrawSearch(frame, inner, gold, cursor);
+            cursor = DrawChips(frame, inner, gold, cursor);
         }
         else
         {
             cursor = DrawShelfHeader(frame, inner, gold, cursor);
+            if (glass.Active)
+            {
+                var hint = Rect.FromSize(new Vector2(inner.Min.X, cursor), new Vector2(inner.Width, frame.Units(16f)));
+                frame.Text.DrawIn(hint, "Drag to move or onto an app for a folder. − removes.",
+                    new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+                cursor = hint.Max.Y + frame.Units(6f);
+            }
         }
 
-        cursor = DrawSearch(frame, inner, gold, cursor);
-        cursor = DrawChips(frame, inner, gold, cursor);
-
-        if (page == Page.Manage)
-        {
-            cursor = DrawQuickStrip(frame, inner, gold, cursor);
-        }
-
-        if (openFolder is not null)
+        if (page == Page.Shelf && openFolder is not null)
         {
             cursor = DrawFolderBanner(frame, inner, gold, cursor);
         }
 
-        var footer = page == Page.Manage ? frame.Units(44f) : 0f;
-        var body = new Rect(new Vector2(inner.Min.X, cursor), new Vector2(inner.Max.X, inner.Max.Y - footer));
+        var body = new Rect(new Vector2(inner.Min.X, cursor), inner.Max);
         var scrolled = body.Translate(new Vector2(0f, -scroll.Offset));
-        var list = body.Contains(frame.Input.Pointer) ? frame : frame.WithInput(SilentInput.Instance);
+        var dragging = dragId is not null;
+        var live = !menuOpen && (body.Contains(frame.Input.Pointer) || dragging);
+        var list = live ? frame : frame.WithInput(SilentInput.Instance);
         frame.Paint.PushClip(body);
-        var height = page switch
-        {
-            Page.Library => DrawLibrary(list, scrolled, hush),
-            Page.Manage => DrawManageGrid(list, scrolled, hush),
-            _ => DrawShelf(list, scrolled, hush),
-        };
+        var height = page == Page.Manage
+            ? DrawGroupedShelf(list, scrolled, hush)
+            : DrawHomeGrid(list, scrolled, hush, body, interact);
         frame.Paint.PopClip();
 
-        var wheel = frame.Input.IsHovering(body) ? frame.Input.ScrollDelta : 0f;
+        var wheel = !menuOpen && !dragging && frame.Input.IsHovering(body) ? frame.Input.ScrollDelta : 0f;
         scroll.Update(height, body.Height, wheel, frame.Scale);
         ScrollState.DrawIndicator(frame.Paint, frame.Theme, body, height, scroll.Offset, frame.Scale);
 
-        if (page == Page.Manage)
+        if (page == Page.Shelf && !menuOpen &&
+            frame.Input.ConsumeClick(inner, PointerButton.Secondary))
         {
-            DrawManageFooter(frame, inner.BottomSlice(footer), gold);
+            menuOpen = true;
+            menuAt = frame.Input.Pointer;
+            var hit = HitId(menuAt);
+            menuFolder = hit is not null && display.TryFolder(hit, out _, out _) ? hit : null;
+        }
+
+        if (menuOpen)
+        {
+            DrawContextMenu(frame, inner, gold);
         }
     }
 
     private float DrawShelfHeader(in AppletFrame frame, Rect inner, Vector4 gold, float top)
     {
-        var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(34f)));
-        frame.Text.DrawIn(row, "Apps", new TextStyle(FontRole.Display, gold));
-        var edit = row.RightSlice(frame.Units(64f));
-        frame.Text.DrawIn(edit, "Manage", new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Right));
-        if (frame.Input.ConsumeClick(edit))
+        var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(28f)));
+        var action = row.RightSlice(frame.Units(72f));
+        var label = glass.Active ? "Done" : "Manage";
+        frame.Text.DrawIn(action, label, new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Right));
+        if (frame.Input.ConsumeClick(action))
         {
-            page = Page.Manage;
-            scroll.Reset();
+            if (glass.Active)
+            {
+                StopEdit();
+            }
+            else
+            {
+                page = Page.Manage;
+                scroll.Reset();
+            }
         }
 
-        var rule = Rect.FromSize(new Vector2(inner.Min.X, row.Max.Y + frame.Units(2f)),
-            new Vector2(inner.Width, frame.Units(10f)));
-        DrawOrnament(frame.Paint, rule, gold);
-        return rule.Max.Y + frame.Units(8f);
+        return row.Max.Y + frame.Units(6f);
     }
 
     private float DrawManageHeader(in AppletFrame frame, Rect inner, Vector4 gold, float top)
     {
         var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(28f)));
-        frame.Text.DrawIn(row, "Apps", new TextStyle(FontRole.Display, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(row, "Manage Apps", new TextStyle(FontRole.Display, frame.Theme.Palette.Ink));
         var done = row.RightSlice(frame.Units(72f));
         frame.Paint.Stroke(done.Inset(new Edges(0f, frame.Units(2f))), gold, frame.Theme.Metrics.Hairline,
             frame.Units(10f));
         frame.Text.DrawIn(done, "Done", new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
         if (frame.Input.ConsumeClick(done))
         {
-            if (page == Page.Library)
-            {
-                page = Page.Manage;
-            }
-            else
-            {
-                CloseInner();
-            }
-
-            scroll.Reset();
+            CloseInner();
         }
 
         var sub = Rect.FromSize(new Vector2(inner.Min.X, row.Max.Y), new Vector2(inner.Width, frame.Units(18f)));
-        frame.Text.DrawIn(sub, "Tap an app, then a Quick Apps slot to place it.",
+        frame.Text.DrawIn(sub, "Choose which owned apps sit on your screens.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        var mode = sub.RightSlice(frame.Units(108f));
-        var modeInk = reorder ? gold : frame.Theme.Palette.InkMuted;
-        frame.Text.DrawIn(mode, reorder ? "Reordering" : "Reorder Mode",
-            new TextStyle(FontRole.Caption, modeInk, TextAlign.Right));
-        if (page == Page.Manage && frame.Input.ConsumeClick(mode))
-        {
-            reorder = !reorder;
-            selected.Clear();
-            reorderHold = null;
-        }
-
         return sub.Max.Y + frame.Units(8f);
     }
 
@@ -201,75 +269,11 @@ public sealed class AppsDrawer
         var field = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(32f)));
         frame.Paint.Fill(field, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, field.Height * 0.5f);
         frame.Paint.Stroke(field, gold with { W = 0.35f }, frame.Theme.Metrics.Hairline, field.Height * 0.5f);
-        var hint = page == Page.Library ? "Find an app to add..." : "Search apps";
         var type = field.Inset(new Edges(frame.Units(28f), 0f, frame.Units(8f), 0f));
-        query = frame.TextField.Draw("apps-shelf-search", type, query, hint);
+        query = frame.TextField.Draw("apps-manage-search", type, query, "Search apps");
         SearchMark.Draw(frame.Paint, field.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)),
             frame.Theme.Palette.InkMuted);
         return field.Max.Y + frame.Units(10f);
-    }
-
-    private float DrawQuickStrip(in AppletFrame frame, Rect inner, Vector4 gold, float top)
-    {
-        var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(78f)));
-        frame.Text.DrawIn(row.TopSlice(frame.Units(16f)), "Quick Apps",
-            new TextStyle(FontRole.CaptionStrong, gold));
-        var slots = row.Inset(new Edges(0f, frame.Units(18f), 0f, 0f));
-        var gap = frame.Units(8f);
-        var cellW = (slots.Width - gap * (DisplayPreferences.QuickAppSlots - 1)) / DisplayPreferences.QuickAppSlots;
-        var picked = selected.Count == 1 ? FirstSelected() : string.Empty;
-        for (var index = 0; index < DisplayPreferences.QuickAppSlots; index++)
-        {
-            var cell = Rect.FromSize(new Vector2(slots.Min.X + index * (cellW + gap), slots.Min.Y),
-                new Vector2(cellW, slots.Height));
-            var square = cell.Inset(new Edges(MathF.Max(0f, (cell.Width - cell.Height) * 0.5f), 0f));
-            var id = index < display.QuickApps.Count ? display.QuickApps[index] : string.Empty;
-            frame.Paint.Fill(square, frame.Theme.Palette.SurfaceOverlay with { W = 0.62f }, frame.Units(10f));
-            frame.Paint.Stroke(square, gold with { W = id.Length > 0 ? 0.45f : 0.22f }, frame.Theme.Metrics.Hairline,
-                frame.Units(10f));
-            if (id.Length > 0)
-            {
-                AppMarks.DrawFace(frame, square.Inset(frame.Units(6f)), id, false);
-            }
-            else
-            {
-                frame.Text.DrawIn(square, "+",
-                    new TextStyle(FontRole.Title, frame.Theme.Palette.InkMuted, TextAlign.Center));
-            }
-
-            if (!frame.Input.ConsumeClick(square))
-            {
-                continue;
-            }
-
-            if (picked.Length > 0)
-            {
-                display.PlaceQuickApp(index, picked);
-                selected.Clear();
-            }
-            else if (id.Length > 0)
-            {
-                display.ClearQuickApp(index);
-            }
-            else
-            {
-                page = Page.Library;
-                query = string.Empty;
-                scroll.Reset();
-            }
-        }
-
-        return row.Max.Y + frame.Units(8f);
-    }
-
-    private string FirstSelected()
-    {
-        foreach (var id in selected)
-        {
-            return id;
-        }
-
-        return string.Empty;
     }
 
     private float DrawChips(in AppletFrame frame, Rect inner, Vector4 gold, float top)
@@ -319,17 +323,18 @@ public sealed class AppsDrawer
         if (frame.Input.ConsumeClick(close))
         {
             openFolder = null;
+            StopEdit();
         }
 
         return row.Max.Y + frame.Units(8f);
     }
 
-    private float DrawShelf(in AppletFrame frame, Rect area, bool hush)
+    private float DrawGroupedShelf(in AppletFrame frame, Rect area, bool hush)
     {
-        FillVisible(forLibrary: false);
+        FillVisible();
         GroupVisible();
         var columns = 4;
-        var cell = frame.Units(86f);
+        var cell = frame.Units(104f);
         var gap = frame.Units(8f);
         var barH = frame.Units(32f);
         var searching = query.Trim().Length > 0;
@@ -371,7 +376,7 @@ public sealed class AppsDrawer
                 var tile = Rect.FromSize(
                     new Vector2(area.Min.X + col * (area.Width / columns), y + row * (cell + gap)),
                     new Vector2(area.Width / columns, cell));
-                DrawLauncherTile(frame, tile, visible[first + slot], hush);
+                DrawManageItem(frame, tile, visible[first + slot], hush);
             }
 
             y += ((count + columns - 1) / columns) * (cell + gap) + frame.Units(4f);
@@ -380,54 +385,232 @@ public sealed class AppsDrawer
         return y - startY + frame.Units(12f);
     }
 
-    private float DrawManageGrid(in AppletFrame frame, Rect area, bool hush)
+    private float DrawHomeGrid(in AppletFrame frame, Rect area, bool hush, Rect body, bool interact)
     {
-        FillVisible(forLibrary: false);
-        var columns = 3;
+        var held = interact && frame.Input.IsHeld();
+        if (interact && !held)
+        {
+            if (dragId is not null)
+            {
+                ResolveDrop(frame.Input.Pointer);
+            }
+
+            pressId = null;
+            dragId = null;
+            edgeAt = 0;
+        }
+
+        else if (interact && pressId is { } holding)
+        {
+            var elapsed = Environment.TickCount64 - pressAt;
+            var travel = (frame.Input.Pointer - pressPoint).Length();
+            if (glass.Active && travel > frame.Units(6f))
+            {
+                dragId = holding;
+                skipOpen = true;
+            }
+            else if (elapsed >= 480)
+            {
+                glass.Active = true;
+                skipOpen = true;
+                if (travel > frame.Units(8f))
+                {
+                    dragId = holding;
+                }
+            }
+        }
+
+        FillHome();
+        cells.Clear();
+        icons.Clear();
+        var columns = 4;
+        var cell = frame.Units(86f);
         var gap = frame.Units(8f);
-        var cellH = frame.Units(118f);
-        var cellW = (area.Width - gap * (columns - 1)) / columns;
-        var count = visible.Count + 1;
-        for (var index = 0; index < count; index++)
+        jiggle += frame.DeltaSeconds;
+        if (openFolder is null)
+        {
+            var rowsFit = Math.Max(4, (int)(area.Height / MathF.Max(1f, cell + gap)));
+            var need = columns * rowsFit;
+            while (visible.Count < need)
+            {
+                visible.Add(string.Empty);
+            }
+        }
+
+        if (held && dragId is not null)
+        {
+            WatchEdge(frame, body);
+        }
+
+        var hoverDrop = dragId is not null ? HitFolderTarget(frame.Input.Pointer) : null;
+        for (var index = 0; index < visible.Count; index++)
         {
             var col = index % columns;
             var row = index / columns;
             var tile = Rect.FromSize(
-                new Vector2(area.Min.X + col * (cellW + gap), area.Min.Y + row * (cellH + gap)),
-                new Vector2(cellW, cellH));
-            if (index == visible.Count)
+                new Vector2(area.Min.X + col * (area.Width / columns), area.Min.Y + row * (cell + gap)),
+                new Vector2(area.Width / columns, cell));
+            cells.Add(tile);
+            var icon = MathF.Min(frame.Units(52f), tile.Width * 0.62f);
+            icons.Add(Rect.FromSize(new Vector2(tile.Center.X - icon * 0.5f, tile.Min.Y + frame.Units(4f)),
+                new Vector2(icon, icon)));
+            var id = visible[index];
+            if (string.Equals(dragId, id, StringComparison.Ordinal))
             {
-                DrawAddTile(frame, tile);
                 continue;
             }
 
-            DrawManageTile(frame, tile, visible[index], hush);
+            var drawn = glass.Active && id.Length > 0
+                ? tile.Translate(EditSway(jiggle, index, frame.Units(0.45f)))
+                : tile;
+            var lit = hoverDrop is not null && string.Equals(hoverDrop, id, StringComparison.Ordinal);
+            DrawHomeTile(frame, drawn, id, hush, lit);
         }
 
-        var rows = (count + columns - 1) / columns;
-        return rows * (cellH + gap);
+        if (interact && dragId is { } flying)
+        {
+            var size = new Vector2(area.Width / columns, cell);
+            var floatTile = Rect.FromSize(frame.Input.Pointer - size * 0.5f, size);
+            DrawHomeTile(frame, floatTile, flying, hush, false);
+        }
+
+        if (interact && glass.Active && dragId is null && !skipOpen && frame.Input.ConsumeClick(body))
+        {
+            StopEdit();
+        }
+
+        if (interact && !held)
+        {
+            skipOpen = false;
+        }
+
+        var rows = (visible.Count + columns - 1) / columns;
+        return MathF.Max(cell, rows * (cell + gap));
     }
 
-    private float DrawLibrary(in AppletFrame frame, Rect area, bool hush)
+    private void DrawHomeTile(in AppletFrame frame, Rect cell, string id, bool hush, bool dropLit)
     {
-        FillVisible(forLibrary: true);
-        if (visible.Count == 0)
+        if (id.Length == 0)
         {
-            frame.Text.DrawWrapped(area.TopSlice(frame.Units(48f)), "Every remaining app is already on the shelf.",
-                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-            return frame.Units(56f);
+            if (glass.Active)
+            {
+                frame.Paint.Stroke(cell.Inset(frame.Units(10f)),
+                    frame.Theme.Palette.WarmAccent with { W = 0.12f },
+                    frame.Theme.Metrics.Hairline, frame.Units(16f));
+            }
+
+            return;
         }
 
-        var rowH = frame.Units(56f);
-        var gap = frame.Units(8f);
-        for (var index = 0; index < visible.Count; index++)
+        var hover = frame.Input.IsHovering(cell) || dropLit;
+        var icon = MathF.Min(frame.Units(52f), cell.Width * 0.62f);
+        var iconArea = Rect.FromSize(new Vector2(cell.Center.X - icon * 0.5f, cell.Min.Y + frame.Units(4f)),
+            new Vector2(icon, icon));
+        var drawn = hover ? icon * 1.08f : icon;
+        var drawArea = Rect.FromSize(iconArea.Center - new Vector2(drawn * 0.5f, drawn * 0.5f),
+            new Vector2(drawn, drawn));
+        if (display.TryFolder(id, out _, out var kids))
         {
-            var row = Rect.FromSize(new Vector2(area.Min.X, area.Min.Y + index * (rowH + gap)),
-                new Vector2(area.Width, rowH));
-            DrawLibraryRow(frame, row, visible[index], hush);
+            AppMarks.DrawFolderFace(frame, drawArea, kids, hover || dropLit);
+        }
+        else
+        {
+            AppMarks.DrawFace(frame, drawArea, id, hover);
         }
 
-        return visible.Count * (rowH + gap);
+        if (dropLit)
+        {
+            frame.Paint.StrokeCircle(drawArea.Center, drawArea.Width * 0.52f, frame.Theme.Palette.WarmAccent,
+                frame.Units(2f));
+        }
+
+        var name = TitleOf(id);
+        var label = new Rect(new Vector2(cell.Min.X, iconArea.Max.Y + frame.Units(4f)),
+            new Vector2(cell.Max.X, cell.Max.Y));
+        frame.Text.DrawEllipsized(label, name, new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
+        DrawBadge(frame, iconArea, id, hush);
+
+        if (glass.Active)
+        {
+            var minus = Rect.FromSize(new Vector2(iconArea.Min.X - frame.Units(2f), iconArea.Min.Y - frame.Units(2f)),
+                new Vector2(frame.Units(18f), frame.Units(18f)));
+            frame.Paint.FillCircle(minus.Center, minus.Width * 0.5f, frame.Theme.Palette.Negative with { W = 0.92f });
+            frame.Text.DrawIn(minus, "−",
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.AccentInk, TextAlign.Center));
+            if (frame.Input.ConsumeClick(minus))
+            {
+                RemoveHome(id);
+                return;
+            }
+        }
+
+        if (frame.Input.WasPressed(cell))
+        {
+            pressId = id;
+            pressAt = Environment.TickCount64;
+            pressPoint = frame.Input.Pointer;
+        }
+
+        if (!frame.Input.ConsumeClick(cell))
+        {
+            return;
+        }
+
+        if (skipOpen || glass.Active)
+        {
+            return;
+        }
+
+        Open(frame.Router, id);
+    }
+
+    private void DrawManageItem(in AppletFrame frame, Rect cell, string id, bool hush)
+    {
+        var hover = frame.Input.IsHovering(cell);
+        var gold = frame.Theme.Palette.WarmAccent;
+        var icon = MathF.Min(frame.Units(44f), cell.Width * 0.48f);
+        var iconArea = Rect.FromSize(new Vector2(cell.Center.X - icon * 0.5f, cell.Min.Y + frame.Units(2f)),
+            new Vector2(icon, icon));
+        if (display.TryFolder(id, out _, out var kids))
+        {
+            AppMarks.DrawFolderFace(frame, iconArea, kids, hover);
+        }
+        else
+        {
+            AppMarks.DrawFace(frame, iconArea, id, hover);
+        }
+
+        DrawBadge(frame, iconArea, id, hush);
+        var name = TitleOf(id);
+        var label = Rect.FromSize(new Vector2(cell.Min.X, iconArea.Max.Y + frame.Units(2f)),
+            new Vector2(cell.Width, frame.Units(16f)));
+        frame.Text.DrawEllipsized(label, name,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
+        var placed = display.IsPlaced(id);
+        var action = Rect.FromSize(new Vector2(cell.Min.X + frame.Units(6f), cell.Max.Y - frame.Units(22f)),
+            new Vector2(cell.Width - frame.Units(12f), frame.Units(18f)));
+        var verb = placed ? "Remove" : "Add";
+        var ink = placed ? frame.Theme.Palette.Negative : gold;
+        frame.Paint.Stroke(action, ink with { W = 0.70f }, frame.Theme.Metrics.Hairline, frame.Units(8f));
+        frame.Text.DrawIn(action, verb, new TextStyle(FontRole.CaptionStrong, ink, TextAlign.Center));
+        if (!frame.Input.ConsumeClick(action) && !frame.Input.ConsumeClick(cell))
+        {
+            return;
+        }
+
+        if (placed)
+        {
+            if (openFolder is { } folder && !display.TryFolder(id, out _, out _))
+            {
+                display.DropFromFolder(folder, id);
+                return;
+            }
+
+            display.RemoveApp(id);
+            return;
+        }
+
+        display.InstallApp(id);
     }
 
     private void DrawLauncherTile(in AppletFrame frame, Rect cell, string id, bool hush)
@@ -445,155 +628,295 @@ public sealed class AppsDrawer
             new Vector2(cell.Max.X, cell.Max.Y));
         frame.Text.DrawEllipsized(label, name, new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
         DrawBadge(frame, iconArea, id, hush);
-        if (!frame.Input.ConsumeClick(cell))
+        if (frame.Input.ConsumeClick(cell))
+        {
+            Open(frame.Router, id);
+        }
+    }
+
+    private void ResolveDrop(Vector2 pointer)
+    {
+        if (!glass.Active || dragId is not { Length: > 0 } moving)
         {
             return;
         }
 
-        Open(frame.Router, id);
-    }
-
-    private void DrawManageTile(in AppletFrame frame, Rect tile, string id, bool hush)
-    {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var picked = selected.Contains(id);
-        var hold = string.Equals(reorderHold, id, StringComparison.Ordinal);
-        frame.Paint.Fill(tile, frame.Theme.Palette.SurfaceOverlay with { W = 0.55f }, frame.Units(14f));
-        frame.Paint.Stroke(tile, (picked || hold) ? gold : gold with { W = 0.22f }, frame.Theme.Metrics.Hairline,
-            frame.Units(14f));
-        var handle = tile.Inset(frame.Units(8f)).TopSlice(frame.Units(12f)).RightSlice(frame.Units(16f));
-        DrawGrip(frame.Paint, handle, frame.Theme.Palette.InkFaint);
-        var icon = frame.Units(40f);
-        var iconArea = Rect.FromSize(new Vector2(tile.Center.X - icon * 0.5f, tile.Min.Y + frame.Units(22f)),
-            new Vector2(icon, icon));
-        AppMarks.DrawFace(frame, iconArea, id, picked);
-        var spec = AppShelf.Find(id);
-        var name = TitleOf(id);
-        var caption = spec?.Caption ?? (id.StartsWith("folder:", StringComparison.Ordinal) ? "Folder" : "App");
-        var nameRow = Rect.FromSize(new Vector2(tile.Min.X + frame.Units(6f), iconArea.Max.Y + frame.Units(6f)),
-            new Vector2(tile.Width - frame.Units(12f), frame.Units(16f)));
-        frame.Text.DrawEllipsized(nameRow, name,
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
-        var capRow = nameRow.Translate(new Vector2(0f, frame.Units(14f)));
-        frame.Text.DrawEllipsized(capRow, caption,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
-        DrawBadge(frame, iconArea, id, hush);
-        if (display.IsQuickApp(id))
+        var target = HitFolderTarget(pointer);
+        if (target is { Length: > 0 } && !string.Equals(target, moving, StringComparison.Ordinal))
         {
-            frame.Paint.StrokeCircle(new Vector2(iconArea.Max.X - frame.Units(4f), iconArea.Min.Y + frame.Units(4f)),
-                frame.Units(4f), gold, frame.Units(1.4f));
-        }
-
-        if (!reorder)
-        {
-            var minus = Rect.FromSize(new Vector2(tile.Min.X + frame.Units(8f), tile.Min.Y + frame.Units(8f)),
-                new Vector2(frame.Units(18f), frame.Units(18f)));
-            frame.Paint.FillCircle(minus.Center, minus.Width * 0.5f, frame.Theme.Palette.Negative with { W = 0.92f });
-            frame.Text.DrawIn(minus, "−",
-                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.AccentInk, TextAlign.Center));
-            if (frame.Input.ConsumeClick(minus))
+            if (display.TryFolder(target, out _, out _))
             {
-                display.RemoveApp(id);
-                selected.Remove(id);
+                display.NestInFolder(target, moving);
+                return;
+            }
+
+            if (!display.TryFolder(moving, out _, out _))
+            {
+                display.CreateAppFolder([moving, target]);
                 return;
             }
         }
 
-        if (!frame.Input.ConsumeClick(tile))
+        var slot = HitIndex(pointer);
+        if (slot < 0)
+        {
+            slot = FirstOpenSlot();
+        }
+
+        if (slot < 0)
         {
             return;
         }
 
-        if (reorder)
+        if (openFolder is { } folder)
         {
-            if (reorderHold is null)
+            display.MoveFolderChild(folder, moving, slot);
+            return;
+        }
+
+        display.PlaceAppAt(moving, screen, slot);
+        display.RemoveStudioWidget(moving);
+        display.RemoveStudioApp(moving);
+    }
+
+    private int FirstOpenSlot()
+    {
+        for (var index = 0; index < visible.Count; index++)
+        {
+            if (visible[index].Length == 0)
             {
-                reorderHold = id;
+                return index;
+            }
+        }
+
+        return visible.Count;
+    }
+
+    private void WatchEdge(in AppletFrame frame, Rect body)
+    {
+        var edge = frame.Units(28f);
+        var at = frame.Input.Pointer;
+        var side = 0;
+        if (at.X >= body.Max.X - edge)
+        {
+            side = 1;
+        }
+        else if (at.X <= body.Min.X + edge)
+        {
+            side = -1;
+        }
+
+        if (side == 0)
+        {
+            edgeAt = 0;
+            return;
+        }
+
+        if (edgeAt == 0)
+        {
+            edgeAt = Environment.TickCount64;
+        }
+
+        if (Environment.TickCount64 - edgeAt < 280)
+        {
+            return;
+        }
+
+        pageNudge = side;
+        edgeAt = Environment.TickCount64;
+    }
+
+    private void DrawContextMenu(in AppletFrame frame, Rect inner, Vector4 gold)
+    {
+        var labels = new List<string>();
+        if (menuFolder is not null)
+        {
+            labels.Add("Delete Folder");
+        }
+        else
+        {
+            labels.Add("Create Folder");
+            if (display.AppScreenCount < DisplayPreferences.AppScreenCap)
+            {
+                labels.Add("Create New Screen");
+            }
+
+            if (screen > 0)
+            {
+                labels.Add("Delete Screen");
+            }
+        }
+
+        var width = frame.Units(176f);
+        var rowH = frame.Units(34f);
+        var height = rowH * labels.Count + frame.Units(8f);
+        var left = Math.Clamp(menuAt.X, inner.Min.X, inner.Max.X - width);
+        var top = Math.Clamp(menuAt.Y, inner.Min.Y, inner.Max.Y - height);
+        var box = Rect.FromSize(new Vector2(left, top), new Vector2(width, height));
+        var radius = frame.Units(10f);
+        frame.Paint.Fill(box, frame.Theme.Palette.SurfaceRaised with { W = 0.98f }, radius);
+        frame.Paint.Stroke(box, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, radius);
+        for (var index = 0; index < labels.Count; index++)
+        {
+            var row = Rect.FromSize(box.Min + new Vector2(0f, frame.Units(4f) + index * rowH),
+                new Vector2(width, rowH)).Inset(new Edges(frame.Units(4f), 0f));
+            var danger = labels[index].StartsWith("Delete", StringComparison.Ordinal);
+            var hover = frame.Input.IsHovering(row);
+            if (hover)
+            {
+                var wash = danger ? frame.Theme.Palette.Negative with { W = 0.22f } : gold with { W = 0.20f };
+                frame.Paint.Fill(row, wash, frame.Units(8f));
+            }
+
+            var ink = danger
+                ? frame.Theme.Palette.Negative
+                : hover
+                    ? gold
+                    : frame.Theme.Palette.Ink;
+            frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f)), labels[index],
+                new TextStyle(FontRole.CaptionStrong, ink));
+            if (frame.Input.ConsumeClick(row))
+            {
+                RunMenu(labels[index]);
                 return;
             }
+        }
 
-            if (!string.Equals(reorderHold, id, StringComparison.Ordinal))
-            {
-                var delta = IndexOf(id) - IndexOf(reorderHold);
-                display.MoveApp(reorderHold, delta);
-            }
-
-            reorderHold = null;
+        frame.Input.ConsumeClick(box);
+        frame.Input.ConsumeClick(box, PointerButton.Secondary);
+        frame.Input.Claim(box);
+        if (box.Contains(frame.Input.Pointer))
+        {
             return;
         }
 
-        if (!selected.Add(id))
+        if (frame.Input.ConsumeClick(inner, PointerButton.Secondary))
         {
-            selected.Remove(id);
+            menuAt = frame.Input.Pointer;
+            var hit = HitId(menuAt);
+            menuFolder = hit is not null && display.TryFolder(hit, out _, out _) ? hit : null;
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(inner))
+        {
+            menuOpen = false;
+            menuFolder = null;
         }
     }
 
-    private void DrawAddTile(in AppletFrame frame, Rect tile)
+    private void RunMenu(string label)
     {
-        var gold = frame.Theme.Palette.WarmAccent;
-        StrokeDashed(frame.Paint, tile, gold with { W = 0.72f }, MathF.Max(1.2f, frame.Units(1.2f)));
-        frame.Text.DrawIn(tile.Inset(new Edges(0f, frame.Units(28f), 0f, 0f)).TopSlice(frame.Units(36f)), "+",
-            new TextStyle(FontRole.Display, gold, TextAlign.Center));
-        frame.Text.DrawIn(tile.BottomSlice(frame.Units(36f)), "Add App",
-            new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        if (frame.Input.ConsumeClick(tile))
+        menuOpen = false;
+        if (string.Equals(label, "Delete Folder", StringComparison.Ordinal) && menuFolder is { } folder)
         {
-            page = Page.Library;
-            selected.Clear();
-            reorder = false;
-            query = string.Empty;
-            scroll.Reset();
-        }
-    }
-
-    private void DrawLibraryRow(in AppletFrame frame, Rect row, string id, bool hush)
-    {
-        var gold = frame.Theme.Palette.WarmAccent;
-        frame.Paint.Fill(row, frame.Theme.Palette.SurfaceOverlay with { W = 0.5f }, frame.Units(12f));
-        var icon = frame.Units(36f);
-        var iconArea = Rect.FromSize(new Vector2(row.Min.X + frame.Units(10f), row.Center.Y - icon * 0.5f),
-            new Vector2(icon, icon));
-        AppMarks.DrawFace(frame, iconArea, id, false);
-        var spec = AppShelf.Find(id);
-        var copy = row.Inset(new Edges(frame.Units(54f), 0f, frame.Units(72f), 0f));
-        frame.Text.DrawIn(copy.TopSlice(copy.Height * 0.55f), spec?.Name ?? id,
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(copy.BottomSlice(copy.Height * 0.45f), spec?.Caption ?? string.Empty,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        var add = row.RightSlice(frame.Units(64f)).Inset(frame.Units(8f));
-        frame.Paint.Stroke(add, gold, frame.Theme.Metrics.Hairline, frame.Units(8f));
-        frame.Text.DrawIn(add, "Add", new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        DrawBadge(frame, iconArea, id, hush);
-        if (frame.Input.ConsumeClick(row) || frame.Input.ConsumeClick(add))
-        {
-            display.InstallApp(id);
-        }
-    }
-
-    private void DrawManageFooter(in AppletFrame frame, Rect bar, Vector4 gold)
-    {
-        frame.Paint.Fill(bar, frame.Theme.Palette.SurfaceRaised with { W = 0.72f }, frame.Units(10f));
-        var left = bar.LeftSlice(bar.Width * 0.5f);
-        var right = bar.RightSlice(bar.Width * 0.5f);
-        frame.Text.DrawIn(left, "Create Folder", new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        frame.Text.DrawIn(right, "Add to Quick Apps", new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        frame.Paint.Line(new Vector2(bar.Center.X, bar.Min.Y + frame.Units(8f)),
-            new Vector2(bar.Center.X, bar.Max.Y - frame.Units(8f)), gold with { W = 0.28f }, frame.Theme.Metrics.Hairline);
-        if (frame.Input.ConsumeClick(left) && selected.Count > 0)
-        {
-            display.CreateAppFolder(new List<string>(selected));
-            selected.Clear();
-        }
-
-        if (frame.Input.ConsumeClick(right) && selected.Count > 0)
-        {
-            foreach (var id in selected)
+            display.RemoveApp(folder);
+            if (string.Equals(openFolder, folder, StringComparison.Ordinal))
             {
-                display.TryAddQuickApp(id);
+                openFolder = null;
             }
 
-            selected.Clear();
+            menuFolder = null;
+            return;
         }
+
+        menuFolder = null;
+        if (string.Equals(label, "Create Folder", StringComparison.Ordinal))
+        {
+            display.CreateEmptyFolder(screen);
+            return;
+        }
+
+        if (string.Equals(label, "Create New Screen", StringComparison.Ordinal))
+        {
+            pageNudge = 2;
+            return;
+        }
+
+        if (string.Equals(label, "Delete Screen", StringComparison.Ordinal) && screen > 0)
+        {
+            pageNudge = 3;
+        }
+    }
+
+    private bool HitsIcon(Vector2 pointer)
+    {
+        var index = HitIndex(pointer);
+        return index >= 0 && index < visible.Count && visible[index].Length > 0;
+    }
+
+    private string? HitFolderTarget(Vector2 pointer)
+    {
+        string? found = null;
+        var best = float.MaxValue;
+        var count = Math.Min(cells.Count, visible.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var id = visible[index];
+            if (id.Length == 0 || string.Equals(id, dragId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var cell = cells[index];
+            if (!cell.Contains(pointer))
+            {
+                continue;
+            }
+
+            var distance = (cell.Center - pointer).LengthSquared();
+            if (distance >= best)
+            {
+                continue;
+            }
+
+            best = distance;
+            found = id;
+        }
+
+        return found;
+    }
+
+    private string? HitId(Vector2 pointer)
+    {
+        var index = HitIndex(pointer);
+        return index >= 0 && index < visible.Count ? visible[index] : null;
+    }
+
+    private int HitIndex(Vector2 pointer)
+    {
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (cells[index].Contains(pointer))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void RemoveHome(string id)
+    {
+        if (openFolder is { } folder && !display.TryFolder(id, out _, out _))
+        {
+            display.DropFromFolder(folder, id);
+            return;
+        }
+
+        display.RemoveApp(id);
+        if (string.Equals(openFolder, id, StringComparison.Ordinal))
+        {
+            openFolder = null;
+        }
+    }
+
+    private void StopEdit()
+    {
+        glass.Active = false;
+        pressId = null;
+        dragId = null;
+        skipOpen = false;
     }
 
     private void Open(IRouter router, string id)
@@ -603,6 +926,7 @@ public sealed class AppsDrawer
             openFolder = id;
             _ = children;
             scroll.Reset();
+            StopEdit();
             return;
         }
 
@@ -617,79 +941,40 @@ public sealed class AppsDrawer
             return;
         }
 
+        rememberReturn();
         router.Open(id);
     }
 
-    private void FillVisible(bool forLibrary)
+    private void FillHome()
     {
         visible.Clear();
-        IEnumerable<string> source;
-        if (openFolder is not null && !forLibrary && page == Page.Shelf)
+        if (openFolder is not null)
         {
             display.TryFolder(openFolder, out _, out var children);
-            source = children;
-        }
-        else if (forLibrary)
-        {
-            source = LibraryIds();
-        }
-        else
-        {
-            source = display.InstalledApps;
+            visible.AddRange(children);
+            return;
         }
 
+        var shelf = display.AppsOnScreen(screen);
+        for (var index = 0; index < shelf.Count; index++)
+        {
+            visible.Add(shelf[index]);
+        }
+    }
+
+    private void FillVisible()
+    {
+        visible.Clear();
         var needle = query.Trim();
-        foreach (var id in source)
+        foreach (var id in display.OwnedApps)
         {
-            if (display.TryFolder(id, out _, out var children) &&
-                chip is not AppChip.All and not AppChip.Favorites)
-            {
-                foreach (var child in children)
-                {
-                    if (Matches(child, needle) && !visible.Contains(child))
-                    {
-                        visible.Add(child);
-                    }
-                }
-
-                continue;
-            }
-
-            if (!Matches(id, needle))
+            if (id.StartsWith("folder:", StringComparison.Ordinal) || !Matches(id, needle) ||
+                visible.Contains(id))
             {
                 continue;
             }
 
             visible.Add(id);
-        }
-    }
-
-    private IEnumerable<string> LibraryIds()
-    {
-        var nested = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var packed in display.AppFolders)
-        {
-            var parts = packed.Split('\u001f');
-            if (parts.Length < 3 || parts[2].Length == 0)
-            {
-                continue;
-            }
-
-            foreach (var child in parts[2].Split(','))
-            {
-                nested.Add(child);
-            }
-        }
-
-        for (var index = 0; index < AppShelf.Catalog.Length; index++)
-        {
-            var id = AppShelf.Catalog[index].Id;
-            if (display.IsOnShelf(id) || nested.Contains(id))
-            {
-                continue;
-            }
-
-            yield return id;
         }
     }
 
@@ -777,6 +1062,17 @@ public sealed class AppsDrawer
             return;
         }
 
+        if (string.Equals(id, "pearlchat", StringComparison.Ordinal) && talk.UnreadTotal > 0)
+        {
+            var missed = talk.UnreadTotal;
+            var radius = frame.Units(8f);
+            var center = new Vector2(icon.Max.X - radius * 0.15f, icon.Min.Y + radius * 0.15f);
+            frame.Paint.FillCircle(center, radius, frame.Theme.Palette.Negative);
+            frame.Text.Draw(center, missed > 9 ? "9+" : missed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center, 1f, 0.64f));
+            return;
+        }
+
         for (var index = 0; index < applets.Count; index++)
         {
             if (!string.Equals(applets[index].Manifest.Id, id, StringComparison.Ordinal) ||
@@ -838,47 +1134,9 @@ public sealed class AppsDrawer
         paint.FillCircle(mid, 3.2f, gold);
     }
 
-    private static void DrawGrip(IPaintSurface paint, Rect area, Vector4 ink)
+    private static Vector2 EditSway(float time, int index, float amplitude)
     {
-        for (var row = 0; row < 2; row++)
-        {
-            for (var col = 0; col < 3; col++)
-            {
-                var point = new Vector2(area.Min.X + (col + 0.5f) * (area.Width / 3f),
-                    area.Min.Y + (row + 0.5f) * (area.Height / 2f));
-                paint.FillCircle(point, 1.4f, ink);
-            }
-        }
-    }
-
-    private static void StrokeDashed(IPaintSurface paint, Rect box, Vector4 color, float thickness)
-    {
-        var dash = 7f;
-        var gap = 5f;
-        Trace(box.Min, new Vector2(box.Max.X, box.Min.Y));
-        Trace(new Vector2(box.Max.X, box.Min.Y), box.Max);
-        Trace(box.Max, new Vector2(box.Min.X, box.Max.Y));
-        Trace(new Vector2(box.Min.X, box.Max.Y), box.Min);
-        return;
-
-        void Trace(Vector2 from, Vector2 to)
-        {
-            var delta = to - from;
-            var length = delta.Length();
-            if (length < 1f)
-            {
-                return;
-            }
-
-            var dir = delta / length;
-            var walked = 0f;
-            while (walked < length)
-            {
-                var start = from + dir * walked;
-                var end = from + dir * MathF.Min(walked + dash, length);
-                paint.Line(start, end, color, thickness);
-                walked += dash + gap;
-            }
-        }
+        var phase = time * 5.1f + index * 0.73f;
+        return new Vector2(MathF.Sin(phase) * amplitude, MathF.Cos(phase * 0.82f) * amplitude * 0.42f);
     }
 }

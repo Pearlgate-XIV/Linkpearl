@@ -42,7 +42,15 @@ internal static class LameNative
 
                 if (NativeLibrary.TryLoad(path, out handle) && handle != IntPtr.Zero)
                 {
-                    NativeLibrary.SetDllImportResolver(typeof(LameMP3FileWriter).Assembly, Resolve);
+                    try
+                    {
+                        NativeLibrary.SetDllImportResolver(typeof(LameMP3FileWriter).Assembly, Resolve);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Dalamud reload can keep NAudio.Lame loaded; a resolver may already be set.
+                    }
+
                     LameDLL.LoadNativeDLL(dir);
                     StageBesideGame(path, file);
                     Notice = string.Empty;
