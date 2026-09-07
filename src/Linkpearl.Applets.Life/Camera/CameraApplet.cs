@@ -62,6 +62,7 @@ public sealed partial class CameraApplet : IApplet
     private string menuShotId = string.Empty;
     private Vector2 menuAt;
     private bool uploadWait;
+    private bool gposeWait;
 
     public CameraApplet(IClock clock, IGameSession game, HostPaths paths, ITextureSource textures, IFilePicker files,
         DisplayPreferences display)
@@ -169,6 +170,7 @@ public sealed partial class CameraApplet : IApplet
     public void Compose(in AppletFrame frame)
     {
         FinishUpload();
+        FinishGposeLink();
         if (mode == Mode.Crop)
         {
             DrawCrop(frame);

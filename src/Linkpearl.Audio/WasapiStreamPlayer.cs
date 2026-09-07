@@ -110,7 +110,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
 
             speakerId = next;
             replay = now;
-            playing = phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering or HandsetAudioPhase.Paused
+            playing = phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering
                 && replay.StreamUrl.Length > 0;
         }
 
@@ -191,18 +191,27 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
 
     public void Pause()
     {
+        HandsetTune keep;
         lock (gate)
         {
-            output?.Pause();
-            if (phase == HandsetAudioPhase.Playing)
+            keep = now;
+            if (phase is not (HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering))
             {
-                phase = HandsetAudioPhase.Paused;
+                return;
             }
+
+            StopUnlocked();
+            now = keep;
+            phase = HandsetAudioPhase.Paused;
+            notice = keep.Live || keep.StreamUrl.Length > 0
+                ? "Paused. Play joins the live stream again."
+                : string.Empty;
         }
     }
 
     public void Resume()
     {
+        HandsetTune tune;
         lock (gate)
         {
             if (phase != HandsetAudioPhase.Paused)
@@ -210,9 +219,16 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
                 return;
             }
 
-            output?.Play();
-            phase = HandsetAudioPhase.Playing;
+            tune = now;
         }
+
+        if (tune.StreamUrl.Length > 0)
+        {
+            Play(tune);
+            return;
+        }
+
+        PlayLocal(tune);
     }
 
     public void Stop()
@@ -228,7 +244,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
 
     public void Toggle()
     {
-        if (Phase == HandsetAudioPhase.Playing)
+        if (Phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering)
         {
             Pause();
             return;

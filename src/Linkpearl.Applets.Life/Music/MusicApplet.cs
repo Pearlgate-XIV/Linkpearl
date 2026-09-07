@@ -50,6 +50,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private long lastCaptureTry;
     private long lastPushTry;
     private long lastCommunityRefresh;
+    private long lastPortScan;
+    private string lastSoundTap = string.Empty;
     private bool photoDrag;
     private string playerWaveId = string.Empty;
     private float playerWaveScroll;
@@ -83,6 +85,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         this.ports = ports;
         this.desk = desk;
         state = MusicState.Load(paths, game.Character.Name);
+        FillFromCharacter();
         profiles.Add(this);
         if (state.UsesHandsetIdentity || state.UsesHandsetProfile)
         {
@@ -111,6 +114,25 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
         var name = HandsetLook.Name(display, linked);
         return name.Length > 0 ? name : game.Character.Name;
+    }
+
+    private void FillFromCharacter()
+    {
+        var name = game.Character.Name.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        if (state.DisplayName.Length == 0)
+        {
+            state.DisplayName = name;
+        }
+
+        if (state.Handle.Length <= 1)
+        {
+            state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+        }
     }
 
     private string SharedName()
@@ -455,14 +477,14 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         try
         {
             var head = stack.Take(frame.Units(40f));
-            var mark = frame.Units(28f);
-            var tools = head.RightSlice(mark * 2f + frame.Units(8f));
-            var face = CoverFit.InscribedSquare(tools.RightSlice(mark));
-            var gear = CoverFit.InscribedSquare(tools.LeftSlice(mark));
+            var faceMark = frame.Units(32f);
+            var gearMark = frame.Units(24f);
+            var tools = head.RightSlice(faceMark + gearMark + frame.Units(8f));
+            var face = CoverFit.InscribedSquare(tools.RightSlice(faceMark));
+            var gear = CoverFit.InscribedSquare(tools.LeftSlice(gearMark));
             var copy = head.Inset(new Edges(0f, 0f, tools.Width + frame.Units(8f), 0f));
             MusicChrome.Title(frame, copy.TopSlice(frame.Units(22f)), "WELCOME BACK");
-            var who = MarkedName();
-            frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), who,
+            frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), SharedName(),
                 new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink));
             DrawProfileFace(frame, face, SharedName());
             MusicChrome.HomeGear(frame, gear);
@@ -655,7 +677,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
                 station.Name.Length > 0 ? station.Name : "Station",
                 new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink));
             frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(12f)),
-                station.Genre.Length > 0 ? station.Genre : station.Host,
+                ShownStationGenre(station).Length > 0 ? ShownStationGenre(station) : station.Host,
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             if (TapStationLike(frame, heart, station.Id))
             {
@@ -733,6 +755,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
             new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
         frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)),
             (station.Host.Length > 0 ? station.Host : "DJ") +
+            (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty) +
             (station.Listeners > 0 ? " · " + station.Listeners + " listening" : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         var play = card.BottomSlice(frame.Units(48f)).RightSlice(frame.Units(48f)).Inset(frame.Units(4f));
@@ -1550,7 +1573,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
             new TextStyle(FontRole.Title, MusicChrome.Ink));
         frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(16f)),
             (station.Host.Length > 0 ? station.Host : "DJ") +
-            (station.Genre.Length > 0 ? " · " + station.Genre : string.Empty) +
+            (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty) +
             (station.Listeners > 0 ? " · " + station.Listeners + " listening" : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         var profile = body.TopSlice(frame.Units(16f)).RightSlice(frame.Units(72f));
@@ -1732,6 +1755,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(16f)),
             now.Title.Length > 0 ? now.Title : "Radio", new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink));
         var line = audio.Phase == HandsetAudioPhase.Failed ? audio.Notice :
+            audio.Phase == HandsetAudioPhase.Paused ? "Paused" :
             audio.Phase == HandsetAudioPhase.Buffering ? "Connecting…" : now.Detail;
         frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(14f)), line,
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
@@ -1972,7 +1996,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         frame.Text.DrawEllipsized(inset.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(16f))), station.Name,
             new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
         frame.Text.DrawIn(inset.BottomSlice(frame.Units(14f)),
-            station.Host + (station.Listeners > 0 ? " · " + station.Listeners : string.Empty),
+            (ShownStationGenre(station).Length > 0 ? ShownStationGenre(station) : station.Host) +
+            (station.Listeners > 0 ? " · " + station.Listeners : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         if (frame.Input.ConsumeClick(area))
         {
@@ -1996,7 +2021,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
             new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
         frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(16f)),
             (station.Host.Length > 0 ? station.Host : "DJ") +
-            (station.Genre.Length > 0 ? " · " + station.Genre : string.Empty) +
+            (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty) +
             (station.Bio.Length > 0 ? " · " + station.Bio : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         if (station.Live)
@@ -2048,8 +2073,20 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         MusicChrome.Primary(frame, go, "Continue to Setup");
         if (frame.Input.ConsumeClick(go) && (state.Listener || state.Dj || state.Venue))
         {
-            state.Page = state.Listener ? MusicPage.SetupListener :
-                state.Dj ? MusicPage.SetupDj : MusicPage.SetupVenue;
+            if (state.Listener)
+            {
+                state.Page = MusicPage.SetupListener;
+            }
+            else if (state.Dj)
+            {
+                state.Page = MusicPage.SetupDj;
+            }
+            else
+            {
+                state.Onboarded = true;
+                state.Page = MusicPage.Tabs;
+                state.Save(paths);
+            }
         }
         }
         finally
@@ -2158,15 +2195,16 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     }
 
     private void TuneCommunity(CommunityStation station) =>
-        audio.Play(new HandsetTune(station.Id, station.Name, station.Host, station.ListenUrl, station.Live,
-            station.ArtPath));
+        audio.Play(new HandsetTune(station.Id, station.Name, CommunityTuneDetail(station), station.ListenUrl,
+            station.Live, station.ArtPath));
 
     private void OpenStation(CommunityStation station)
     {
         var url = station.ListenUrl.Length > 0 ? station.ListenUrl : OwnStation(station) ? community.OwnedListenUrl : string.Empty;
         if (url.Length > 0)
         {
-            audio.Play(new HandsetTune(station.Id, station.Name, station.Host, url, station.Live, station.ArtPath));
+            audio.Play(new HandsetTune(station.Id, station.Name, CommunityTuneDetail(station), url, station.Live,
+                station.ArtPath));
             state.Open(MusicPage.Player);
             return;
         }
@@ -2188,16 +2226,31 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
 
     private void TogglePlayback()
     {
-        var now = audio.Now;
-        var local = now.Id.Length > 0 && now.StreamUrl.Length == 0;
-        if (local && audio.Phase == HandsetAudioPhase.Playing)
+        if (audio.Phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering)
         {
             audio.Pause();
-            sense.StopMonitor();
+            if (audio.Now.StreamUrl.Length == 0)
+            {
+                sense.StopMonitor();
+            }
+
             return;
         }
 
-        if (local || OwnStation(now.Id) || now.Id.Length == 0)
+        if (audio.Phase == HandsetAudioPhase.Paused)
+        {
+            if (audio.Now.StreamUrl.Length > 0)
+            {
+                audio.Resume();
+                return;
+            }
+
+            HearOwn();
+            return;
+        }
+
+        var now = audio.Now;
+        if (OwnStation(now.Id) || now.Id.Length == 0)
         {
             HearOwn();
             return;
@@ -2251,7 +2304,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
             state.StationId.Length > 0 ? state.StationId : community.OwnedId,
             state.StationName,
             state.DjName.Length > 0 ? state.DjName : state.DisplayName,
-            state.Genre,
+            state.StationGenreLine,
             community.Broadcasting,
             community.OwnedListenUrl,
             0,
@@ -2262,33 +2315,29 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private void SyncBroadcastTap()
     {
         community.UseIcecast(state.IcecastHost, "source", state.IcecastPassword);
-        var preview = state.Page is MusicPage.DjDash or MusicPage.SetupDj;
-        if (!community.Broadcasting && !preview)
-        {
-            push.Stop();
-            sense.Stop();
-            sense.StopMonitor();
-            lastCaptureTry = 0;
-            lastPushTry = 0;
-            return;
-        }
+        audio.UseSpeaker(display.SpeakerId);
 
         if (!community.Broadcasting)
         {
             push.Stop();
         }
 
-        var tapId = state.CaptureId.Length > 0
-            ? state.CaptureId
-            : state.CaptureApp == "mic"
-                ? IBroadcastSense.DefaultMicId
-                : IBroadcastSense.DefaultMixId;
-        sense.Select(tapId);
-        if (!string.Equals(state.CaptureId, sense.SelectedId, StringComparison.Ordinal))
+        var tapId = state.CaptureId.Length > 0 ? state.CaptureId : IBroadcastSense.DefaultMixId;
+        if (tapId == IBroadcastSense.DefaultMicId)
         {
-            state.CaptureId = sense.SelectedId;
+            tapId = lastSoundTap.Length > 0 ? lastSoundTap : IBroadcastSense.DefaultMixId;
+        }
+
+        state.CaptureApp = "sound";
+
+        sense.Select(tapId);
+        sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+        if (state.CaptureName.Length == 0 && sense.SelectedName.Length > 0)
+        {
             state.CaptureName = sense.SelectedName;
         }
+
+        RouteListenThrough();
 
         var now = Environment.TickCount64;
         if (!sense.Listening && now - lastCaptureTry > 1500)
@@ -2304,7 +2353,56 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
             push.Start(
                 ingest,
                 state.StationName.Length > 0 ? state.StationName : "Linkpearl",
-                state.Genre);
+                state.StationGenreLine);
+        }
+    }
+
+    private void RouteListenThrough()
+    {
+        sense.MicGain = 1f;
+        sense.MonitorGain = 1f;
+        sense.StreamGain = 1f;
+        audio.UseSpeaker(display.SpeakerId);
+        sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+
+        var url = community.OwnedListenUrl;
+        var now = audio.Now;
+        var holdingOther = now.StreamUrl.Length > 0 && !OwnStation(now.Id);
+        if (community.Broadcasting && url.Length > 0 && !holdingOther)
+        {
+            if (sense.Monitoring)
+            {
+                sense.StopMonitor();
+            }
+
+            if (audio.Phase == HandsetAudioPhase.Paused)
+            {
+                return;
+            }
+
+            var same = string.Equals(now.StreamUrl, url, StringComparison.Ordinal);
+            if (!same || audio.Phase is HandsetAudioPhase.Idle or HandsetAudioPhase.Failed)
+            {
+                audio.Play(new HandsetTune(
+                    community.OwnedId.Length > 0 ? community.OwnedId : state.StationId,
+                    state.StationName.Length > 0 ? state.StationName : "Your station",
+                    CommunityTuneDetail(OwnedStation()),
+                    url,
+                    true,
+                    state.StationArtPath));
+            }
+
+            return;
+        }
+
+        if (!sense.Listening)
+        {
+            return;
+        }
+
+        if (!sense.Monitoring)
+        {
+            sense.StartMonitor();
         }
     }
 
@@ -2315,23 +2413,61 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         (string.Equals(id, community.OwnedId, StringComparison.OrdinalIgnoreCase) ||
          string.Equals(id, state.StationId, StringComparison.OrdinalIgnoreCase));
 
+    private string ShownStationGenre(CommunityStation station)
+    {
+        if (OwnStation(station) && state.StationTags.Count > 0)
+        {
+            return state.StationGenreLine;
+        }
+
+        return MusicState.FormatGenreLine(station.Genre);
+    }
+
+    private string CommunityTuneDetail(CommunityStation station)
+    {
+        var host = station.Host;
+        var tags = ShownStationGenre(station);
+        if (host.Length > 0 && tags.Length > 0)
+        {
+            return host + " · " + tags;
+        }
+
+        return tags.Length > 0 ? tags : host;
+    }
+
     private void TuneOwn(CommunityStation station)
     {
         community.UseIcecast(state.IcecastHost, "source", state.IcecastPassword);
+        audio.UseSpeaker(display.SpeakerId);
+        sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+        if (!sense.Listening)
+        {
+            sense.Start();
+        }
+
         var url = community.OwnedListenUrl.Length > 0 ? community.OwnedListenUrl : station.ListenUrl;
         if (url.Length > 0)
         {
+            if (sense.Monitoring)
+            {
+                sense.StopMonitor();
+            }
+
             audio.Play(new HandsetTune(station.Id, station.Name.Length > 0 ? station.Name : "Your station",
-                station.Mount.Length > 0 ? "/" + station.Mount : station.Host, url, true, station.ArtPath));
-            state.Open(MusicPage.Player);
-            return;
+                CommunityTuneDetail(station), url, true, station.ArtPath));
+        }
+        else
+        {
+            if (!sense.Monitoring)
+            {
+                sense.StartMonitor();
+            }
+
+            audio.PlayLocal(new HandsetTune(station.Id, station.Name.Length > 0 ? station.Name : "Your station",
+                "Hearing your capture on this phone while Icecast gets a listen URL.",
+                string.Empty, true, station.ArtPath));
         }
 
-        audio.PlayLocal(new HandsetTune(station.Id, station.Name.Length > 0 ? station.Name : "Your station",
-            community.Notice.Length > 0
-                ? community.Notice
-                : "Pearlgate never returned a listen URL. The Icecast mount is created on the server, not on this phone.",
-            string.Empty, true, station.ArtPath));
         state.Open(MusicPage.Player);
     }
 
@@ -2339,9 +2475,11 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     {
         sense.Select(id);
         lastCaptureTry = 0;
-        state.CaptureId = sense.SelectedId;
+        state.CaptureId = id;
         state.CaptureName = sense.SelectedName;
-        state.CaptureApp = MusicState.NormalizeCapture(app);
+        state.CaptureApp = "sound";
+        lastSoundTap = id;
+
         sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
         sense.Start();
         state.Save(paths);
@@ -2409,7 +2547,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         community.EnsureStation(
             state.StationName,
             state.DjName,
-            state.Genre,
+            state.StationGenreLine,
             state.StationBio,
             state.StationArtPath,
             state.StationMount);

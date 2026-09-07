@@ -46,6 +46,8 @@ internal sealed class PhotoLibrary
 
     public IReadOnlyList<PhotoFolder> Folders => folders;
 
+    public string GposeFolder { get; private set; } = string.Empty;
+
     public static PhotoLibrary Load(HostPaths paths)
     {
         var root = paths.State("photos");
@@ -78,6 +80,8 @@ internal sealed class PhotoLibrary
                     library.folders.Add(new PhotoFolder { Id = row.Id, Title = row.Title.Trim() });
                 }
             }
+
+            library.GposeFolder = (dto.GposeFolder ?? string.Empty).Trim();
 
             if (dto.Photos is null)
             {
@@ -507,11 +511,37 @@ internal sealed class PhotoLibrary
                 books[index] = new FolderDto { Id = folders[index].Id, Title = folders[index].Title };
             }
 
-            File.WriteAllText(catalog, JsonSerializer.Serialize(new PhotoSave { Photos = rows, Folders = books }));
+            File.WriteAllText(catalog, JsonSerializer.Serialize(new PhotoSave
+            {
+                Photos = rows,
+                Folders = books,
+                GposeFolder = GposeFolder,
+            }));
         }
         catch (IOException)
         {
         }
+    }
+
+    public void SetGposeFolder(string path)
+    {
+        GposeFolder = path.Trim();
+        Save();
+    }
+
+    public bool GposeFolderReady() =>
+        GposeFolder.Length > 0 && Directory.Exists(GposeFolder);
+
+    public static string SuggestedGposeFolder()
+    {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (documents.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var shots = Path.Combine(documents, "My Games", "FINAL FANTASY XIV - A Realm Reborn", "screenshots");
+        return Directory.Exists(shots) ? shots : string.Empty;
     }
 
     public static bool IsPicture(string path) => ImageKinds.Contains(Path.GetExtension(path));
@@ -534,6 +564,8 @@ internal sealed class PhotoLibrary
         public PhotoDto[]? Photos { get; set; }
 
         public FolderDto[]? Folders { get; set; }
+
+        public string? GposeFolder { get; set; }
     }
 
     private sealed class PhotoDto

@@ -1,4 +1,7 @@
 using Linkpearl.Geometry;
+using Linkpearl.Modules;
+using Linkpearl.Painting;
+using Linkpearl.Platform;
 
 namespace Linkpearl.Input;
 
@@ -24,7 +27,13 @@ public interface ITextField
 
     void Focus(string id);
 
+    string Insert(string id, string value, string text);
+
     void Release();
 
     string ClipboardText();
+
+    void Dress(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths)
+    {
+    }
 }

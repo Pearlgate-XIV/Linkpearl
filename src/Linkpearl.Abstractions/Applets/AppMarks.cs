@@ -176,10 +176,10 @@ public static class AppMarks
         var area = Rect.FromSize(icon.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
         Vector4 light;
         Vector4 dark;
-        if (appletId == "music")
+        if (appletId is "music" or "afterdark")
         {
-            var navy = TileBrand(appletId);
-            light = hover ? Lift(navy) : navy;
+            var brand = TileBrand(appletId);
+            light = hover ? Lift(brand) : brand;
             dark = light;
         }
         else
@@ -212,7 +212,10 @@ public static class AppMarks
             return false;
         }
 
-        var mark = tile.Inset(MathF.Min(tile.Width, tile.Height) * 0.20f);
+        var inset = appletId is "afterdark" or "music"
+            ? MathF.Min(tile.Width, tile.Height) * 0.08f
+            : MathF.Min(tile.Width, tile.Height) * 0.20f;
+        var mark = tile.Inset(inset);
         var dest = CoverFit.Contained(texture.Size, CoverFit.InscribedSquare(mark));
         paint.Image(texture, dest, Vector4.One);
         return true;
@@ -242,6 +245,8 @@ public static class AppMarks
         "party" => "party.png",
         "events" => "events.png",
         "feedback" => "feedback.png",
+        "afterdark" => "vybe.png",
+        "music" => "music.png",
         _ => null,
     };
 
@@ -296,7 +301,7 @@ public static class AppMarks
                 DrawNote(paint, center, size, White, stroke);
                 break;
             case "afterdark":
-                DrawOwlPin(paint, center, size, White, White, stroke);
+                DrawVybeMark(paint, center, size * 1.2f, White);
                 break;
             case "weather":
                 DrawWeather(paint, center, size, White, White, stroke);
@@ -396,15 +401,18 @@ public static class AppMarks
         paint.StrokeCircle(points[^1], s * 0.22f, ink, stroke);
     }
 
-    private static void DrawOwlPin(IPaintSurface paint, Vector2 c, float s, Vector4 pin, Vector4 face, float stroke)
+    private static void DrawVybeMark(IPaintSurface paint, Vector2 c, float s, Vector4 ink)
     {
-        paint.StrokeCircle(c + new Vector2(0f, -s * 0.18f), s * 0.52f, pin, stroke);
-        paint.Line(c + new Vector2(-s * 0.42f, 0.08f * s), c + new Vector2(0f, s * 0.82f), pin, stroke);
-        paint.Line(c + new Vector2(s * 0.42f, 0.08f * s), c + new Vector2(0f, s * 0.82f), pin, stroke);
-        paint.StrokeCircle(c + new Vector2(-s * 0.16f, -s * 0.22f), s * 0.12f, face, stroke);
-        paint.StrokeCircle(c + new Vector2(s * 0.16f, -s * 0.22f), s * 0.12f, face, stroke);
-        paint.FillCircle(c + new Vector2(-s * 0.16f, -s * 0.22f), s * 0.05f, pin);
-        paint.FillCircle(c + new Vector2(s * 0.16f, -s * 0.22f), s * 0.05f, pin);
+        var thickness = s * 0.46f;
+        var cap = thickness * 0.5f;
+        var left = c + new Vector2(-s * 0.78f, -s * 0.22f);
+        var right = c + new Vector2(s * 0.78f, -s * 0.22f);
+        var tip = c + new Vector2(0f, s * 0.68f);
+        paint.Line(left, tip, ink, thickness);
+        paint.Line(right, tip, ink, thickness);
+        paint.FillCircle(left, cap, ink);
+        paint.FillCircle(right, cap, ink);
+        paint.FillCircle(tip, cap, ink);
     }
 
     private static void DrawPeople(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)

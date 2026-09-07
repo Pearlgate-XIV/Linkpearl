@@ -4,6 +4,7 @@ using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
+using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Phone;
@@ -30,19 +31,21 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private readonly MessagesSurface messages;
     private readonly LiveChatSurface feed;
     private readonly PhonePad phone = new();
+    private readonly FriendBook friendsBook;
     private int selectedSection = SocialPane.Messages;
     private string peopleQuery = string.Empty;
     private float peopleScroll;
     private FriendMenu? menu;
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
-        ITalkPopouts popouts, IChatBridge chat)
+        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files)
     {
         this.pearl = pearl;
         this.talk = talk;
         this.chat = chat;
-        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts);
-        feed = new LiveChatSurface(talk, display);
+        friendsBook = new FriendBook(paths);
+        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files);
+        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople);
     }
 
     public DestinationTab Tab => DestinationTab.Social;
@@ -82,13 +85,18 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public void OpenProfile(string peerId) => messages.OpenProfile(peerId);
 
-    public bool CanGoBack => menu is not null || messages.ProfileOpen || messages.ThreadOpen;
+    public bool CanGoBack => menu is not null || feed.HasMenu || messages.ProfileOpen || messages.ThreadOpen;
 
     public bool Back()
     {
         if (menu is not null)
         {
             menu = null;
+            return true;
+        }
+
+        if (feed.CloseMenu())
+        {
             return true;
         }
 
@@ -226,6 +234,8 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         {
             DrawFindFriends(frame, ref stack, snapshot);
         }
+
+        DrawOnlineFirstToggle(frame, stack.Take(frame.Units(36f)));
 
         var body = stack.TakeRemaining();
         if (body.Height <= 0f)
@@ -382,10 +392,47 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return frame.Input.ConsumeClick(area);
     }
 
+    private void DrawOnlineFirstToggle(in AppletFrame frame, Rect row)
+    {
+        var toggle = row.RightSlice(frame.Units(58f));
+        frame.Text.DrawEllipsized(row.Inset(new Edges(0f, 0f, toggle.Width + frame.Units(8f), 0f)),
+            "Move online to top",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
+        DrawPeopleSwitch(frame, toggle, friendsBook.OnlineFirst);
+        if (frame.Input.ConsumeClick(row))
+        {
+            friendsBook.SetOnlineFirst(!friendsBook.OnlineFirst);
+        }
+    }
+
+    private static void DrawPeopleSwitch(in AppletFrame frame, Rect area, bool on)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        var height = MathF.Min(area.Height, frame.Units(22f));
+        var width = MathF.Min(area.Width, frame.Units(52f));
+        var track = Rect.FromSize(new Vector2(area.Max.X - width, area.Center.Y - height * 0.5f),
+            new Vector2(width, height));
+        var radius = height * 0.5f;
+        if (on)
+        {
+            frame.Paint.Fill(track, gold with { W = 0.92f }, radius);
+        }
+        else
+        {
+            frame.Paint.Fill(track, frame.Theme.Palette.SurfaceSunken with { W = 0.82f }, radius);
+            frame.Paint.Stroke(track, gold with { W = 0.28f }, frame.Theme.Metrics.Hairline, radius);
+        }
+
+        var knob = height * 0.38f;
+        var knobX = on ? track.Max.X - knob - frame.Units(4f) : track.Min.X + knob + frame.Units(4f);
+        frame.Paint.FillCircle(new Vector2(knobX, track.Center.Y), knob,
+            on ? new Vector4(0.96f, 0.90f, 0.78f, 1f) : frame.Theme.Palette.InkMuted);
+    }
+
     private int DrawEorzeaFriends(in AppletFrame frame, ref Stack stack, IReadOnlyList<GameFriend> friends,
         string query)
     {
-        var shown = 0;
+        var matched = new List<GameFriend>(friends.Count);
         for (var index = 0; index < friends.Count; index++)
         {
             var friend = friends[index];
@@ -396,21 +443,121 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
                 continue;
             }
 
-            if (shown == 0)
-            {
-                frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Friends",
-                    new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
-            }
-
-            var row = stack.Take(frame.Units(56f));
-            CardChrome.DrawGold(frame, row);
-            DrawGameFriend(frame, row.Inset(frame.Units(12f)), friend);
-            HandleFriendRow(frame, row, friend.Name, friend.World, () =>
-                OpenTellFromPeople(friend.Name, friend.World));
-            shown++;
+            matched.Add(friend);
         }
 
+        if (matched.Count == 0)
+        {
+            return 0;
+        }
+
+        var starred = new List<GameFriend>();
+        var rest = new List<GameFriend>();
+        for (var index = 0; index < matched.Count; index++)
+        {
+            var friend = matched[index];
+            if (friendsBook.IsStarred(friend))
+            {
+                starred.Add(friend);
+            }
+            else
+            {
+                rest.Add(friend);
+            }
+        }
+
+        starred.Sort(CompareName);
+        var shown = DrawFriendGroup(frame, ref stack, "Favorites", starred);
+        if (!friendsBook.OnlineFirst)
+        {
+            rest.Sort(CompareName);
+            for (var index = 0; index < rest.Count; index++)
+            {
+                DrawFriendCard(frame, ref stack, rest[index]);
+                shown++;
+            }
+
+            return shown;
+        }
+
+        var online = new List<GameFriend>();
+        var offline = new List<GameFriend>();
+        for (var index = 0; index < rest.Count; index++)
+        {
+            if (rest[index].Online)
+            {
+                online.Add(rest[index]);
+            }
+            else
+            {
+                offline.Add(rest[index]);
+            }
+        }
+
+        online.Sort(CompareName);
+        offline.Sort(CompareName);
+        shown += DrawFriendGroup(frame, ref stack, "Online", online);
+        shown += DrawFriendGroup(frame, ref stack, "Offline", offline);
         return shown;
+    }
+
+    private static int CompareName(GameFriend left, GameFriend right)
+    {
+        var name = string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+        return name != 0 ? name : string.Compare(left.World, right.World, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private int DrawFriendGroup(in AppletFrame frame, ref Stack stack, string title, List<GameFriend> group)
+    {
+        if (group.Count == 0)
+        {
+            return 0;
+        }
+
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), title,
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        for (var index = 0; index < group.Count; index++)
+        {
+            DrawFriendCard(frame, ref stack, group[index]);
+        }
+
+        return group.Count;
+    }
+
+    private void DrawFriendCard(in AppletFrame frame, ref Stack stack, GameFriend friend)
+    {
+        var row = stack.Take(frame.Units(56f));
+        CardChrome.DrawGold(frame, row);
+        var star = row.RightSlice(frame.Units(40f)).Inset(new Edges(0f, frame.Units(10f), frame.Units(8f),
+            frame.Units(10f)));
+        var copy = row.Inset(new Edges(frame.Units(12f), frame.Units(8f), star.Width + frame.Units(8f),
+            frame.Units(8f)));
+        DrawGameFriend(frame, copy, friend);
+        DrawFriendStar(frame, star, friendsBook.IsStarred(friend));
+        if (frame.Input.ConsumeClick(star))
+        {
+            friendsBook.ToggleStar(friend);
+            return;
+        }
+
+        HandleFriendRow(frame, row, friend.Name, friend.World, () =>
+            OpenTellFromPeople(friend.Name, friend.World));
+    }
+
+    private static void DrawFriendStar(in AppletFrame frame, Rect area, bool on)
+    {
+        var gold = new Vector4(1f, 0.84f, 0.18f, 1f);
+        var ink = on ? gold : frame.Theme.Palette.InkMuted;
+        var texture = frame.Textures.FromFile(AppIconCatalog.Glyph(frame.Paths, "music-save.png"));
+        if (texture is { IsReady: true })
+        {
+            var side = MathF.Min(area.Width, area.Height);
+            var dest = Rect.FromSize(area.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
+            frame.Paint.Image(texture, dest, ink);
+            return;
+        }
+
+        frame.Text.DrawIn(area, "★", new TextStyle(FontRole.Title, ink, TextAlign.Center));
     }
 
     private int DrawTalkedPeers(in AppletFrame frame, ref Stack stack, IReadOnlyList<TalkPeer> peers,

@@ -1,6 +1,6 @@
 namespace Linkpearl.Audio;
 
-public readonly record struct AudioPort(string Id, string Label);
+public readonly record struct AudioPort(string Id, string Label, string Note = "");
 
 public interface IAudioPorts
 {

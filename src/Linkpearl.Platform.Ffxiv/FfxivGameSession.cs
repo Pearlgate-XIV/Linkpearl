@@ -89,6 +89,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     public string MapPlace => ReadMapPlace();
 
+    public Vector2 MapCoords => ReadMapCoords();
+
     public string WeatherName => weatherName;
 
     public uint Gil => ReadGil();
@@ -517,20 +519,28 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     private string ReadMapPlace()
     {
+        var map = ReadMapCoords();
+        return map == Vector2.Zero
+            ? string.Empty
+            : string.Create(CultureInfo.InvariantCulture, $"X: {map.X:0.0}  Y: {map.Y:0.0}");
+    }
+
+    private Vector2 ReadMapCoords()
+    {
         var player = objectTable.LocalPlayer;
         if (player is null || !clientState.IsLoggedIn)
         {
-            return string.Empty;
+            return Vector2.Zero;
         }
 
         try
         {
             var map = player.GetMapCoordinates(true);
-            return string.Create(CultureInfo.InvariantCulture, $"X: {map.X:0.0}  Y: {map.Y:0.0}");
+            return new Vector2(map.X, map.Y);
         }
         catch
         {
-            return string.Empty;
+            return Vector2.Zero;
         }
     }
 
