@@ -373,6 +373,7 @@ public sealed class HandsetWindow : Window
             IInputProbe frameInput = overChrome ? SilentInput.Instance : input;
             var frame = new AppletFrame(screen, paint, text, frameInput, theme, router, textField, textures, paths,
                 scale, deltaSeconds);
+            textField.Dress(paint, text, textures, paths);
             if (asleep)
             {
                 var dip = ImGuiHelpers.GlobalScale;

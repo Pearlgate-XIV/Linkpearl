@@ -19,7 +19,7 @@ public static class ModuleDiscovery
         new NotesModule(),
         new CalendarModule(),
         new MusicModule(),
-        new AfterDarkModule(),
+        new VybeModule(),
         new CalculatorModule(),
         new TimerModule(),
         new StopwatchModule(),

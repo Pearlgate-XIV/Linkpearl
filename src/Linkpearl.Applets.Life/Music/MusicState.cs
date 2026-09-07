@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Linkpearl.Audio;
@@ -33,6 +34,7 @@ internal enum MusicPage : byte
     PickPlaylist = 14,
     PlacePhoto = 15,
     Settings = 16,
+    PickPhoto = 17,
 }
 
 internal enum MusicPhotoKind : byte
@@ -69,6 +71,8 @@ internal sealed class MusicState
     public string StationName { get; set; } = string.Empty;
 
     public string StationId { get; set; } = string.Empty;
+
+    public const int StationBioCap = 1000;
 
     public string StationBio { get; set; } = string.Empty;
 
@@ -108,6 +112,12 @@ internal sealed class MusicState
 
     public string CaptureApp { get; set; } = "sound";
 
+    public float CaptureGain { get; set; } = 0.4f;
+
+    public float MonitorGain { get; set; } = 0.75f;
+
+    public float StreamGain { get; set; } = 0.5f;
+
     public string Bio { get; set; } = string.Empty;
 
     public string VenueName { get; set; } = string.Empty;
@@ -117,6 +127,10 @@ internal sealed class MusicState
     public string Search { get; set; } = string.Empty;
 
     public List<string> Interests { get; } = new();
+
+    public List<string> StationTags { get; } = new();
+
+    public string StationTagDraft { get; set; } = string.Empty;
 
     public HashSet<string> Favorites { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -163,6 +177,19 @@ internal sealed class MusicState
     };
 
     public string Genre => Genres[Math.Clamp(GenreIndex, 0, Genres.Length - 1)];
+
+    public string StationGenreLine
+    {
+        get
+        {
+            if (StationTags.Count == 0)
+            {
+                return FormatHashtag(Genre);
+            }
+
+            return string.Join("  ", StationTags.Select(FormatHashtag).Where(static tag => tag.Length > 0));
+        }
+    }
 
     [JsonIgnore]
     public string GenreTagDraft { get; set; } = string.Empty;
@@ -221,7 +248,58 @@ internal sealed class MusicState
         return slug.Length == 0 ? string.Empty : "#" + slug;
     }
 
-    public bool TryAddHashtag(string? raw)
+    public static string FormatGenreLine(string? raw)
+    {
+        var text = raw?.Trim() ?? string.Empty;
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        for (var index = 0; index < Genres.Length; index++)
+        {
+            if (string.Equals(Genres[index], text, StringComparison.OrdinalIgnoreCase))
+            {
+                return FormatHashtag(text);
+            }
+        }
+
+        var parts = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var tags = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < parts.Length; index++)
+        {
+            var tag = FormatHashtag(parts[index]);
+            if (tag.Length > 0 && seen.Add(tag))
+            {
+                tags.Add(tag);
+            }
+        }
+
+        return string.Join("  ", tags);
+    }
+
+    private static void NormalizeTagList(List<string> tags)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = tags.Count - 1; index >= 0; index--)
+        {
+            var slug = NormalizeHashtag(tags[index]);
+            if (slug.Length == 0 || !seen.Add(slug))
+            {
+                tags.RemoveAt(index);
+                continue;
+            }
+
+            tags[index] = slug;
+        }
+    }
+
+    public bool TryAddHashtag(string? raw) => TryAddTag(Interests, raw, profile: true);
+
+    public bool TryAddStationTag(string? raw) => TryAddTag(StationTags, raw, profile: false);
+
+    public bool TryAddTag(List<string> tags, string? raw, bool profile)
     {
         var slug = NormalizeHashtag(raw);
         if (slug.Length == 0)
@@ -229,18 +307,40 @@ internal sealed class MusicState
             return false;
         }
 
-        for (var index = 0; index < Interests.Count; index++)
+        for (var index = 0; index < tags.Count; index++)
         {
-            if (string.Equals(NormalizeHashtag(Interests[index]), slug, StringComparison.Ordinal))
+            if (string.Equals(NormalizeHashtag(tags[index]), slug, StringComparison.Ordinal))
             {
-                GenreTagDraft = string.Empty;
+                if (profile)
+                {
+                    GenreTagDraft = string.Empty;
+                }
+                else
+                {
+                    StationTagDraft = string.Empty;
+                }
+
                 return false;
             }
         }
 
-        Interests.Add(slug);
-        GenreTagDraft = string.Empty;
+        tags.Add(slug);
+        if (profile)
+        {
+            GenreTagDraft = string.Empty;
+        }
+        else
+        {
+            StationTagDraft = string.Empty;
+        }
+
         return true;
+    }
+
+    public static string ClampStationBio(string? raw)
+    {
+        var text = raw ?? string.Empty;
+        return text.Length <= StationBioCap ? text : text[..StationBioCap];
     }
 
     public static string NormalizeCapture(string? app) =>
@@ -298,7 +398,7 @@ internal sealed class MusicState
                     state.DjName = dto.DjName ?? string.Empty;
                     state.StationName = dto.StationName ?? string.Empty;
                     state.StationId = dto.StationId ?? string.Empty;
-                    state.StationBio = dto.StationBio ?? string.Empty;
+                    state.StationBio = ClampStationBio(dto.StationBio);
                     state.StationArtPath = dto.StationArtPath ?? string.Empty;
                     state.ProfileBannerPath = dto.ProfileBannerPath ?? string.Empty;
                     state.ProfileFacePath = dto.ProfileFacePath ?? string.Empty;
@@ -318,6 +418,21 @@ internal sealed class MusicState
                     state.CaptureId = dto.CaptureId ?? string.Empty;
                     state.CaptureName = dto.CaptureName ?? string.Empty;
                     state.CaptureApp = NormalizeCapture(dto.CaptureApp);
+                    if (dto.CaptureGain is { } capture)
+                    {
+                        state.CaptureGain = Math.Clamp(capture, 0f, 1f);
+                    }
+
+                    if (dto.MonitorGain is { } cue)
+                    {
+                        state.MonitorGain = Math.Clamp(cue, 0f, 1f);
+                    }
+
+                    if (dto.StreamGain is { } stream)
+                    {
+                        state.StreamGain = Math.Clamp(stream, 0f, 1f);
+                    }
+
                     state.Bio = dto.Bio ?? string.Empty;
                     state.VenueName = dto.VenueName ?? string.Empty;
                     state.VenuePlace = dto.VenuePlace ?? string.Empty;
@@ -325,6 +440,11 @@ internal sealed class MusicState
                     if (dto.Interests is { Length: > 0 })
                     {
                         state.Interests.AddRange(dto.Interests);
+                    }
+
+                    if (dto.StationTags is { Length: > 0 })
+                    {
+                        state.StationTags.AddRange(dto.StationTags);
                     }
 
                     if (dto.Favorites is { Length: > 0 })
@@ -391,17 +511,8 @@ internal sealed class MusicState
             state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
         }
 
-        for (var index = state.Interests.Count - 1; index >= 0; index--)
-        {
-            var slug = NormalizeHashtag(state.Interests[index]);
-            if (slug.Length == 0)
-            {
-                state.Interests.RemoveAt(index);
-                continue;
-            }
-
-            state.Interests[index] = slug;
-        }
+        NormalizeTagList(state.Interests);
+        NormalizeTagList(state.StationTags);
 
         state.Page = state.Onboarded ? MusicPage.Tabs : MusicPage.Onboard;
         return state;
@@ -443,11 +554,15 @@ internal sealed class MusicState
                 CaptureId = CaptureId,
                 CaptureName = CaptureName,
                 CaptureApp = CaptureApp,
+                CaptureGain = CaptureGain,
+                MonitorGain = MonitorGain,
+                StreamGain = StreamGain,
                 Bio = Bio,
                 VenueName = VenueName,
                 VenuePlace = VenuePlace,
                 GenreIndex = GenreIndex,
                 Interests = Interests.ToArray(),
+                StationTags = StationTags.ToArray(),
                 Favorites = Favorites.ToArray(),
                 Following = Following.ToArray(),
                 FollowedStations = FollowedStations.ToArray(),
@@ -719,6 +834,12 @@ internal sealed class MusicState
 
         public string? CaptureApp { get; set; }
 
+        public float? CaptureGain { get; set; }
+
+        public float? MonitorGain { get; set; }
+
+        public float? StreamGain { get; set; }
+
         public string? Bio { get; set; }
 
         public string? VenueName { get; set; }
@@ -728,6 +849,8 @@ internal sealed class MusicState
         public int GenreIndex { get; set; }
 
         public string[]? Interests { get; set; }
+
+        public string[]? StationTags { get; set; }
 
         public string[]? Favorites { get; set; }
 

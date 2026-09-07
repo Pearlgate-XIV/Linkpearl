@@ -71,6 +71,8 @@ public interface IGameSession
 
     string MapPlace { get; }
 
+    Vector2 MapCoords { get; }
+
     string WeatherName { get; }
 
     uint Gil { get; }

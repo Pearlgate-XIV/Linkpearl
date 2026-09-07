@@ -870,7 +870,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         DrawLetteringRow(frame, stack.Take(frame.Units(36f)));
         frame.Text.DrawWrapped(stack.Take(frame.Units(40f)),
-            "Name, honorific, photo, banner, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and Daylight.",
+            "Name, honorific, photo, banner, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and VYBE.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 

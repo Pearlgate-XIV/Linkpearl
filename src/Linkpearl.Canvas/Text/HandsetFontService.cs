@@ -121,7 +121,7 @@ public sealed class HandsetFontService : IDisposable
             var built = tools.AddFontFromFile(file, config);
             config.MergeFont = built;
             config.GlyphRanges = FancyGlyphs;
-            foreach (var extra in FallbackFaces())
+            foreach (var extra in FallbackFaces(fontDirectory))
             {
                 tools.AddFontFromFile(extra, config);
             }
@@ -142,25 +142,34 @@ public sealed class HandsetFontService : IDisposable
         dreamsDisplay = null;
     }
 
+    // Fallback faces (Noto / Segoe / Arial) must not replace Inter's Latin. Their
+    // vertical metrics are taller and were clipping every clipped text run.
     private static readonly ushort[] FancyGlyphs =
     {
-        0x0020, 0x024F,
-        0x0250, 0x02FF,
-        0x1D00, 0x1DBF,
         0x2000, 0x206F,
+        0x200D, 0x200D,
         0x2070, 0x209F,
         0x20A0, 0x20CF,
         0x2100, 0x214F,
         0x2190, 0x21FF,
         0x2E00, 0x2E7F,
         0x2600, 0x27BF,
+        0xD83C, 0xD83E,
+        0xDC00, 0xDFFF,
+        0xFE00, 0xFE0F,
         0,
     };
 
-    private static IEnumerable<string> FallbackFaces()
+    private static IEnumerable<string> FallbackFaces(string bundled)
     {
+        var noto = Path.Combine(bundled, "NotoEmoji-Regular.ttf");
+        if (File.Exists(noto))
+        {
+            yield return noto;
+        }
+
         var windows = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
-        var names = new[] { "segoeui.ttf", "arial.ttf", "seguisym.ttf", "seguili.ttf", "cambria.ttf" };
+        var names = new[] { "seguiemj.ttf", "segoeui.ttf", "arial.ttf", "seguisym.ttf", "seguili.ttf", "cambria.ttf" };
         for (var index = 0; index < names.Length; index++)
         {
             var path = Path.Combine(windows, names[index]);

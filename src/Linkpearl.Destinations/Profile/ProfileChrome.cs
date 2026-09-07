@@ -370,8 +370,8 @@ public sealed class ProfileChrome
         DrawAction(frame, stack.Take(frame.Units(44f)), "Sync to apps", () => PushApps(snapshot));
         DrawNotice(frame, stack.Take(frame.Units(40f)),
             synced
-                ? "Copied to Music and Daylight. Each app can still be edited on its own."
-                : "Copies name, photo, and banner to Music and Daylight.");
+                ? "Copied to Music and VYBE. Each app can still be edited on its own."
+                : "Copies name, photo, and banner to Music and VYBE.");
         DrawNameControls(frame, ref stack, snapshot);
         DrawGateRows(frame, ref stack, snapshot);
         return (content.Height - stack.Remaining.Height) + inset * 2f;

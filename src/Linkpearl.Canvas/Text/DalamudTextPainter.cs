@@ -43,10 +43,17 @@ public sealed class DalamudTextPainter : ITextPainter
 
     public void DrawIn(Rect area, ReadOnlySpan<char> text, in TextStyle style)
     {
+        if (area.Width < 1f || area.Height < 1f)
+        {
+            return;
+        }
+
         using var pushed = fonts.Handle(style.Role).Push();
         var size = MeasureScaled(text, style.Scale);
-        var origin = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
+        var origin = FittedOrigin(area, size, style.Align);
+        ClipTo(area);
         DrawGlyphs(origin, text, style);
+        drawList.PopClipRect();
     }
 
     public void DrawWrapped(Rect area, ReadOnlySpan<char> text, in TextStyle style)
@@ -57,7 +64,7 @@ public sealed class DalamudTextPainter : ITextPainter
         }
 
         using var pushed = fonts.Handle(style.Role).Push();
-        drawList.PushClipRect(area.Min, area.Max, true);
+        ClipTo(area);
         if (style.Scale == 1f)
         {
             drawList.AddText(ImGui.GetFont(), ImGui.GetFontSize(), area.Min, ImGui.GetColorU32(style.Color), text,
@@ -74,36 +81,47 @@ public sealed class DalamudTextPainter : ITextPainter
 
     public void DrawEllipsized(Rect area, ReadOnlySpan<char> text, in TextStyle style)
     {
-        using var pushed = fonts.Handle(style.Role).Push();
-        var size = MeasureScaled(text, style.Scale);
-        if (size.X <= area.Width)
+        if (area.Width < 1f || area.Height < 1f)
         {
-            var fit = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
-            DrawGlyphs(fit, text, style);
             return;
         }
 
-        const string ellipsis = "...";
-        var low = 0;
-        var high = text.Length;
-        while (low < high)
+        using var pushed = fonts.Handle(style.Role).Push();
+        ClipTo(area);
+        try
         {
-            var mid = (low + high + 1) / 2;
-            var candidateSize = MeasureScaled(string.Concat(text[..mid], ellipsis), style.Scale);
-            if (candidateSize.X <= area.Width)
+            var size = MeasureScaled(text, style.Scale);
+            if (size.X <= area.Width)
             {
-                low = mid;
+                DrawGlyphs(FittedOrigin(area, size, style.Align), text, style);
+                return;
             }
-            else
-            {
-                high = mid - 1;
-            }
-        }
 
-        var truncated = string.Concat(text[..low], ellipsis);
-        var truncatedSize = MeasureScaled(truncated, style.Scale);
-        var origin = new Vector2(AlignedX(area, truncatedSize.X, style.Align), area.Center.Y - truncatedSize.Y * 0.5f);
-        DrawGlyphs(origin, truncated, style);
+            const string ellipsis = "...";
+            var low = 0;
+            var high = text.Length;
+            while (low < high)
+            {
+                var mid = (low + high + 1) / 2;
+                var candidateSize = MeasureScaled(string.Concat(text[..mid], ellipsis), style.Scale);
+                if (candidateSize.X <= area.Width)
+                {
+                    low = mid;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+
+            var truncated = string.Concat(text[..low], ellipsis);
+            var truncatedSize = MeasureScaled(truncated, style.Scale);
+            DrawGlyphs(FittedOrigin(area, truncatedSize, style.Align), truncated, style);
+        }
+        finally
+        {
+            drawList.PopClipRect();
+        }
     }
 
     public void DrawFitted(Rect area, ReadOnlySpan<char> text, in TextStyle style)
@@ -124,7 +142,7 @@ public sealed class DalamudTextPainter : ITextPainter
         var scale = MathF.Min(1f, fit) * (style.Scale > 0f ? style.Scale : 1f);
 
         var size = measured * scale;
-        var origin = new Vector2(AlignedX(area, size.X, style.Align), area.Center.Y - size.Y * 0.5f);
+        var origin = FittedOrigin(area, size, style.Align);
         var fitted = new TextStyle(style.Role, style.Color, style.Align, style.LineSpacing, scale, style.Glow,
             style.GlowSpread);
         DrawGlyphs(origin, text, fitted);
@@ -169,6 +187,21 @@ public sealed class DalamudTextPainter : ITextPainter
             var stamp = origin + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * spread;
             drawList.AddText(font, size, stamp, rim, text);
         }
+    }
+
+    private void ClipTo(Rect area)
+    {
+        var pad = ImGui.GetFontSize() * 0.2f;
+        drawList.PushClipRect(new Vector2(area.Min.X, area.Min.Y - pad),
+            new Vector2(area.Max.X, area.Max.Y + pad), true);
+    }
+
+    private static Vector2 FittedOrigin(Rect area, Vector2 size, TextAlign align)
+    {
+        var y = area.Center.Y - size.Y * 0.5f;
+        var floor = area.Max.Y - size.Y;
+        y = floor < area.Min.Y ? area.Min.Y : Math.Clamp(y, area.Min.Y, floor);
+        return new Vector2(AlignedX(area, size.X, align), y);
     }
 
     private static Vector2 MeasureScaled(ReadOnlySpan<char> text, float scale)

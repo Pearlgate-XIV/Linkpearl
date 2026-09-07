@@ -1,6 +1,9 @@
 using Linkpearl.Applets;
+using Linkpearl.Chat;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Painting;
+using Linkpearl.Platform;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
 
@@ -18,17 +21,35 @@ internal sealed class LiveChatSurface
 
     private readonly ITalk talk;
     private readonly DisplayPreferences display;
+    private readonly IChatBridge chat;
+    private readonly Action<string, string> openTell;
     private string draft = string.Empty;
     private string sendId = TalkIds.LiveSay;
     private float threadOffset;
     private bool stickBottom = true;
     private bool dragging;
     private int seenGeneration = -1;
+    private FeedMenu? menu;
 
-    public LiveChatSurface(ITalk talk, DisplayPreferences display)
+    public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell)
     {
         this.talk = talk;
         this.display = display;
+        this.chat = chat;
+        this.openTell = openTell;
+    }
+
+    public bool HasMenu => menu is not null;
+
+    public bool CloseMenu()
+    {
+        if (menu is null)
+        {
+            return false;
+        }
+
+        menu = null;
+        return true;
     }
 
     public float Compose(in AppletFrame frame)
@@ -47,6 +68,7 @@ internal sealed class LiveChatSurface
         DrawLines(frame, log, thread, partyReady);
         DrawComposer(frame, composer, thread, partyReady);
         DrawChannels(frame, sendBar, partyReady);
+        DrawLineMenu(frame, frame.Content);
 
         return frame.Content.Height;
     }
@@ -222,7 +244,7 @@ internal sealed class LiveChatSurface
             }
         }
 
-        var hovering = frame.Input.IsHovering(viewport);
+        var hovering = menu is null && frame.Input.IsHovering(viewport);
         if (hovering)
         {
             var wheel = frame.Input.ScrollDelta;
@@ -233,7 +255,7 @@ internal sealed class LiveChatSurface
             }
         }
 
-        if (frame.Input.PressedInside(viewport) || dragging)
+        if (menu is null && (frame.Input.PressedInside(viewport) || dragging))
         {
             if (frame.Input.IsHeld())
             {
@@ -321,15 +343,10 @@ internal sealed class LiveChatSurface
         return list;
     }
 
-    private static float MeasureLine(in AppletFrame frame, float width, TalkLine line)
-    {
-        var bubbleWidth = width * 0.78f;
-        var textWidth = MathF.Max(bubbleWidth - frame.Units(16f), 8f);
-        var body = frame.Text.MeasureWrapped(line.Body, FontRole.Body, textWidth).Y;
-        return MathF.Max(body + frame.Units(32f), frame.Units(44f));
-    }
+    private static float MeasureLine(in AppletFrame frame, float width, TalkLine line) =>
+        ChatBits.NamedRowHeight(frame, width, line.Body);
 
-    private static void DrawLine(in AppletFrame frame, Rect row, TalkLine line)
+    private void DrawLine(in AppletFrame frame, Rect row, TalkLine line)
     {
         var bubbleWidth = row.Width * 0.82f;
         var bubble = line.Mine ? row.RightSlice(bubbleWidth) : row.LeftSlice(bubbleWidth);
@@ -350,9 +367,80 @@ internal sealed class LiveChatSurface
         frame.Paint.Stroke(top, lineColor, frame.Units(1.5f), radius);
         var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f), frame.Units(8f)));
         frame.Paint.PushClip(copy);
-        frame.Text.DrawWrapped(copy, line.Body, new TextStyle(FontRole.Body, lineColor));
+        ChatBits.Draw(frame, copy, line.Body, lineColor, lineColor with { W = 0.72f });
         frame.Paint.PopClip();
+        if (menu is null && !line.Mine && line.Sender.Length > 0 &&
+            frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
+        {
+            menu = new FeedMenu(line.Sender, line.World, frame.Input.Pointer);
+        }
     }
+
+    private void DrawLineMenu(in AppletFrame frame, Rect bounds)
+    {
+        if (menu is not { } open)
+        {
+            return;
+        }
+
+        var labels = new[] { "Send tell", "Invite to party", "Add friend" };
+        var width = frame.Units(176f);
+        var rowH = frame.Units(34f);
+        var height = rowH * labels.Length + frame.Units(8f);
+        var left = Math.Clamp(open.At.X, bounds.Min.X, bounds.Max.X - width);
+        var top = Math.Clamp(open.At.Y, bounds.Min.Y, bounds.Max.Y - height);
+        var box = Rect.FromSize(new Vector2(left, top), new Vector2(width, height));
+        var gold = frame.Theme.Palette.WarmAccent;
+        var radius = frame.Units(10f);
+        frame.Paint.Fill(box, frame.Theme.Palette.SurfaceRaised with { W = 0.98f }, radius);
+        frame.Paint.Stroke(box, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, radius);
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var row = Rect.FromSize(box.Min + new Vector2(0f, frame.Units(4f) + index * rowH),
+                new Vector2(width, rowH)).Inset(new Edges(frame.Units(4f), 0f));
+            var hover = frame.Input.IsHovering(row);
+            if (hover)
+            {
+                frame.Paint.Fill(row, gold with { W = 0.20f }, frame.Units(8f));
+            }
+
+            frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f)), labels[index],
+                new TextStyle(FontRole.CaptionStrong, hover ? gold : frame.Theme.Palette.Ink));
+            if (frame.Input.ConsumeClick(row))
+            {
+                RunLineMenu(labels[index], open);
+                return;
+            }
+        }
+
+        frame.Input.ConsumeClick(box);
+        frame.Input.ConsumeClick(box, PointerButton.Secondary);
+        frame.Input.Claim(box);
+        if (frame.Input.ConsumeClick(bounds) || frame.Input.ConsumeClick(bounds, PointerButton.Secondary))
+        {
+            menu = null;
+        }
+    }
+
+    private void RunLineMenu(string label, FeedMenu open)
+    {
+        menu = null;
+        if (label == "Send tell")
+        {
+            openTell(open.Name, open.World);
+            return;
+        }
+
+        if (label == "Invite to party")
+        {
+            chat.InviteToParty(open.Name, open.World);
+            return;
+        }
+
+        talk.RequestFriend(open.Name, open.World);
+    }
+
+    private readonly record struct FeedMenu(string Name, string World, Vector2 At);
 
     private static string TagOf(string threadId) => threadId switch
     {

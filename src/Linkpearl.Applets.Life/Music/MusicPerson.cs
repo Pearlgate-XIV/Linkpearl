@@ -32,7 +32,7 @@ internal static class MusicRoster
             state.Bio.Length > 0 ? state.Bio : pearl.MeBio,
             role,
             state.StationName,
-            state.Genre,
+            state.Dj ? state.StationGenreLine : state.Genre,
             broadcasting,
             string.Empty,
             0,

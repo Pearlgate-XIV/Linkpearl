@@ -86,6 +86,17 @@ internal sealed class WaveInTap : IDeviceTap
         return null;
     }
 
+    public static WaveInTap OpenNumber(int deviceNumber)
+    {
+        var wave = new WaveInEvent
+        {
+            DeviceNumber = deviceNumber,
+            WaveFormat = new WaveFormat(44100, 16, 2),
+            BufferMilliseconds = 50,
+        };
+        return new WaveInTap(wave);
+    }
+
     public WaveFormat Format => wave.WaveFormat;
 
     public event EventHandler<WaveInEventArgs>? DataAvailable;
@@ -273,49 +284,197 @@ internal sealed class MixClientTap : IDeviceTap
     }
 }
 
+internal static class WasapiDevices
+{
+    public static MMDevice? Find(MMDeviceEnumerator enumerator, DataFlow flow, string name)
+    {
+        if (name.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var found = enumerator.EnumerateAudioEndPoints(flow, DeviceState.All);
+            var count = found.Count;
+            for (var index = 0; index < count; index++)
+            {
+                MMDevice? device = null;
+                try
+                {
+                    device = found[index];
+                    var shown = device.FriendlyName ?? string.Empty;
+                    if (!NamesMatch(shown, name))
+                    {
+                        device.Dispose();
+                        continue;
+                    }
+
+                    return device;
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        device?.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        return null;
+    }
+
+    public static bool NamesMatch(string left, string right)
+    {
+        left = Bare(left);
+        right = Bare(right);
+        if (left.Length == 0 || right.Length == 0)
+        {
+            return false;
+        }
+
+        if (left.StartsWith(right, StringComparison.OrdinalIgnoreCase) ||
+            right.StartsWith(left, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return CableName.IsFamily(left) && CableName.IsFamily(right) &&
+               CableName.IsInput(left) == CableName.IsInput(right) &&
+               CableName.IsOutput(left) == CableName.IsOutput(right);
+    }
+
+    public static string Bare(string name)
+    {
+        var text = name.Trim();
+        const string prefix = "VB-Cable · ";
+        if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            text = text[prefix.Length..];
+        }
+
+        var cut = text.IndexOf(" · ", StringComparison.Ordinal);
+        return cut > 0 ? text[..cut] : text;
+    }
+}
+
 internal static class CableName
 {
     public static bool IsInput(string name)
     {
         var text = name.ToUpperInvariant();
-        return text.Contains("CABLE", StringComparison.Ordinal) &&
-               !IsOutput(name) &&
+        if (IsOutput(name))
+        {
+            return false;
+        }
+
+        return IsFamily(text) &&
                (text.Contains("INPUT", StringComparison.Ordinal) ||
                 text.Contains(" IN ", StringComparison.Ordinal) ||
-                text.Contains("IN 16", StringComparison.Ordinal));
+                text.Contains("IN 16", StringComparison.Ordinal) ||
+                text.Contains("SINK", StringComparison.Ordinal));
     }
 
     public static bool IsOutput(string name)
     {
         var text = name.ToUpperInvariant();
-        return text.Contains("CABLE", StringComparison.Ordinal) &&
+        return IsFamily(text) &&
                (text.Contains("OUTPUT", StringComparison.Ordinal) ||
                 text.Contains("OUT ", StringComparison.Ordinal) ||
-                text.Contains("OUT 16", StringComparison.Ordinal));
+                text.Contains("OUT 16", StringComparison.Ordinal) ||
+                text.Contains("SOURCE", StringComparison.Ordinal) &&
+                !text.Contains("INPUT", StringComparison.Ordinal));
+    }
+
+    public static bool IsFamily(string name)
+    {
+        var text = name.ToUpperInvariant();
+        return text.Contains("CABLE", StringComparison.Ordinal) ||
+               text.Contains("VB-AUDIO", StringComparison.Ordinal) ||
+               text.Contains("VBAUDIO", StringComparison.Ordinal) ||
+               text.Contains("VOICEMEETER", StringComparison.Ordinal) ||
+               text.Contains("VIRTUAL CABLE", StringComparison.Ordinal);
+    }
+
+    public static string SourceHint(string inputName)
+    {
+        var text = inputName.ToUpperInvariant();
+        if (text.Contains("16", StringComparison.Ordinal))
+        {
+            return "CABLE Out 16";
+        }
+
+        if (text.Contains("CABLE-A", StringComparison.Ordinal) || text.Contains("CABLE A", StringComparison.Ordinal))
+        {
+            return "CABLE-A Output";
+        }
+
+        if (text.Contains("CABLE-B", StringComparison.Ordinal) || text.Contains("CABLE B", StringComparison.Ordinal))
+        {
+            return "CABLE-B Output";
+        }
+
+        return "CABLE Output";
     }
 
     public static MMDevice? FindOutput(MMDeviceEnumerator enumerator, string inputName)
     {
+        return FindOutputIn(enumerator, inputName, DeviceState.Active) ??
+               FindOutputIn(enumerator, inputName, DeviceState.All);
+    }
+
+    private static MMDevice? FindOutputIn(MMDeviceEnumerator enumerator, string inputName, DeviceState state)
+    {
         var wantWide = inputName.Contains("16", StringComparison.OrdinalIgnoreCase);
         MMDevice? fallback = null;
-        foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+        MMDeviceCollection? found = null;
+        try
         {
-            var text = device.FriendlyName.ToUpperInvariant();
-            if (!text.Contains("CABLE", StringComparison.Ordinal) ||
-                !text.Contains("OUT", StringComparison.Ordinal))
+            found = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, state);
+            var count = found.Count;
+            for (var index = 0; index < count; index++)
             {
-                device.Dispose();
-                continue;
-            }
+                MMDevice? device = null;
+                try
+                {
+                    device = found[index];
+                    var text = (device.FriendlyName ?? string.Empty).ToUpperInvariant();
+                    if (!IsFamily(text) || !IsOutput(text))
+                    {
+                        device.Dispose();
+                        continue;
+                    }
 
-            var wide = text.Contains("16", StringComparison.Ordinal);
-            if (wantWide == wide)
-            {
-                fallback?.Dispose();
-                return device;
-            }
+                    var wide = text.Contains("16", StringComparison.Ordinal);
+                    if (wantWide == wide)
+                    {
+                        fallback?.Dispose();
+                        return device;
+                    }
 
-            fallback ??= device;
+                    fallback ??= device;
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        device?.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
         }
 
         return fallback;

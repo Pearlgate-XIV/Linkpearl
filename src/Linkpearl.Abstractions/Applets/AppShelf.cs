@@ -58,7 +58,7 @@ public static class AppShelf
             true, "phone.png"),
         Spec("music", "Music", "Media Player", AppGroup.Essentials, AppChip.Music, AppKind.Applet, default, 0, true,
             "music.png"),
-        Spec("afterdark", "Daylight", "World Map", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
+        Spec("afterdark", "VYBE", "World Map", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
             true, AppIconCatalog.DaylightAsset),
         Spec("weather", "Weather", "Forecast", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
             "weather.png"),

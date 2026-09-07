@@ -2,9 +2,12 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Plugin.Services;
 using Linkpearl.Canvas.Text;
+using Linkpearl.Emoji;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
+using Linkpearl.Modules;
 using Linkpearl.Painting;
+using Linkpearl.Platform;
 
 namespace Linkpearl.Canvas.Input;
 
@@ -17,6 +20,12 @@ public sealed class DalamudTextField : ITextField
     private bool primed;
     private string ownerId = string.Empty;
     private string pendingFocus = string.Empty;
+    private readonly Dictionary<string, int> carets = new(StringComparer.Ordinal);
+    private readonly List<string> wireFaces = new();
+    private IPaintSurface? paint;
+    private ITextPainter? text;
+    private ITextureSource? textures;
+    private HostPaths? paths;
 
     public DalamudTextField(HandsetFontService fonts)
     {
@@ -119,10 +128,36 @@ public sealed class DalamudTextField : ITextField
 
     public bool Owns(string id) => ownerId == id;
 
+    public void Dress(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths)
+    {
+        this.paint = paint;
+        this.text = text;
+        this.textures = textures;
+        this.paths = paths;
+    }
+
     public void Focus(string id)
     {
         ownerId = id;
+        pendingFocus = id;
         Capturing = true;
+    }
+
+    public string Insert(string id, string value, string text)
+    {
+        if (text.Length == 0)
+        {
+            return value;
+        }
+
+        var at = carets.TryGetValue(id, out var caret) ? caret : value.Length;
+        at = EmojiBits.ClampIndex(value, at);
+        ownerId = id;
+        pendingFocus = id;
+        Capturing = true;
+        var next = EmojiBits.Insert(value, at, text);
+        carets[id] = at + text.Length;
+        return next.Length <= 4000 ? next : next[..4000];
     }
 
     public string Draw(string id, Rect area, string value, string placeholder) =>
@@ -166,15 +201,16 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Text, native ? ink : Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.TextDisabled, native ? ink with { W = 0.42f } : Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.Text, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.TextDisabled, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.Border, Vector4.Zero);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, MathF.Min(area.Height * 0.35f, 12f));
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(padX, padY));
 
-        var current = value;
-        var enter = ImGui.InputTextWithHint($"##{id}", placeholder, ref current, Math.Max(maxLength, 1),
+        var current = EmojiBits.ToWire(value, wireFaces);
+        var enter = ImGui.InputTextWithHint($"##{id}", placeholder, ref current,
+            Math.Max(maxLength + wireFaces.Count * 8, 1),
             ImGuiInputTextFlags.EnterReturnsTrue);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
@@ -190,7 +226,8 @@ public sealed class DalamudTextField : ITextField
         }
         else if (ownerId == id && strokes.Count > 0)
         {
-            current = Apply(value, strokes, Math.Max(maxLength, 1), out var harvestedEnter);
+            current = EmojiBits.ToWire(Apply(value, strokes, Math.Max(maxLength, 1), out var harvestedEnter),
+                wireFaces);
             enter = enter || harvestedEnter;
             strokes.Clear();
         }
@@ -229,12 +266,25 @@ public sealed class DalamudTextField : ITextField
         }
 
         submitted = enter;
-        if (!native || !itemActive)
+        var shown = EmojiBits.FromWire(current, wireFaces);
+        if (EmojiBits.HasFace(value) && !EmojiBits.HasFace(shown) && current.Contains('?'))
         {
-            Paint(area, current, placeholder, focused, padX, padY, line);
+            shown = value;
         }
 
-        return current;
+        if (shown.Length > maxLength)
+        {
+            shown = shown[..EmojiBits.ClampIndex(shown, maxLength)];
+        }
+
+        if (shown.Length != value.Length)
+        {
+            carets[id] = shown.Length;
+        }
+
+        Paint(area, shown, placeholder, focused, padX, padY, line, ink);
+        _ = native;
+        return shown;
     }
 
     public string Write(string id, Rect area, string value, string placeholder, int maxLength)
@@ -267,8 +317,8 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(pad * 0.35f, pad * 0.25f));
 
-        var current = value;
-        ImGui.InputTextMultiline("##" + id, ref current, Math.Max(maxLength, 1),
+        var current = EmojiBits.ToWire(value, wireFaces);
+        ImGui.InputTextMultiline("##" + id, ref current, Math.Max(maxLength + wireFaces.Count * 8, 1),
             new Vector2(area.Width, area.Height), ImGuiInputTextFlags.AllowTabInput);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
@@ -306,7 +356,8 @@ public sealed class DalamudTextField : ITextField
         }
 
         _ = native;
-        return current.Length <= maxLength ? current : current[..Math.Max(maxLength, 0)];
+        var shown = EmojiBits.FromWire(current, wireFaces);
+        return shown.Length <= maxLength ? shown : shown[..Math.Max(maxLength, 0)];
     }
 
     public int Pick(string id, Rect area, IReadOnlyList<string> labels, int selected)
@@ -413,29 +464,24 @@ public sealed class DalamudTextField : ITextField
         return selected;
     }
 
-    private static void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
-        float line)
+    private void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
+        float line, Vector4 ink)
     {
+        _ = padY;
+        _ = line;
+        if (paint is not null && text is not null && textures is not null && paths is not null)
+        {
+            var blink = focused && (int)(ImGui.GetTime() * 2d) % 2 == 0;
+            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, blink);
+            return;
+        }
+
         var draw = ImGui.GetWindowDrawList();
         draw.PushClipRect(area.Min, area.Max, true);
         var empty = current.Length == 0;
         var shown = empty ? placeholder : current;
-        var inner = MathF.Max(area.Width - padX * 2f, 1f);
-        var textWidth = ImGui.CalcTextSize(shown).X;
-        var scroll = !empty && textWidth > inner ? textWidth - inner : 0f;
-        var origin = area.Min + new Vector2(padX - scroll, padY);
-        var color = empty
-            ? new Vector4(0.96f, 0.96f, 0.97f, 0.42f)
-            : new Vector4(0.96f, 0.96f, 0.97f, 1f);
-        draw.AddText(origin, ImGui.GetColorU32(color), shown);
-
-        if (focused && (int)(ImGui.GetTime() * 2d) % 2 == 0)
-        {
-            var caretX = empty ? origin.X : origin.X + textWidth + 1f;
-            draw.AddLine(new Vector2(caretX, origin.Y), new Vector2(caretX, origin.Y + line),
-                ImGui.GetColorU32(new Vector4(0.96f, 0.96f, 0.97f, 1f)), 1.2f);
-        }
-
+        var origin = area.Min + new Vector2(padX, padY);
+        draw.AddText(origin, ImGui.GetColorU32(empty ? ink with { W = 0.42f } : ink), shown);
         draw.PopClipRect();
     }
 
@@ -456,7 +502,16 @@ public sealed class DalamudTextField : ITextField
             {
                 if (current.Length > 0)
                 {
-                    current = current[..^1];
+                    var cut = current.Length;
+                    var walk = System.Globalization.StringInfo.GetTextElementEnumerator(current);
+                    var last = 0;
+                    while (walk.MoveNext())
+                    {
+                        last = walk.ElementIndex;
+                    }
+
+                    cut = last;
+                    current = current[..cut];
                 }
 
                 continue;

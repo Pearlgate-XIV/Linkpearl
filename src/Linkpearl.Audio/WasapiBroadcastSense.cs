@@ -1,3 +1,4 @@
+using System.Globalization;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -27,6 +28,9 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
     private string phoneSpeakerId = string.Empty;
     private string phoneMicId = string.Empty;
     private float micGain = 0.80f;
+    private float monitorGain = 1f;
+    private float streamGain = 1f;
+    private byte[]? cueScratch;
     private string notice = "Pick Sound or Mic, then the device to capture.";
 
     public IReadOnlyList<AudioPoint> Points
@@ -127,6 +131,42 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         }
     }
 
+    public float MonitorGain
+    {
+        get
+        {
+            lock (gate)
+            {
+                return monitorGain;
+            }
+        }
+        set
+        {
+            lock (gate)
+            {
+                monitorGain = Math.Clamp(value, 0f, 2f);
+            }
+        }
+    }
+
+    public float StreamGain
+    {
+        get
+        {
+            lock (gate)
+            {
+                return streamGain;
+            }
+        }
+        set
+        {
+            lock (gate)
+            {
+                streamGain = Math.Clamp(value, 0f, 2f);
+            }
+        }
+    }
+
     public WasapiBroadcastSense() => RescanPoints();
 
     public void RoutePhone(string speakerId, string microphoneId)
@@ -215,16 +255,32 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         {
             new(DefaultMixId, "Default playback", "Whatever this PC is playing right now."),
         };
-        Collect(list, DataFlow.Render, DeviceState.Active, "out:", "Capture everything playing on this output.");
-        Collect(list, DataFlow.Capture, DeviceState.Active, "in:", "Capture this microphone or line in.");
-        if (list.Count <= 1)
-        {
-            Collect(list, DataFlow.Render, DeviceState.All, "out:", "Capture everything playing on this output.");
-            Collect(list, DataFlow.Capture, DeviceState.All, "in:", "Capture this microphone or line in.");
-        }
-
-        MergeWaveNames(list);
+        Add(list, WasapiDeviceScan.Render(), "out:", "Capture everything playing on this output.");
+        Add(list, WasapiDeviceScan.Capture(), "in:", "Capture this microphone or line in.");
         return list.ToArray();
+    }
+
+    private static void Add(List<AudioPoint> list, ScannedPort[] found, string prefix, string fallbackHint)
+    {
+        for (var index = 0; index < found.Length; index++)
+        {
+            var port = found[index];
+            var id = WindowsAudioIds.Native(port.Id) ? port.Id : prefix + port.Id;
+            if (list.Exists(row => row.Id == id))
+            {
+                continue;
+            }
+
+            var name = prefix == "in:" && CableName.IsOutput(port.Label)
+                ? "VB-Cable · " + port.Label
+                : port.Label;
+            var hint = prefix == "in:" && CableName.IsOutput(port.Label)
+                ? "Play Rekordbox into CABLE Input. The phone captures CABLE Output."
+                : prefix == "out:" && CableName.IsInput(port.Label)
+                    ? "Playback sink. The phone captures the matching CABLE Output instead."
+                    : port.Note.Length > 0 ? port.Note : fallbackHint;
+            list.Add(new AudioPoint(id, name, hint));
+        }
     }
 
     private static void Collect(List<AudioPoint> list, DataFlow flow, DeviceState state, string prefix, string hint)
@@ -316,7 +372,6 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         var restart = false;
         lock (gate)
         {
-            id = ResolveCableId(id);
             if (string.Equals(selectedId, id, StringComparison.Ordinal))
             {
                 var named = points.FirstOrDefault(row => row.Id == id);
@@ -374,7 +429,12 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
 
         try
         {
-            var opened = OpenTap(id);
+            var opened = OpenTap(id) ?? OpenCableOutput(name);
+            if (opened is null)
+            {
+                throw new InvalidOperationException("No capture device opened.");
+            }
+
             opened.DataAvailable += OnData;
             opened.RecordingStopped += OnStopped;
             opened.Start();
@@ -388,13 +448,39 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         catch (Exception error)
         {
             ReleaseHeldDevice();
+            IDeviceTap? fallback = null;
+            try
+            {
+                fallback = WaveInTap.OpenNamed(CableName.SourceHint(name)) ??
+                           WaveInTap.OpenNamed("CABLE Output") ??
+                           WaveInTap.OpenNamed(name);
+                if (fallback is not null)
+                {
+                    fallback.DataAvailable += OnData;
+                    fallback.RecordingStopped += OnStopped;
+                    fallback.Start();
+                    lock (gate)
+                    {
+                        tap = fallback;
+                        listening = true;
+                        notice = "Hearing CABLE Output after " + name + " failed to open.";
+                    }
+
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                fallback?.Dispose();
+            }
+
             lock (gate)
             {
                 tap = null;
                 listening = false;
                 notice = "Could not open " + name +
-                         (error.Message.Length > 0 ? " (" + error.Message + ")" : ".") +
-                         " For a virtual cable, pick CABLE Output. For speakers, pick that playback device.";
+                         " (" + error.GetType().Name +
+                         (error.Message.Length > 0 ? ": " + error.Message : "") + ").";
             }
         }
     }
@@ -539,15 +625,14 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
     private string ResolveCableId(string id)
     {
         var named = points.FirstOrDefault(row => row.Id == id);
-        if (named.Name.Length == 0 || !CableName.IsInput(named.Name))
+        var label = named.Name.Length > 0 ? named.Name : selectedName;
+        if (!CableName.IsInput(label))
         {
             return id;
         }
 
         var output = points.FirstOrDefault(row =>
-            (row.Id.StartsWith("in:", StringComparison.Ordinal) ||
-             row.Id.StartsWith("wavein:", StringComparison.Ordinal)) &&
-            CableName.IsOutput(row.Name));
+            WindowsAudioIds.Capture(row.Id) && CableName.IsOutput(row.Name));
         return output.Id.Length > 0 ? output.Id : id;
     }
 
@@ -555,7 +640,22 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
     {
         ReleaseHeldDevice();
         heldEnum = new MMDeviceEnumerator();
+        var label = WasapiDevices.Bare(NameOf(id));
         id = ResolveCableId(id);
+        if (label.Length == 0)
+        {
+            label = WasapiDevices.Bare(NameOf(id));
+        }
+
+        if (CableName.IsInput(label) || CableName.IsOutput(label) || CableName.IsFamily(label))
+        {
+            var cable = OpenCableOutput(label);
+            if (cable is not null)
+            {
+                return cable;
+            }
+        }
+
         if (id.Length == 0 || id == DefaultMixId)
         {
             heldDevice = heldEnum.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
@@ -569,35 +669,45 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
             return OpenCapture(heldDevice);
         }
 
+        if (id.StartsWith("dsout:", StringComparison.Ordinal) || id.StartsWith("dsin:", StringComparison.Ordinal))
+        {
+            var capture = id.StartsWith("dsin:", StringComparison.Ordinal);
+            return OpenByName(capture ? DataFlow.Capture : DataFlow.Render, label, capture);
+        }
+
+        if (id.StartsWith("asio:", StringComparison.Ordinal))
+        {
+            return OpenByName(DataFlow.Render, id[5..], capture: false);
+        }
+
         if (id.StartsWith("out:", StringComparison.Ordinal))
         {
-            heldDevice = heldEnum.GetDevice(id[4..]);
-            return OpenRender(heldDevice);
+            return OpenById(DataFlow.Render, id[4..], label, capture: false);
         }
 
         if (id.StartsWith("in:", StringComparison.Ordinal))
         {
-            heldDevice = heldEnum.GetDevice(id[3..]);
-            return OpenCapture(heldDevice);
+            return OpenById(DataFlow.Capture, id[3..], label, capture: true);
         }
 
         if (id.StartsWith("waveout:", StringComparison.Ordinal) ||
             id.StartsWith("wavein:", StringComparison.Ordinal))
         {
             var want = id.StartsWith("wavein:", StringComparison.Ordinal);
-            var name = want
-                ? WaveIn.GetCapabilities(int.Parse(id[7..], System.Globalization.CultureInfo.InvariantCulture)).ProductName
-                : WaveOut.GetCapabilities(int.Parse(id[8..], System.Globalization.CultureInfo.InvariantCulture)).ProductName;
-            var flow = want ? DataFlow.Capture : DataFlow.Render;
-            foreach (var device in heldEnum.EnumerateAudioEndPoints(flow, DeviceState.Active))
+            if (!int.TryParse(want ? id[7..] : id[8..], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                    out var deviceNumber))
             {
-                if (!device.FriendlyName.StartsWith(name, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+                deviceNumber = -1;
+            }
 
-                heldDevice = device;
-                return want ? OpenCapture(device) : OpenRender(device);
+            if (label.Length > 0)
+            {
+                return OpenByName(want ? DataFlow.Capture : DataFlow.Render, label, want);
+            }
+
+            if (want)
+            {
+                return WaveInTap.OpenNumber(deviceNumber);
             }
         }
 
@@ -605,18 +715,77 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         return OpenRender(heldDevice);
     }
 
+    private string NameOf(string tapId)
+    {
+        lock (gate)
+        {
+            var named = points.FirstOrDefault(row => row.Id == tapId);
+            return named.Name.Length > 0 ? named.Name : selectedName;
+        }
+    }
+
+    private IDeviceTap OpenById(DataFlow flow, string deviceId, string name, bool capture)
+    {
+        if (heldEnum is not null && deviceId.Length > 0)
+        {
+            try
+            {
+                heldDevice = heldEnum.GetDevice(deviceId);
+                return capture ? OpenCapture(heldDevice) : OpenRender(heldDevice);
+            }
+            catch (Exception)
+            {
+                heldDevice = null;
+            }
+        }
+
+        return OpenByName(flow, name, capture);
+    }
+
+    private IDeviceTap OpenByName(DataFlow flow, string name, bool capture)
+    {
+        if (heldEnum is not null && name.Length > 0)
+        {
+            var device = WasapiDevices.Find(heldEnum, flow, name);
+            if (device is not null)
+            {
+                heldDevice = device;
+                return capture ? OpenCapture(device) : OpenRender(device);
+            }
+
+            if (!capture)
+            {
+                var source = WasapiDevices.Find(heldEnum, DataFlow.Capture, CableName.SourceHint(name));
+                if (source is not null)
+                {
+                    heldDevice = source;
+                    return OpenCapture(source);
+                }
+            }
+        }
+
+        var wave = WaveInTap.OpenNamed(name) ??
+                   WaveInTap.OpenNamed(CableName.SourceHint(name)) ??
+                   WaveInTap.OpenNamed("CABLE Output");
+        if (wave is not null)
+        {
+            return wave;
+        }
+
+        heldDevice = heldEnum!.GetDefaultAudioEndpoint(flow, Role.Multimedia);
+        return capture ? OpenCapture(heldDevice) : OpenRender(heldDevice);
+    }
+
     private IDeviceTap OpenRender(MMDevice render)
     {
-        if (CableName.IsInput(render.FriendlyName))
+        var name = render.FriendlyName ?? string.Empty;
+        if (CableName.IsInput(name) || CableName.IsFamily(name))
         {
-            var cable = OpenCableOutput(render.FriendlyName);
+            var cable = OpenCableOutput(name);
             if (cable is not null)
             {
                 return cable;
             }
-
-            throw new InvalidOperationException(
-                "CABLE Input is a playback sink. Pick VB-Cable · CABLE Output.");
         }
 
         Exception? last = null;
@@ -631,16 +800,22 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
 
         try
         {
-            return new NaudioDeviceTap(new WasapiLoopbackCapture());
+            return MixClientTap.Open(render, loopback: true);
         }
         catch (Exception error)
         {
             last = error;
         }
 
+        var wave = WaveInTap.OpenNamed(name);
+        if (wave is not null)
+        {
+            return wave;
+        }
+
         try
         {
-            return MixClientTap.Open(render, loopback: true);
+            return new NaudioDeviceTap(new WasapiLoopbackCapture());
         }
         catch (Exception error)
         {
@@ -650,40 +825,46 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
 
     private IDeviceTap? OpenCableOutput(string inputName)
     {
-        if (heldEnum is not null)
+        using var extra = new MMDeviceEnumerator();
+        var search = heldEnum ?? extra;
+        var output = CableName.FindOutput(search, inputName);
+        if (output is not null)
         {
-            var output = CableName.FindOutput(heldEnum, inputName);
-            if (output is not null)
+            var unused = heldDevice;
+            heldDevice = output;
+            try
             {
-                var unused = heldDevice;
-                heldDevice = output;
-                try
+                var capture = OpenCapture(output);
+                unused?.Dispose();
+                return capture;
+            }
+            catch (Exception)
+            {
+                if (!ReferenceEquals(heldDevice, unused))
                 {
-                    var capture = OpenCapture(output);
-                    unused?.Dispose();
-                    selectedName = output.FriendlyName;
-                    return capture;
-                }
-                catch (Exception)
-                {
-                    if (!ReferenceEquals(heldDevice, unused))
-                    {
-                        output.Dispose();
-                        heldDevice = unused;
-                    }
+                    output.Dispose();
+                    heldDevice = unused;
                 }
             }
         }
 
-        return WaveInTap.OpenNamed("CABLE Output");
+        return WaveInTap.OpenNamed(CableName.SourceHint(inputName)) ??
+               WaveInTap.OpenNamed("CABLE Output") ??
+               WaveInTap.OpenNamed("CABLE Out");
     }
 
     private static IDeviceTap OpenCapture(MMDevice capture)
     {
-        var wave = WaveInTap.OpenNamed(capture.FriendlyName);
-        if (wave is not null && CableName.IsOutput(capture.FriendlyName))
+        var name = capture.FriendlyName ?? string.Empty;
+        if (CableName.IsOutput(name) || CableName.IsFamily(name))
         {
-            return wave;
+            var waveFirst = WaveInTap.OpenNamed(name) ??
+                            WaveInTap.OpenNamed(CableName.SourceHint(name)) ??
+                            WaveInTap.OpenNamed("CABLE Output");
+            if (waveFirst is not null)
+            {
+                return waveFirst;
+            }
         }
 
         try
@@ -692,14 +873,25 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         }
         catch (Exception)
         {
-            if (wave is not null)
-            {
-                return wave;
-            }
-
-            IDeviceTap? cable = WaveInTap.OpenNamed("CABLE Output");
-            return cable ?? MixClientTap.Open(capture, loopback: false);
         }
+
+        try
+        {
+            return MixClientTap.Open(capture, loopback: false);
+        }
+        catch (Exception)
+        {
+        }
+
+        var wave = WaveInTap.OpenNamed(name) ??
+                   WaveInTap.OpenNamed(CableName.SourceHint(name)) ??
+                   WaveInTap.OpenNamed("CABLE Output");
+        if (wave is not null)
+        {
+            return wave;
+        }
+
+        return MixClientTap.Open(capture, loopback: false);
     }
 
     private void ReleaseHeldDevice()
@@ -725,22 +917,39 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
             return;
         }
 
-        float gain;
+        float capture;
+        float cue;
+        float stream;
         lock (gate)
         {
-            gain = micGain;
+            capture = micGain;
+            cue = monitorGain;
+            stream = streamGain;
         }
 
-        var peak = AudioMix.Peak(args.Buffer, args.BytesRecorded, tap.Format) * gain;
+        var peak = AudioMix.Peak(args.Buffer, args.BytesRecorded, tap.Format) * capture;
         var mixed = AudioMix.ToStereoFloat(args.Buffer, args.BytesRecorded, tap.Format);
-        AudioMix.Scale(mixed, gain);
-        var pcm = AudioMix.ToStereoPcm16(mixed);
+        AudioMix.Scale(mixed, capture);
         var rate = tap.Format.SampleRate;
         lock (gate)
         {
-            if (mixed.Length > 0)
+            if (mixed.Length > 0 && monitorBuffer is not null && cue > 0.001f)
             {
-                monitorBuffer?.AddSamples(mixed, 0, mixed.Length);
+                if (Math.Abs(cue - 1f) < 0.001f)
+                {
+                    monitorBuffer.AddSamples(mixed, 0, mixed.Length);
+                }
+                else
+                {
+                    if (cueScratch is null || cueScratch.Length < mixed.Length)
+                    {
+                        cueScratch = new byte[mixed.Length];
+                    }
+
+                    Buffer.BlockCopy(mixed, 0, cueScratch, 0, mixed.Length);
+                    AudioMix.Scale(cueScratch, cue);
+                    monitorBuffer.AddSamples(cueScratch, 0, mixed.Length);
+                }
             }
 
             if (peak > level)
@@ -756,6 +965,8 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
             }
         }
 
+        AudioMix.Scale(mixed, stream);
+        var pcm = AudioMix.ToStereoPcm16(mixed);
         if (pcm.Length > 0)
         {
             CapturedPcm?.Invoke(pcm, pcm.Length, rate);

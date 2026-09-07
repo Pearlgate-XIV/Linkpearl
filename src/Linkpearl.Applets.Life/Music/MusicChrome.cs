@@ -1,5 +1,7 @@
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Painting;
@@ -113,7 +115,22 @@ internal static class MusicChrome
 
     public static void Kicker(in AppletFrame frame, Rect area, string label)
     {
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Ink));
+        frame.Text.DrawEllipsized(area, label, new TextStyle(FontRole.BodyStrong, Ink));
+    }
+
+    public static void FitCopy(in AppletFrame frame, ref Stack stack, string text, Vector4 color,
+        FontRole role = FontRole.Caption)
+    {
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        var width = MathF.Max(8f, stack.Remaining.Width);
+        var size = frame.Text.MeasureWrapped(text, role, width);
+        var line = MathF.Max(frame.Text.LineHeight(role), frame.Units(14f));
+        var height = Math.Clamp(size.Y + frame.Units(2f), line, line * 4f);
+        frame.Text.DrawWrapped(stack.Take(height), text, new TextStyle(role, color));
     }
 
     public static bool SeeAll(in AppletFrame frame, Rect area)
@@ -480,5 +497,59 @@ internal static class MusicChrome
         var y = track.Min.Y + travel * (offset / MathF.Max(content - view, 1f));
         frame.Paint.Fill(Rect.FromSize(new Vector2(track.Min.X, y), new Vector2(track.Width, thumbH)), Purple,
             frame.Units(3f));
+    }
+
+    public static bool MixFader(in AppletFrame frame, Rect area, string label, float value, ref bool dragging,
+        Action<float> set)
+    {
+        if (area.Width < 8f || area.Height < 8f)
+        {
+            return false;
+        }
+
+        var amount = Math.Clamp(value, 0f, 1f);
+        var caption = area.BottomSlice(frame.Units(32f));
+        var well = area.Inset(new Edges(frame.Units(10f), frame.Units(6f), frame.Units(10f),
+            caption.Height + frame.Units(4f)));
+        var width = MathF.Min(frame.Units(10f), well.Width);
+        var bar = Rect.FromSize(new Vector2(well.Center.X - width * 0.5f, well.Min.Y),
+            new Vector2(width, well.Height));
+        frame.Paint.Fill(bar, new Vector4(0.16f, 0.16f, 0.18f, 0.94f), width * 0.5f);
+        var fill = MathF.Max(width, bar.Height * amount);
+        frame.Paint.Fill(new Rect(new Vector2(bar.Min.X, bar.Max.Y - fill), bar.Max), LiveOn with { W = 0.92f },
+            width * 0.5f);
+        var knobH = frame.Units(14f);
+        var knobW = MathF.Min(well.Width, frame.Units(22f));
+        var knobY = Math.Clamp(bar.Max.Y - bar.Height * amount - knobH * 0.5f, bar.Min.Y, bar.Max.Y - knobH);
+        frame.Paint.Fill(Rect.FromSize(new Vector2(well.Center.X - knobW * 0.5f, knobY), new Vector2(knobW, knobH)),
+            new Vector4(0.96f, 0.96f, 0.98f, 1f), knobH * 0.22f);
+        frame.Text.DrawIn(caption.TopSlice(frame.Units(16f)), label,
+            new TextStyle(FontRole.CaptionStrong, Ink, TextAlign.Center));
+        frame.Text.DrawIn(caption.BottomSlice(frame.Units(14f)),
+            ((int)MathF.Round(amount * 100f)).ToString(CultureInfo.InvariantCulture) + "%",
+            new TextStyle(FontRole.Caption, Mute, TextAlign.Center));
+        var input = frame.Input;
+        if (input.WasPressed(area) || input.IsHeld() && area.Contains(input.Pointer) && !dragging)
+        {
+            dragging = true;
+        }
+
+        if (dragging && input.IsHeld())
+        {
+            var next = Math.Clamp((bar.Max.Y - input.Pointer.Y) / MathF.Max(bar.Height, 1f), 0f, 1f);
+            var changed = Math.Abs(next - amount) > 0.001f;
+            if (changed)
+            {
+                set(next);
+            }
+
+            input.Claim(area);
+            input.ConsumeClick(area);
+            return changed;
+        }
+
+        dragging = false;
+        input.ConsumeClick(area);
+        return false;
     }
 }
