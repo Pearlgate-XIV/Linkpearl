@@ -15,41 +15,103 @@ public sealed partial class VybeApplet
 {
     private void DrawGate(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
-        VybeChrome.StackedMark(frame, stack.Take(frame.Units(88f)), night: true);
-        VybeChrome.Mute(frame, stack.Take(frame.Units(48f)),
-            "A private, adults only corner of the suite. Neon nights, unhurried, yours.", true);
-        VybeChrome.Mute(frame, stack.Take(frame.Units(40f)),
-            "By entering you confirm you are 18 or older. Be kind, be discreet.", true);
-
-        var rules = stack.Take(frame.Units(36f));
-        VybeChrome.Glow(frame, rules, frame.Units(12f), true, true);
-        frame.Text.DrawIn(rules, "Read the community rules",
-            new TextStyle(FontRole.CaptionStrong, VybeChrome.Night.Accent, TextAlign.Center));
-        if (frame.Input.ConsumeClick(rules))
+        var tone = VybeChrome.Night;
+        var blocked = state.PlusBlocked;
+        var close = area.TopSlice(frame.Units(22f)).RightSlice(frame.Units(28f));
+        frame.Text.DrawIn(close, "×", new TextStyle(FontRole.Title, tone.Ink, TextAlign.Center));
+        if (frame.Input.ConsumeClick(close) || frame.Input.ConsumeClick(area.TopSlice(frame.Units(22f)).RightSlice(frame.Units(40f))))
         {
-            state.Open(NightPage.Rules);
+            LeavePlusGate();
             return;
         }
 
-        var enter = stack.Take(frame.Units(44f));
-        VybeChrome.Primary(frame, enter, "Enter After Dark", true);
-        if (frame.Input.ConsumeClick(enter))
+        var stack = new Stack(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)), StackAxis.Vertical, frame.Units(8f));
+        var lockRow = stack.Take(frame.Units(72f));
+        var glow = lockRow.Center;
+        frame.Paint.FillCircle(glow, frame.Units(28f), tone.Accent with { W = 0.16f });
+        frame.Paint.FillCircle(glow, frame.Units(18f), tone.Accent with { W = 0.28f });
+        frame.Paint.StrokeCircle(glow + new Vector2(0f, -frame.Units(6f)), frame.Units(6f), Vector4.One, frame.Units(2f));
+        frame.Paint.Fill(Rect.FromSize(glow + new Vector2(-frame.Units(7f), -frame.Units(2f)),
+            new Vector2(frame.Units(14f), frame.Units(12f))), Vector4.One, frame.Units(2.5f));
+
+        var title = stack.Take(frame.Units(40f));
+        frame.Text.DrawIn(title.TopSlice(frame.Units(20f)), "Unlock More with",
+            new TextStyle(FontRole.BodyStrong, tone.Ink, TextAlign.Center));
+        frame.Text.DrawIn(title.BottomSlice(frame.Units(20f)), "VYBE+",
+            new TextStyle(FontRole.Title, tone.Accent, TextAlign.Center));
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Same community. More freedom.",
+            new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
+
+        var card = stack.Take(frame.Units(132f));
+        VybeChrome.Plate(frame, card, frame.Units(14f), true);
+        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "Opt-in to view and share NSFW content (18+)");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "☺", "Your profile stays the same");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "NSFW content is hidden from SFW users");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "⚙", "Switch anytime on your profile");
+
+        if (blocked)
         {
-            state.Consented = true;
-            state.Mode = SocialMode.AfterDark;
-            state.Page = state.Onboarded ? NightPage.Tabs : NightPage.OnboardIdentity;
+            frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
+                "VYBE+ is not available on Lalafell characters.",
+                new TextStyle(FontRole.Caption, tone.Danger, TextAlign.Center));
+        }
+
+        var enter = stack.Take(frame.Units(44f));
+        VybeChrome.PlusButton(frame, enter, "Enable NSFW Mode", !blocked);
+        if (!blocked && frame.Input.ConsumeClick(enter))
+        {
+            var back = state.ReturnTo;
+            state.AgreePlus();
+            if (back == NightPage.OnboardIdentity)
+            {
+                state.Page = NightPage.OnboardIdentity;
+            }
+            else
+            {
+                state.Page = state.Onboarded ? NightPage.Tabs : NightPage.OnboardIdentity;
+                state.Tab = NightTab.Profile;
+            }
+
             state.Save(paths);
             return;
         }
 
-        var leave = stack.Take(frame.Units(36f));
-        frame.Text.DrawIn(leave, "Not now",
-            new TextStyle(FontRole.BodyStrong, VybeChrome.Night.Mute, TextAlign.Center));
+        var leave = stack.Take(frame.Units(28f));
+        frame.Text.DrawIn(leave, "Not Now",
+            new TextStyle(FontRole.CaptionStrong, tone.Accent, TextAlign.Center));
         if (frame.Input.ConsumeClick(leave))
         {
-            state.StartWash(toNight: false);
+            LeavePlusGate();
+            return;
         }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
+            "You must be 18+ to enable NSFW mode. We take safety and privacy seriously.",
+            new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
+    }
+
+    private static void DrawGateFact(in AppletFrame frame, Rect row, string mark, string copy)
+    {
+        var tone = VybeChrome.Night;
+        frame.Text.DrawIn(row.LeftSlice(frame.Units(22f)), mark,
+            new TextStyle(FontRole.BodyStrong, tone.Accent, TextAlign.Center));
+        frame.Text.DrawEllipsized(row.Inset(new Edges(frame.Units(26f), 0f, 0f, 0f)), copy,
+            new TextStyle(FontRole.Caption, tone.Ink));
+    }
+
+    private void LeavePlusGate()
+    {
+        state.Mode = SocialMode.Daylight;
+        state.Page = state.ReturnTo is NightPage.Settings or NightPage.Tabs or NightPage.OnboardIdentity
+            ? state.ReturnTo
+            : NightPage.Tabs;
+        if (state.Page == NightPage.Gate)
+        {
+            state.Page = NightPage.Tabs;
+        }
+
+        state.Save(paths);
     }
 
     private void DrawRules(in AppletFrame frame, Rect area)
@@ -57,7 +119,7 @@ public sealed partial class VybeApplet
         VybeChrome.Wheel(frame, area, state, frame.Units(720f));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
         var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(8f));
-        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "After Dark Community Rules", true))
+        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "VYBE+ Community Rules", true))
         {
             state.Page = NightPage.Gate;
             state.Scroll = 0f;
@@ -88,7 +150,7 @@ public sealed partial class VybeApplet
     private void DrawOnboard(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        VybeChrome.Wheel(frame, area, state, frame.Units(1760f));
+        VybeChrome.Wheel(frame, area, state, frame.Units(1880f));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
         var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(8f));
         var title = state.Page switch
@@ -106,7 +168,7 @@ public sealed partial class VybeApplet
             }
             else if (state.Page == NightPage.OnboardIdentity)
             {
-                state.Page = state.Night && !state.Consented ? NightPage.Gate : NightPage.Tabs;
+                state.Page = state.Night && !state.PlusAgreed ? NightPage.Gate : NightPage.Tabs;
             }
             else
             {
@@ -171,6 +233,7 @@ public sealed partial class VybeApplet
             {
                 state.Relationship = value;
             }, night);
+            DrawPlusSettings(frame, ref stack, night);
         }
         else if (state.Page == NightPage.OnboardIntent)
         {
@@ -368,7 +431,7 @@ public sealed partial class VybeApplet
 
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "POSTS", night);
         var posts = 0;
-        foreach (var wallPost in VisibleFeed(BoardFeed()))
+        foreach (var wallPost in VisibleFeed(OpenBoard()))
         {
             DrawPearlCard(frame, stack.Take(frame.Units(PostCardHeight(frame, wallPost))), wallPost);
             posts++;
@@ -546,7 +609,8 @@ public sealed partial class VybeApplet
             StackAxis.Vertical, frame.Units(6f));
         var status = person.Online ? "Online" : "Away";
         var meta = person.World.Length > 0 ? person.World + " · " + status : status;
-        DrawProfileIdentity(frame, ref stack, person.Name, person.Handle, meta, person.Line, night);
+        DrawProfileIdentity(frame, ref stack, person.Name, person.Handle, meta, person.Line, night,
+            VybeDemo.HasPlusAccount(person));
         DrawPersonFacts(frame, ref stack, person, night);
 
         var linked = state.Connected.Contains(person.Id);
@@ -1217,9 +1281,16 @@ public sealed partial class VybeApplet
         talkTray.DrawFaces(frame, faces, idle);
         var field = new Rect(new Vector2(plus.Max.X + gap, top),
             new Vector2(pin.Min.X - gap, top + slot));
-        frame.Paint.Fill(field, new Vector4(0.10f, 0.10f, 0.12f, 0.94f), field.Height * 0.5f);
-        state.Draft = frame.TextField.Draw(fieldId, field.Inset(new Edges(frame.Units(12f), frame.Units(4f))),
-            state.Draft, "Message", 400, out var submitted, true);
+        var live = frame.TextField.Owns(fieldId);
+        frame.Paint.Fill(field, live
+            ? new Vector4(0.14f, 0.14f, 0.17f, 0.98f)
+            : new Vector4(0.10f, 0.10f, 0.12f, 0.94f), field.Height * 0.5f);
+        if (live)
+        {
+            frame.Paint.Stroke(field, tone.Ink with { W = 0.55f }, frame.Units(1.2f), field.Height * 0.5f);
+        }
+
+        state.Draft = frame.TextField.Draw(fieldId, field, state.Draft, "Message", 400, out var submitted, true);
         var ready = state.Draft.Trim().Length > 0;
         frame.Paint.FillCircle(send.Center, frame.Units(14f), ready ? tone.Accent : tone.CardHi);
         DrawTalkSend(frame.Paint, send.Center, frame.Units(5.5f), ready ? tone.AccentInk : tone.Mute);
@@ -1307,10 +1378,84 @@ public sealed partial class VybeApplet
         }
     }
 
+    private void DrawPlusSwitch(in AppletFrame frame, ref Stack stack, bool night)
+    {
+        if (state.PlusBlocked)
+        {
+            VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
+                "VYBE+ NSFW is not available on Lalafell characters.", night);
+            return;
+        }
+
+        if (!state.PlusAgreed)
+        {
+            VybeChrome.Mute(frame, stack.Take(frame.Units(32f)),
+                "Opt in to NSFW to unlock VYBE+ on your profile.", night);
+            var unlock = stack.Take(frame.Units(44f));
+            VybeChrome.PlusButton(frame, unlock, "Unlock VYBE+", true);
+            if (frame.Input.ConsumeClick(unlock))
+            {
+                state.Open(NightPage.Gate);
+            }
+
+            return;
+        }
+
+        VybeChrome.Mute(frame, stack.Take(frame.Units(28f)),
+            "Switch SFW and NSFW. Turn VYBE+ off in Edit profile.", night);
+        var picked = VybeChrome.ModeSlider(frame, stack.Take(frame.Units(40f)), night);
+        if (picked == 0 && night)
+        {
+            state.StartWash(toNight: false);
+        }
+
+        if (picked == 1 && !night)
+        {
+            state.StartWash(toNight: true);
+        }
+    }
+
+    private void DrawPlusSettings(in AppletFrame frame, ref Stack stack, bool night)
+    {
+        if (state.PlusBlocked)
+        {
+            VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "VYBE+", night);
+            VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
+                "VYBE+ is not available on Lalafell characters.", night);
+            return;
+        }
+
+        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "VYBE+", night);
+        if (!state.PlusAgreed)
+        {
+            VybeChrome.Mute(frame, stack.Take(frame.Units(32f)),
+                "Agree to the 18+ terms to add the VYBE / VYBE+ toggle on your profile.", night);
+            var unlock = stack.Take(frame.Units(40f));
+            VybeChrome.PlusButton(frame, unlock, "Unlock VYBE+", true);
+            if (frame.Input.ConsumeClick(unlock))
+            {
+                state.Open(NightPage.Gate);
+            }
+
+            return;
+        }
+
+        VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
+            "Turning this off leaves NSFW and removes the toggle from your profile.", night);
+        var kill = stack.Take(frame.Units(40f));
+        VybeChrome.Plate(frame, kill, frame.Units(12f), night);
+        frame.Text.DrawIn(kill, "Turn off VYBE+",
+            new TextStyle(FontRole.CaptionStrong, VybeChrome.Tone(night).Danger, TextAlign.Center));
+        if (frame.Input.ConsumeClick(kill))
+        {
+            state.RevokePlus();
+            state.Save(paths);
+        }
+    }
+
     private void DrawSettings(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var tone = VybeChrome.Tone(night);
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Settings", night))
         {
@@ -1319,29 +1464,8 @@ public sealed partial class VybeApplet
         }
 
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "MODE", night);
-        VybeChrome.Mute(frame, stack.Take(frame.Units(40f)),
-            "VYBE is the default, SFW suite. After Dark is an 18+ opt-in. Hold the sun or moon on Home to flip.",
-            night);
-
-        var switcher = stack.Take(frame.Units(44f));
-        VybeChrome.Plate(frame, switcher, frame.Units(14f), night);
-        var dayHit = switcher.LeftSlice(switcher.Width * 0.5f).Inset(frame.Units(4f));
-        var nightHit = switcher.RightSlice(switcher.Width * 0.5f).Inset(frame.Units(4f));
-        VybeChrome.Glow(frame, dayHit, frame.Units(10f), !night, night);
-        VybeChrome.Glow(frame, nightHit, frame.Units(10f), night, night);
-        frame.Text.DrawIn(dayHit, "VYBE",
-            new TextStyle(FontRole.CaptionStrong, !night ? tone.AccentInk : tone.Mute, TextAlign.Center));
-        frame.Text.DrawIn(nightHit, "After Dark",
-            new TextStyle(FontRole.CaptionStrong, night ? tone.AccentInk : tone.Mute, TextAlign.Center));
-        if (frame.Input.ConsumeClick(dayHit) && night)
-        {
-            state.StartWash(toNight: false);
-        }
-
-        if (frame.Input.ConsumeClick(nightHit) && !night)
-        {
-            state.StartWash(toNight: true);
-        }
+        DrawPlusSwitch(frame, ref stack, night);
+        DrawPlusSettings(frame, ref stack, night);
 
         DrawToggle(frame, stack.Take(frame.Units(44f)), "Discoverable", state.Discoverable, night, () =>
         {
@@ -1385,8 +1509,18 @@ public sealed partial class VybeApplet
             return;
         }
 
+        if (night)
+        {
+            var next = DrawPlusSplit(frame, stack.Take(frame.Units(32f)), "Gallery", state.GalleryPlus, night);
+            if (next != state.GalleryPlus)
+            {
+                state.GalleryPlus = next;
+                state.Scroll = 0f;
+            }
+        }
+
         DrawGallerySearch(frame, stack.Take(frame.Units(36f)), night);
-        DrawMasonryGallery(frame, stack.TakeRemaining(), BoardFeed(), night);
+        DrawMasonryGallery(frame, stack.TakeRemaining(), GalleryBoard(), night);
     }
 
     private void DrawLikes(in AppletFrame frame, Rect area)
@@ -1400,7 +1534,7 @@ public sealed partial class VybeApplet
         }
 
         var shown = 0;
-        foreach (var wallPost in BoardFeed())
+        foreach (var wallPost in OpenBoard())
         {
             if (!wallPost.Liked)
             {
@@ -1602,6 +1736,11 @@ public sealed partial class VybeApplet
                 }
             }
             else if (!state.Incoming.Contains(person.Id))
+            {
+                continue;
+            }
+
+            if (!night && person.NightOnly)
             {
                 continue;
             }

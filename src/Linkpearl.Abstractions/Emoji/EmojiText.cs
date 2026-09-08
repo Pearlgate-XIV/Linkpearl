@@ -71,12 +71,12 @@ public static class EmojiText
         paint.PushClip(area);
         Walk(paint, text, textures, paths, shown, MathF.Max(wide, inner), style, true, ref height, ref used, origin,
             true);
-        if (caret && !empty)
+        if (caret)
         {
             var face = MathF.Max(14f, text.LineHeight(style.Role));
-            var x = origin.X + wide + 1f;
+            var x = empty ? origin.X : origin.X + wide + 1f;
             var y = area.Center.Y - face * 0.35f;
-            paint.Line(new Vector2(x, y), new Vector2(x, y + face * 0.7f), color, 1.2f);
+            paint.Line(new Vector2(x, y), new Vector2(x, y + face * 0.7f), ink, 1.35f);
         }
 
         paint.PopClip();

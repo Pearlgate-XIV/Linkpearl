@@ -154,8 +154,14 @@ internal sealed class LiveChatSurface
 
     private void DrawComposer(in AppletFrame frame, Rect composer, TalkThread? thread, bool partyReady)
     {
+        var live = frame.TextField.Owns("feed-draft");
         var radius = composer.Height * 0.5f;
-        frame.Paint.Fill(composer, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, radius);
+        frame.Paint.Fill(composer, frame.Theme.Palette.SurfaceOverlay with { W = live ? 0.88f : 0.72f }, radius);
+        if (live)
+        {
+            frame.Paint.Stroke(composer, frame.Theme.Palette.WarmAccent with { W = 0.55f }, frame.Units(1.4f),
+                radius);
+        }
         var inner = composer.Inset(new Edges(frame.Units(14f), frame.Units(4f), frame.Units(6f), frame.Units(4f)));
         var send = inner.RightSlice(frame.Units(52f));
         var field = new Rect(inner.Min, new Vector2(send.Min.X - frame.Units(8f), inner.Max.Y));

@@ -11,6 +11,7 @@ internal enum GroupLane : byte
     Suggested = 1,
     Nearby = 2,
     All = 3,
+    Plus = 4,
 }
 
 internal readonly record struct SceneGroup(
@@ -20,11 +21,15 @@ internal readonly record struct SceneGroup(
     int Members,
     string File,
     bool Suggested,
-    bool Nearby);
+    bool Nearby,
+    bool PlusOnly = false);
 
 internal static class VybeGroups
 {
     public static readonly string[] Lanes = { "My Groups", "Suggested", "Nearby", "All" };
+
+    public static string[] LanesOf(bool night) =>
+        night ? ["My Groups", "Suggested", "Nearby", "All", "Plus"] : Lanes;
 
     public static readonly SceneGroup[] Catalog =
     {
@@ -38,6 +43,9 @@ internal static class VybeGroups
         new("ward", "Ward Walkers", "Travel", 3_400, "fc.png", false, true),
         new("club", "After Hours", "Music", 18_600, "club-b.png", false, true),
         new("photo", "Lens Club", "Creative", 5_200, "pose.png", false, false),
+        new("lounge", "After Dark Lounge", "Plus", 4_800, "club-c.png", true, true, true),
+        new("unfiltered", "Unfiltered GPose", "Plus", 2_100, "pose.png", true, false, true),
+        new("pluscircle", "Plus Circle", "Plus", 3_600, "city.png", false, true, true),
     };
 
     public static string Face(HostPaths paths, string file) =>
@@ -57,6 +65,10 @@ internal static class VybeGroups
             "GPose dump from the pink neon rooftop. Come steal the lighting. #Creative", "1d", false, 58, 9, 5),
         Group(paths, "club", "1", "demo:novale", "NoVale", "club-b.png",
             "Dance floor is packed and the lights are mean tonight. #Music", "1d", true, 120, 21, 15),
+        PlusGroup(paths, "lounge", "1", "demo:velvet", "Velvet", "club-c.png",
+            "Plus lounge is open. Keep this off the SFW board. #VYBEPlus", "40m", true, 88, 16, 9),
+        PlusGroup(paths, "unfiltered", "1", "demo:hex", "Hex", "pose.png",
+            "Unfiltered set. 18+ members only. #NSFW #VYBEPlus", "2h", false, 54, 12, 4),
     ];
 
     public static bool TryGroup(PearlPost post, out SceneGroup group)
@@ -89,6 +101,15 @@ internal static class VybeGroups
         return new PearlPost("demo-group:" + groupId + ":" + key, authorId, author, "group:" + groupId, still, body,
             when, false, liked, likes, comments, reposts, false, string.Empty, string.Empty, string.Empty,
             [new PearlMedia("demo-group-media-" + groupId + "-" + key, still, 960, 540)]);
+    }
+
+    private static PearlPost PlusGroup(HostPaths paths, string groupId, string key, string authorId, string author,
+        string file, string body, string when, bool liked, int likes, int comments, int reposts)
+    {
+        var still = Face(paths, file);
+        return new PearlPost("plus-group:" + groupId + ":" + key, authorId, author, "group:" + groupId, still, body,
+            when, false, liked, likes, comments, reposts, false, string.Empty, string.Empty, string.Empty,
+            [new PearlMedia("plus-group-media-" + groupId + "-" + key, still, 960, 540)]);
     }
 
     public static string Crowd(int members)
@@ -153,11 +174,24 @@ internal static class VybeGroups
         state.JoinedGroups.Add("food");
     }
 
-    private static bool Fits(VybeState state, SceneGroup group) => state.GroupLane switch
+    private static bool Fits(VybeState state, SceneGroup group)
     {
-        GroupLane.Mine => Joined(state, group.Id),
-        GroupLane.Suggested => group.Suggested,
-        GroupLane.Nearby => group.Nearby,
-        _ => true,
-    };
+        if (group.PlusOnly)
+        {
+            return state.Night && state.GroupLane == GroupLane.Plus;
+        }
+
+        if (state.GroupLane == GroupLane.Plus)
+        {
+            return false;
+        }
+
+        return state.GroupLane switch
+        {
+            GroupLane.Mine => Joined(state, group.Id),
+            GroupLane.Suggested => group.Suggested,
+            GroupLane.Nearby => group.Nearby,
+            _ => true,
+        };
+    }
 }

@@ -20,6 +20,8 @@ public sealed class DalamudTextField : ITextField
     private bool primed;
     private string ownerId = string.Empty;
     private string pendingFocus = string.Empty;
+    private string caretOwner = string.Empty;
+    private double caretSince;
     private readonly Dictionary<string, int> carets = new(StringComparer.Ordinal);
     private readonly List<string> wireFaces = new();
     private IPaintSurface? paint;
@@ -40,6 +42,7 @@ public sealed class DalamudTextField : ITextField
     {
         ownerId = string.Empty;
         pendingFocus = string.Empty;
+        caretOwner = string.Empty;
         Capturing = false;
         primed = false;
         backHold = 0;
@@ -58,6 +61,7 @@ public sealed class DalamudTextField : ITextField
         backHold = 0;
         ownerId = string.Empty;
         pendingFocus = string.Empty;
+        caretOwner = string.Empty;
         strokes.Clear();
         held.Clear();
     }
@@ -471,8 +475,7 @@ public sealed class DalamudTextField : ITextField
         _ = line;
         if (paint is not null && text is not null && textures is not null && paths is not null)
         {
-            var blink = focused && (int)(ImGui.GetTime() * 2d) % 2 == 0;
-            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, blink);
+            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, CaretOn(focused));
             return;
         }
 
@@ -482,7 +485,33 @@ public sealed class DalamudTextField : ITextField
         var shown = empty ? placeholder : current;
         var origin = area.Min + new Vector2(padX, padY);
         draw.AddText(origin, ImGui.GetColorU32(empty ? ink with { W = 0.42f } : ink), shown);
+        if (CaretOn(focused))
+        {
+            var caretX = empty ? origin.X : origin.X + ImGui.CalcTextSize(shown).X + 1f;
+            var top = area.Center.Y - line * 0.35f;
+            draw.AddLine(new Vector2(caretX, top), new Vector2(caretX, top + line * 0.7f),
+                ImGui.GetColorU32(ink), 1.35f);
+        }
+
         draw.PopClipRect();
+    }
+
+    private bool CaretOn(bool focused)
+    {
+        if (!focused)
+        {
+            caretOwner = string.Empty;
+            return false;
+        }
+
+        var now = ImGui.GetTime();
+        if (caretOwner != ownerId)
+        {
+            caretOwner = ownerId;
+            caretSince = now;
+        }
+
+        return now - caretSince < 0.55d || (int)(now * 2d) % 2 == 0;
     }
 
     private static string Apply(string value, List<char> incoming, int maxLength, out bool submitted)

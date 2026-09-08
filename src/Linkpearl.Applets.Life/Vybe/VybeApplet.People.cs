@@ -25,10 +25,7 @@ public sealed partial class VybeApplet
         var find = state.PeopleFind;
         find.Pulse = MathF.Max(0f, find.Pulse - frame.DeltaSeconds);
         find.PassFade = MathF.Max(0f, find.PassFade - frame.DeltaSeconds);
-        if (findDeck.Length == 0)
-        {
-            findDeck = PeopleFindBook.Deck(paths);
-        }
+        findDeck = PeopleFindBook.Deck(paths);
 
         var mine = PeopleFindBook.Mine(state);
         var home = game.Character.WorldName;
@@ -36,6 +33,15 @@ public sealed partial class VybeApplet
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
         DrawPeopleHead(frame, stack.Take(frame.Units(28f)), find, tone, night);
         DrawDiscoverPanes(frame, stack.Take(frame.Units(34f)), night);
+        if (night)
+        {
+            var next = DrawPlusSplit(frame, stack.Take(frame.Units(32f)), "People", state.PeoplePlus, night);
+            if (next != state.PeoplePlus)
+            {
+                state.PeoplePlus = next;
+                state.Scroll = 0f;
+            }
+        }
         if (state.DiscoverPane != 0)
         {
             return;
@@ -164,7 +170,8 @@ public sealed partial class VybeApplet
     {
         VybeChrome.Plate(frame, area, frame.Units(16f), night);
         var inner = area.Inset(frame.Units(14f));
-        VybeChrome.Title(frame, inner.TopSlice(frame.Units(24f)), "No one matches those filters yet.", night);
+        VybeChrome.Title(frame, inner.TopSlice(frame.Units(24f)),
+            state.PeoplePlus ? "No VYBE+ people yet." : "No one matches those filters yet.", night);
         VybeChrome.Mute(frame, inner.Inset(new Edges(0f, frame.Units(28f), 0f, frame.Units(52f))),
             "Open Filters to widen the search, or tap a chip above to drop it.", night);
         var row = inner.BottomSlice(frame.Units(40f));
@@ -209,8 +216,19 @@ public sealed partial class VybeApplet
         DrawHottHeart(frame, heart, tone.Accent, liked);
         var copy = area.Inset(new Edges(frame.Units(8f), frame.Units(156f), frame.Units(8f), frame.Units(6f)));
         var lines = new Stack(copy, StackAxis.Vertical, frame.Units(1.5f));
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(16f)), card.Name,
-            new TextStyle(FontRole.CaptionStrong, FindInk));
+        var nameRow = lines.Take(frame.Units(16f));
+        if (card.PlusMember || card.PlusOnly)
+        {
+            var tagW = MathF.Min(VybeChrome.PlusTagWidth(frame), nameRow.Width * 0.42f);
+            frame.Text.DrawEllipsized(nameRow.Inset(new Edges(0f, 0f, tagW + frame.Units(4f), 0f)), card.Name,
+                new TextStyle(FontRole.CaptionStrong, FindInk));
+            VybeChrome.PlusTag(frame, nameRow.RightSlice(tagW));
+        }
+        else
+        {
+            frame.Text.DrawEllipsized(nameRow, card.Name,
+                new TextStyle(FontRole.CaptionStrong, FindInk));
+        }
         var place = card.World + " • " + card.DataCenter;
         if (card.Age > 0 && card.DatingOn && state.DatingDiscovery)
         {
@@ -362,7 +380,8 @@ public sealed partial class VybeApplet
     private void DrawPeopleCover(in AppletFrame frame, Rect area, PeopleCard card, bool night)
     {
         var person = new ScenePerson(card.Id, card.GateId, card.Name, card.Handle, card.World, card.Bio, card.Online,
-            4, false, new Vector4(0f, 0f, 0f, 0.42f), card.LookingFor, card.Interests, card.Avatar);
+            4, card.PlusOnly, new Vector4(0f, 0f, 0f, 0.42f), card.LookingFor, card.Interests, card.Avatar,
+            PlusMember: card.PlusMember);
         DrawPersonCover(frame, area, person, night);
         frame.Paint.FillGradient(area, new Vector4(0f, 0f, 0f, 0.04f), new Vector4(0f, 0f, 0f, 0.55f),
             GradientAxis.Vertical);

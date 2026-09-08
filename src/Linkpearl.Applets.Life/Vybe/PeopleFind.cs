@@ -290,7 +290,9 @@ internal readonly record struct PeopleCard(
     string Avatar,
     string Gender = "",
     string Sexuality = "",
-    bool DmsOpen = true);
+    bool DmsOpen = true,
+    bool PlusOnly = false,
+    bool PlusMember = false);
 
 internal static class PeopleFindBook
 {
@@ -478,6 +480,30 @@ internal static class PeopleFindBook
                 "On the dance floor after savage. Frontline later.", "No RP", Array.Empty<string>(), "No",
                 "Online", true, "Evening", "Voice Chat", "Highly Social", "", "", 0,
                 false, true, "novale"),
+            Card(paths, "velvet", "Velvet Rae", "@velvet", "Balmung", "Dancer", "Physical Ranged", "Viera",
+                ["Dating", "Flirting", "Casual Dating"],
+                ["Nightlife", "Venues", "GPOSE", "Fashion", "Clubs"],
+                "18+ after dark. DMs open. Plus-only.", "Regular RP", ["Romance", "Social"], "Ask First",
+                "Online", true, "Late Night", "PearlChat", "Talkative", "Casual Dating", "Single", 26,
+                true, true, "raven", true),
+            Card(paths, "hex", "Hex Vale", "@hex_", "Mateus", "Reaper", "Melee DPS", "Au Ra",
+                ["Dating", "RP Partner", "Flirting"],
+                ["RP", "Nightlife", "Photography", "Venues", "Writing"],
+                "Private sets. No screenshots. Adults only.", "Heavy RP", ["Romance", "Story"], "Ask First",
+                "Online", true, "Late Night", "Discord", "One-on-One", "Flirting", "Single", 27,
+                true, true, "ace", true),
+            Card(paths, "noir", "Noir Quinn", "@noir", "Gilgamesh", "Bard", "Physical Ranged", "Elezen",
+                ["Casual Dating", "Venue Friends", "Just Chatting"],
+                ["Clubs", "DJ Events", "Nightlife", "Music", "Fashion"],
+                "Plus lounge regular. Keep it off the SFW board.", "Casual RP", ["Tavern", "Social"], "No",
+                "Today", false, "Late Night", "PearlChat", "Quiet / Chill", "Casual Dating", "It's Complicated", 29,
+                true, false, "novale", true),
+            Card(paths, "ember", "Ember Sol", "@ember", "Jenova", "Summoner", "Caster", "Miqo'te",
+                ["Dating", "Flirting", "Just Chatting"],
+                ["GPOSE", "Venues", "Nightlife", "Photography", "Fashion"],
+                "Unfiltered. Ask first. VYBE+ only.", "Regular RP", ["Romance", "Freeform"], "Yes",
+                "Online", true, "Late Night", "PearlChat", "Highly Social", "Meeting New People", "Single", 24,
+                true, true, "luna", true),
         ];
     }
 
@@ -490,6 +516,18 @@ internal static class PeopleFindBook
         {
             var card = deck[index];
             if (find.Passed.Contains(card.Id) || state.Blocked.Contains(card.Id))
+            {
+                continue;
+            }
+
+            if (state.PeoplePlus)
+            {
+                if (!card.PlusOnly)
+                {
+                    continue;
+                }
+            }
+            else if (card.PlusOnly)
             {
                 continue;
             }
@@ -787,15 +825,18 @@ internal static class PeopleFindBook
     private static PeopleCard Card(HostPaths paths, string key, string name, string handle, string world, string job,
         string role, string race, string[] looking, string[] interests, string bio, string rp, string[] rpTypes,
         string walk, string activity, bool online, string play, string comm, string social, string dating,
-        string status, int age, bool datingOn, bool nearby, string face = "")
+        string status, int age, bool datingOn, bool nearby, string face = "", bool plusOnly = false)
     {
         var gate = "demo:" + key;
         var facts = FaceFacts(key);
         return new PeopleCard(VybeState.StableId(gate), gate, name, handle, world, DataCenterOf(world), job,
             [job], role, race, looking, interests, bio, rp, rpTypes, walk, activity, online, play, comm, social,
             dating, status, age, datingOn, nearby, VybeDemo.FaceOf(paths, face.Length > 0 ? face : key),
-            facts.Gender, facts.Sexuality, facts.DmsOpen);
+            facts.Gender, facts.Sexuality, facts.DmsOpen, plusOnly, plusOnly || PlusFaces(key));
     }
+
+    private static bool PlusFaces(string key) =>
+        key is "luna" or "raven" or "novale" or "velvet" or "hex" or "noir" or "ember";
 
     private static (string Gender, string Sexuality, bool DmsOpen) FaceFacts(string key) =>
         key switch
@@ -812,6 +853,10 @@ internal static class PeopleFindBook
             "wren" => ("Nonbinary", "Asexual", true),
             "iris" => ("Female", "Demisexual", false),
             "jett" => ("Male+", "Gay", true),
+            "velvet" => ("Female", "Bi", true),
+            "hex" => ("Male", "Pan", true),
+            "noir" => ("Nonbinary", "Bi", true),
+            "ember" => ("Female", "Pan", true),
             _ => (string.Empty, string.Empty, true),
         };
 

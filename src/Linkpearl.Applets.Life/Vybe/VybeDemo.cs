@@ -59,8 +59,14 @@ internal static class VybeDemo
         TryConnect(state, people[8].Id);
         TryConnect(state, people[9].Id);
         TryConnect(state, people[11].Id);
+        TryConnect(state, people[12].Id);
+        if (!state.Incoming.Contains(people[13].Id))
+        {
+            state.Incoming.Add(people[13].Id);
+        }
         state.StarredChats.Add(VybeState.LocalTalkKey(people[0].Id));
         state.StarredChats.Add(VybeState.LocalTalkKey(people[7].Id));
+        state.StarredChats.Add(VybeState.LocalTalkKey(people[12].Id));
 
         SeedTalk(state, people[0].Id, "Sunset on the ward is unreal. Come through.",
             new ChatLine(false, "You around tonight?", "2:14 PM"),
@@ -136,7 +142,19 @@ internal static class VybeDemo
             new ChatLine(true, "Too late I moved 😭", "11:04 PM"),
             new ChatLine(false, "Found you. Next song is ours.", "11:05 PM"),
             new ChatLine(true, "Lead. I follow.", "11:06 PM"));
+        SeedTalk(state, people[12].Id, "",
+            new ChatLine(false, "This thread stays plus-only. You good?", "12:41 AM"),
+            new ChatLine(true, "Yeah. I enabled VYBE+.", "12:42 AM"),
+            new ChatLine(false, "Good. I dropped a private set. Don't put it on the SFW feed.", "12:43 AM"),
+            new ChatLine(true, "Won't. Lounge later?", "12:44 AM"),
+            new ChatLine(false, "Private room after 1. Adults only. 🔥", "12:45 AM"));
+        SeedTalk(state, people[13].Id, "",
+            new ChatLine(false, "Saw you unlocked plus. Request incoming.", "1:02 AM"),
+            new ChatLine(false, "I keep the unfiltered dumps off the main board.", "1:03 AM"));
     }
+
+    public static bool IsPlusPost(PearlPost post) =>
+        post.Id.StartsWith("plus-", StringComparison.Ordinal);
 
     private static void TryConnect(VybeState state, int personId)
     {
@@ -167,23 +185,33 @@ internal static class VybeDemo
     {
         return
         [
-            Person(paths, "luna", "Luna", "@luna_v", "Balmung", "Night markets and neon.", true, 0.72f, 0.28f, 0.46f),
+            Person(paths, "luna", "Luna", "@luna_v", "Balmung", "Night markets and neon.", true, 0.72f, 0.28f, 0.46f,
+                plusMember: true),
             Person(paths, "ace", "Ace", "@ace", "Crystal", "New track dropping soon.", true, 0.22f, 0.42f, 0.78f),
             Person(paths, "kairo", "Kairo", "@kairo", "Balmung", "Ward walks after midnight.", true, 0.38f, 0.22f, 0.72f,
                 "ace"),
             Person(paths, "nyx", "Nyx", "@nyx_", "Mateus", "Quiet corners. Loud nights.", false, 0.64f, 0.20f, 0.52f,
                 "raven"),
-            Person(paths, "raven", "Raven", "@raven_", "Mateus", "Club lights, late hours.", true, 0.42f, 0.18f, 0.58f),
+            Person(paths, "raven", "Raven", "@raven_", "Mateus", "Club lights, late hours.", true, 0.42f, 0.18f, 0.58f,
+                plusMember: true),
             Person(paths, "vex", "Vex", "@vex_", "Gilgamesh", "GPose first, talk later.", false, 0.18f, 0.62f, 0.48f),
             Person(paths, "echo", "Echo", "@echo_", "Leviathan", "#Crystal #GoodVibes", true, 0.86f, 0.42f, 0.22f),
             Person(paths, "novale", "NoVale", "@novale", "Balmung", "Late nights. Better company.", true, 0.90f, 0.26f,
-                0.40f),
+                0.40f, plusMember: true),
             Person(paths, "sol", "Sol", "@sol", "Jenova", "Sunset rooftops.", true, 0.94f, 0.48f, 0.22f, "luna"),
             Person(paths, "wren", "Wren", "@wren", "Siren", "FC house is open.", true, 0.28f, 0.58f, 0.46f, "echo"),
             Person(paths, "iris", "Iris", "@iris", "Gilgamesh", "Looking for a pose partner.", false, 0.78f, 0.32f,
                 0.54f, "vex"),
             Person(paths, "jett", "Jett", "@jett", "Leviathan", "On the dance floor.", true, 0.20f, 0.34f, 0.82f,
                 "novale"),
+            Person(paths, "velvet", "Velvet", "@velvet", "Balmung", "18+ after dark. DMs open.", true, 0.82f, 0.18f,
+                0.42f, "raven", true),
+            Person(paths, "hex", "Hex", "@hex_", "Mateus", "Private sets. No screenshots.", true, 0.28f, 0.16f, 0.62f,
+                "ace", true),
+            Person(paths, "noir", "Noir", "@noir", "Gilgamesh", "Plus lounge regular.", false, 0.12f, 0.10f, 0.16f,
+                "novale", true),
+            Person(paths, "ember", "Ember", "@ember", "Jenova", "Unfiltered. Ask first.", true, 0.88f, 0.32f, 0.18f,
+                "luna", true),
         ];
     }
 
@@ -214,16 +242,33 @@ internal static class VybeDemo
             Post("demo-post-vex", "demo:vex", "Vex", "@vex_", vex,
                 "GPose dump from the ward. #GPose", "2d", false, 33, 4, 1,
                 Shot(paths, "pose", 720, 900)),
+            Post("plus-post-velvet", "demo:velvet", "Velvet", "@velvet", Face(paths, "raven"),
+                "Plus-only set. Lights off, glam on. #VYBEPlus #AfterDark", "38m", true, 94, 19, 8,
+                Shot(paths, "club-c", 640, 640), Shot(paths, "pose", 720, 900)),
+            Post("plus-post-hex", "demo:hex", "Hex", "@hex_", Face(paths, "ace"),
+                "Private lounge is 18+. Don't share these. #NSFW #VYBEPlus", "1h", false, 61, 14, 5,
+                Shot(paths, "club-a", 640, 640)),
+            Post("plus-post-noir", "demo:noir", "Noir", "@noir", Face(paths, "novale"),
+                "Unfiltered GPose dump. You asked for it. #AfterHours #NSFW", "3h", false, 47, 8, 3,
+                Shot(paths, "city", 960, 540)),
+            Post("plus-post-ember", "demo:ember", "Ember", "@ember", Face(paths, "luna"),
+                "Looking for company that can keep up after midnight. Adults only. #VYBEPlus", "6h", false, 73, 21, 6),
         ];
     }
 
     private static ScenePerson Person(HostPaths paths, string key, string name, string handle, string world, string line,
-        bool online, float r, float g, float b, string face = "")
+        bool online, float r, float g, float b, string face = "", bool nightOnly = false, bool plusMember = false)
     {
         var id = VybeState.StableId("demo:" + key);
-        return new ScenePerson(id, "demo:" + key, name, handle, world, line, online, 4, false,
-            new Vector4(r, g, b, 1f), ["Friends", "GPose"], ["Playful"], Face(paths, face.Length > 0 ? face : key));
+        plusMember = plusMember || nightOnly;
+        return new ScenePerson(id, "demo:" + key, name, handle, world, line, online, nightOnly ? 9 : 4, nightOnly,
+            new Vector4(r, g, b, 1f),
+            nightOnly ? ["Dating", "ERP"] : ["Friends", "GPose"],
+            nightOnly ? ["After Dark", "18+"] : ["Playful"],
+            Face(paths, face.Length > 0 ? face : key), PlusMember: plusMember);
     }
+
+    public static bool HasPlusAccount(ScenePerson person) => person.PlusMember || person.NightOnly;
 
     private static PearlPost Post(string id, string authorId, string name, string handle, string avatar, string body,
         string when, bool liked, int likes, int comments, int reposts, params PearlMedia[] media) =>
@@ -244,6 +289,10 @@ internal static class VybeDemo
             "vex" => "pose.png",
             "echo" => "fc.png",
             "novale" => "club-b.png",
+            "velvet" => "club-c.png",
+            "hex" => "club-a.png",
+            "noir" => "city.png",
+            "ember" => "pose.png",
             _ => string.Empty,
         };
         return file.Length == 0 ? string.Empty : FileOf(paths, file);

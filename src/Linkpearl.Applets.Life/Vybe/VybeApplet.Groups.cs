@@ -22,7 +22,7 @@ public sealed partial class VybeApplet
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
         DrawGroupsHead(frame, stack.Take(frame.Units(28f)), tone, night);
         DrawGroupsHunt(frame, stack.Take(frame.Units(36f)), tone);
-        DrawGroupLanes(frame, stack.Take(frame.Units(34f)));
+        DrawGroupLanes(frame, stack.Take(frame.Units(34f)), night);
         var rows = VybeGroups.Shown(state);
         if (rows.Count == 0)
         {
@@ -70,17 +70,18 @@ public sealed partial class VybeApplet
             state.GroupQuery, "Search groups...");
     }
 
-    private void DrawGroupLanes(in AppletFrame frame, Rect area)
+    private void DrawGroupLanes(in AppletFrame frame, Rect area, bool night)
     {
+        var labels = VybeGroups.LanesOf(night);
         var gap = frame.Units(6f);
-        var cell = (area.Width - gap * (VybeGroups.Lanes.Length - 1)) / VybeGroups.Lanes.Length;
-        for (var index = 0; index < VybeGroups.Lanes.Length; index++)
+        var cell = (area.Width - gap * (labels.Length - 1)) / labels.Length;
+        for (var index = 0; index < labels.Length; index++)
         {
             var lane = (GroupLane)index;
             var on = state.GroupLane == lane;
             var dest = Rect.FromSize(new Vector2(area.Min.X + (cell + gap) * index, area.Min.Y),
                 new Vector2(cell, area.Height));
-            DrawGroupPill(frame, dest, VybeGroups.Lanes[index], on);
+            DrawGroupPill(frame, dest, labels[index], on);
             if (frame.Input.ConsumeClick(dest))
             {
                 state.GroupLane = lane;
@@ -95,8 +96,19 @@ public sealed partial class VybeApplet
         DrawGroupFace(frame, face, group);
         var go = area.RightSlice(frame.Units(78f)).Inset(new Edges(0f, frame.Units(18f), 0f, frame.Units(18f)));
         var copy = area.Inset(new Edges(frame.Units(64f), frame.Units(14f), frame.Units(86f), frame.Units(12f)));
-        frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(20f)), group.Name,
-            new TextStyle(FontRole.BodyStrong, tone.Ink));
+        var nameRow = copy.TopSlice(frame.Units(20f));
+        if (group.PlusOnly)
+        {
+            var tagW = MathF.Min(VybeChrome.PlusTagWidth(frame), nameRow.Width * 0.42f);
+            frame.Text.DrawEllipsized(nameRow.Inset(new Edges(0f, 0f, tagW + frame.Units(4f), 0f)), group.Name,
+                new TextStyle(FontRole.BodyStrong, tone.Ink));
+            VybeChrome.PlusTag(frame, nameRow.RightSlice(tagW));
+        }
+        else
+        {
+            frame.Text.DrawEllipsized(nameRow, group.Name,
+                new TextStyle(FontRole.BodyStrong, tone.Ink));
+        }
         frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)),
             VybeGroups.Crowd(group.Members) + " · " + group.Tag,
             new TextStyle(FontRole.Caption, tone.Mute));
@@ -147,6 +159,7 @@ public sealed partial class VybeApplet
     {
         GroupLane.Mine => "Join a group and it lands here.",
         GroupLane.Nearby => "No nearby groups right now.",
+        GroupLane.Plus => "No VYBE+ groups yet.",
         _ => "No groups match that search.",
     };
 }

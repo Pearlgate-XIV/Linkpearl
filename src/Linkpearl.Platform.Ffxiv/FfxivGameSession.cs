@@ -32,6 +32,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private uint jobIconId;
     private string jobName = string.Empty;
     private string raceName = string.Empty;
+    private byte raceId;
     private int phoneCountry;
     private string zoneName = string.Empty;
     private string weatherName = string.Empty;
@@ -82,6 +83,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     public string JobName => jobName;
 
     public string RaceName => raceName;
+
+    public byte RaceId => raceId;
 
     public int PhoneCountry => phoneCountry;
 
@@ -289,6 +292,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             jobIconId = 0;
             jobName = string.Empty;
             raceName = string.Empty;
+            raceId = 0;
             phoneCountry = 0;
             zoneName = string.Empty;
             weatherName = string.Empty;
@@ -369,8 +373,13 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
                 jobIconId = jobs.IconFor(jobId);
             }
 
-            raceName = RaceTitle(localPlayer.Customize[(int)CustomizeIndex.Race],
-                localPlayer.Customize[(int)CustomizeIndex.Gender]);
+            raceId = localPlayer.Customize[(int)CustomizeIndex.Race];
+            raceName = RaceTitle(raceId, localPlayer.Customize[(int)CustomizeIndex.Gender]);
+        }
+        else
+        {
+            raceId = 0;
+            raceName = string.Empty;
         }
 
         var territoryId = clientState.TerritoryType;

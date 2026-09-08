@@ -65,6 +65,8 @@ public interface IGameSession
 
     string RaceName { get; }
 
+    byte RaceId { get; }
+
     int PhoneCountry { get; }
 
     string ZoneName { get; }
