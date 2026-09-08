@@ -119,5 +119,19 @@ public interface IFilePicker
 
     void BeginImagePick();
 
+    void BeginImagePickFrom(string directory) => BeginImagePick();
+
+    void BeginFolderPick() => BeginFolderPickFrom(string.Empty);
+
+    void BeginFolderPickFrom(string directory)
+    {
+    }
+
     bool TryTakeImages(out IReadOnlyList<string> paths);
+
+    bool TryTakeFolder(out string path)
+    {
+        path = string.Empty;
+        return false;
+    }
 }

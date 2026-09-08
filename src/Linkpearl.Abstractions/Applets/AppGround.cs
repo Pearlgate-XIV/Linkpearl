@@ -24,7 +24,7 @@ public static class AppGround
         "pearlchat" => new Vector4(0.12f, 0.70f, 0.64f, 1f),
         "phone" => new Vector4(0.20f, 0.66f, 0.33f, 1f),
         "music" => new Vector4(0.10f, 0.36f, 0.70f, 1f),
-        "afterdark" or "daylight" => new Vector4(0.16f, 0.52f, 0.50f, 1f),
+        "afterdark" or "daylight" => new Vector4(0.96f, 0.22f, 0.52f, 1f),
         "weather" => new Vector4(0.12f, 0.64f, 0.90f, 1f),
         "calendar" => new Vector4(0.90f, 0.32f, 0.28f, 1f),
         "wallet" => new Vector4(0.96f, 0.74f, 0.16f, 1f),
@@ -70,8 +70,8 @@ public static class AppGround
                 return;
             case "afterdark":
             case "daylight":
-                top = new Vector4(0.96f, 0.95f, 0.94f, 1f);
-                bottom = new Vector4(0.93f, 0.91f, 0.89f, 1f);
+                top = new Vector4(0.08f, 0.16f, 0.42f, 1f);
+                bottom = new Vector4(0f, 0f, 0f, 1f);
                 return;
             case "weather":
                 top = new Vector4(0.07f, 0.13f, 0.20f, 1f);

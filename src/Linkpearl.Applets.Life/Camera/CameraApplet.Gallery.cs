@@ -125,8 +125,49 @@ public sealed partial class CameraApplet
 
     private void BeginUpload()
     {
-        files.BeginImagePick();
+        if (library.GposeFolderReady())
+        {
+            files.BeginImagePickFrom(library.GposeFolder);
+        }
+        else
+        {
+            files.BeginImagePick();
+        }
+
         uploadWait = true;
+    }
+
+    private void BeginGposeLink()
+    {
+        var start = library.GposeFolderReady()
+            ? library.GposeFolder
+            : PhotoLibrary.SuggestedGposeFolder();
+        if (start.Length > 0)
+        {
+            files.BeginFolderPickFrom(start);
+        }
+        else
+        {
+            files.BeginFolderPick();
+        }
+
+        gposeWait = true;
+    }
+
+    private void FinishGposeLink()
+    {
+        if (!gposeWait || !files.TryTakeFolder(out var folder))
+        {
+            return;
+        }
+
+        gposeWait = false;
+        if (folder.Length == 0 || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        library.SetGposeFolder(folder);
     }
 
     private void FinishUpload()
@@ -174,6 +215,15 @@ public sealed partial class CameraApplet
 
         cursor += frame.Units(44f);
         total += frame.Units(44f);
+        var gpose = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
+            new Vector2(viewport.Width, frame.Units(52f)));
+        if (gpose.Overlaps(viewport))
+        {
+            DrawGposeRow(frame, gpose);
+        }
+
+        cursor += frame.Units(60f);
+        total += frame.Units(60f);
         var books = library.Folders;
         if (books.Count > 0)
         {
@@ -206,7 +256,7 @@ public sealed partial class CameraApplet
             frame.Text.DrawIn(viewport.TopSlice(frame.Units(28f)), "No photos yet",
                 new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink, TextAlign.Center));
             frame.Text.DrawWrapped(viewport.Inset(new Edges(frame.Units(16f), frame.Units(40f), frame.Units(16f), 0f)),
-                "Tap Upload to pick pictures, then crop before they land here. Albums keep them sorted.",
+                "Tap Upload to pick pictures, then crop before they land here. Link a GPose folder so Upload opens there.",
                 new TextStyle(FontRole.Caption, PhotosChrome.Mute, TextAlign.Center));
             frame.Paint.PopClip();
             return viewport.Height;
@@ -291,6 +341,24 @@ public sealed partial class CameraApplet
         var block = rowsNeeded * (cell + gap) - gap + frame.Units(12f);
         cursor += block;
         return block;
+    }
+
+    private void DrawGposeRow(in AppletFrame frame, Rect row)
+    {
+        frame.Paint.Fill(row, PhotosChrome.Tile, frame.Units(12f));
+        var text = row.Inset(new Edges(frame.Units(12f), frame.Units(8f), frame.Units(12f), frame.Units(8f)));
+        var linked = library.GposeFolderReady();
+        frame.Text.DrawIn(text.TopSlice(frame.Units(18f)), linked ? "GPose folder" : "Link GPose folder",
+            new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink));
+        var detail = linked
+            ? library.GposeFolder
+            : "ReShade or FFXIV screenshots. Upload opens this folder.";
+        frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(16f)), detail,
+            new TextStyle(FontRole.Caption, PhotosChrome.Mute));
+        if (frame.Input.ConsumeClick(row))
+        {
+            BeginGposeLink();
+        }
     }
 
     private void DrawFolderRow(in AppletFrame frame, Rect row, PhotoFolder folder)

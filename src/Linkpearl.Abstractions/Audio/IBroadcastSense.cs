@@ -24,6 +24,10 @@ public interface IBroadcastSense : IDisposable
 
     float MicGain { get; set; }
 
+    float MonitorGain { get; set; }
+
+    float StreamGain { get; set; }
+
     void RoutePhone(string speakerId, string microphoneId);
 
     void RefreshPoints();

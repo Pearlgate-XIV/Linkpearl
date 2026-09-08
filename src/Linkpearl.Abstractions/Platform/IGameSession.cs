@@ -65,11 +65,15 @@ public interface IGameSession
 
     string RaceName { get; }
 
+    byte RaceId { get; }
+
     int PhoneCountry { get; }
 
     string ZoneName { get; }
 
     string MapPlace { get; }
+
+    Vector2 MapCoords { get; }
 
     string WeatherName { get; }
 

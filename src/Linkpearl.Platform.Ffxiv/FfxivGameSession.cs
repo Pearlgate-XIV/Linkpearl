@@ -32,6 +32,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private uint jobIconId;
     private string jobName = string.Empty;
     private string raceName = string.Empty;
+    private byte raceId;
     private int phoneCountry;
     private string zoneName = string.Empty;
     private string weatherName = string.Empty;
@@ -83,11 +84,15 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     public string RaceName => raceName;
 
+    public byte RaceId => raceId;
+
     public int PhoneCountry => phoneCountry;
 
     public string ZoneName => zoneName;
 
     public string MapPlace => ReadMapPlace();
+
+    public Vector2 MapCoords => ReadMapCoords();
 
     public string WeatherName => weatherName;
 
@@ -287,6 +292,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             jobIconId = 0;
             jobName = string.Empty;
             raceName = string.Empty;
+            raceId = 0;
             phoneCountry = 0;
             zoneName = string.Empty;
             weatherName = string.Empty;
@@ -367,8 +373,13 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
                 jobIconId = jobs.IconFor(jobId);
             }
 
-            raceName = RaceTitle(localPlayer.Customize[(int)CustomizeIndex.Race],
-                localPlayer.Customize[(int)CustomizeIndex.Gender]);
+            raceId = localPlayer.Customize[(int)CustomizeIndex.Race];
+            raceName = RaceTitle(raceId, localPlayer.Customize[(int)CustomizeIndex.Gender]);
+        }
+        else
+        {
+            raceId = 0;
+            raceName = string.Empty;
         }
 
         var territoryId = clientState.TerritoryType;
@@ -517,20 +528,28 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     private string ReadMapPlace()
     {
+        var map = ReadMapCoords();
+        return map == Vector2.Zero
+            ? string.Empty
+            : string.Create(CultureInfo.InvariantCulture, $"X: {map.X:0.0}  Y: {map.Y:0.0}");
+    }
+
+    private Vector2 ReadMapCoords()
+    {
         var player = objectTable.LocalPlayer;
         if (player is null || !clientState.IsLoggedIn)
         {
-            return string.Empty;
+            return Vector2.Zero;
         }
 
         try
         {
             var map = player.GetMapCoordinates(true);
-            return string.Create(CultureInfo.InvariantCulture, $"X: {map.X:0.0}  Y: {map.Y:0.0}");
+            return new Vector2(map.X, map.Y);
         }
         catch
         {
-            return string.Empty;
+            return Vector2.Zero;
         }
     }
 

@@ -789,7 +789,8 @@ public sealed class TalkInbox : ITalk, IDisposable
                 return;
             }
 
-            var added = new TalkLine(line.Sender, line.Body, line.Received, line.Mine, TagOf(line.Channel));
+            var added = new TalkLine(line.Sender, line.Body, line.Received, line.Mine, TagOf(line.Channel),
+                line.SenderWorld);
             room.Lines.Add(added);
             var cap = room.Kind == TalkKind.Tell ? MaxTellLines : MaxLiveLines;
             if (room.Lines.Count > cap)

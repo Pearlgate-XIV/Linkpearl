@@ -20,6 +20,9 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
     private string genre = string.Empty;
     private bool sending;
     private int generation;
+    private readonly List<byte[]> pending = [];
+    private int pendingBytes;
+    private int pendingRate;
     private string notice = "Not sending to Icecast yet.";
 
     public IcecastBroadcastPush(string? nativeDirectory = null)
@@ -71,6 +74,9 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             this.genre = genre.Trim();
             sending = ingest.Length > 0;
             ticket = ++generation;
+            pending.Clear();
+            pendingBytes = 0;
+            pendingRate = 0;
             notice = sending ? "Connecting to Icecast…" : "No ingest URL. Save a host or wait for Pearlgate.";
         }
 
@@ -114,6 +120,9 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             sending = false;
             notice = "Off the Icecast mount.";
             sampleRate = 0;
+            pending.Clear();
+            pendingBytes = 0;
+            pendingRate = 0;
         }
 
         CloseQuiet();
@@ -129,8 +138,14 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
         LameMP3FileWriter? encoder;
         lock (gate)
         {
-            if (!sending || wire is null)
+            if (!sending)
             {
+                return;
+            }
+
+            if (wire is null)
+            {
+                Hold(pcm16Stereo, bytes, rate);
                 return;
             }
 
@@ -261,6 +276,49 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             client = tcp;
             wire = stream;
             notice = "Icecast accepted SOURCE. Waiting for audio.";
+        }
+
+        FlushHeld();
+    }
+
+    private void Hold(byte[] pcm16Stereo, int bytes, int rate)
+    {
+        const int cap = 384_000;
+        if (pendingBytes + bytes > cap)
+        {
+            pending.Clear();
+            pendingBytes = 0;
+        }
+
+        var copy = new byte[bytes];
+        Buffer.BlockCopy(pcm16Stereo, 0, copy, 0, bytes);
+        pending.Add(copy);
+        pendingBytes += bytes;
+        pendingRate = rate;
+    }
+
+    private void FlushHeld()
+    {
+        byte[][] chunks;
+        var rate = 0;
+        lock (gate)
+        {
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            chunks = pending.ToArray();
+            rate = pendingRate;
+            pending.Clear();
+            pendingBytes = 0;
+            pendingRate = 0;
+        }
+
+        for (var index = 0; index < chunks.Length; index++)
+        {
+            var chunk = chunks[index];
+            WritePcm(chunk, chunk.Length, rate);
         }
     }
 

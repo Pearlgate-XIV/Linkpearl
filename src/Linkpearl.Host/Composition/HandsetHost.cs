@@ -77,7 +77,7 @@ public sealed class HandsetHost : IDisposable
     public HandsetHost(IDalamudPluginInterface pluginInterface, IFramework framework, IClientState clientState,
         IObjectTable objectTable, ICondition condition, IDutyState dutyState, IPluginLog pluginLog,
         ITextureProvider textureProvider, IDataManager dataManager, IChatGui chatGui, IPartyList partyList,
-        IKeyState keys, ICommandManager commands)
+        IKeyState keys, ICommandManager commands, ITargetManager targets)
     {
         this.pluginInterface = pluginInterface;
         this.framework = framework;
@@ -106,6 +106,7 @@ public sealed class HandsetHost : IDisposable
         session = new FfxivGameSession(clientState, objectTable, condition, dutyState, partyList, framework, dataManager,
             jobs);
         services.AddSingleton<IGameSession>(session);
+        services.AddSingleton<ILifestream>(new FfxivLifestream(pluginInterface, dataManager));
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
@@ -116,7 +117,7 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IPearlHub>(pearl);
 
         chat = new FfxivChatBridge(chatGui, clientState, partyList, objectTable, dataManager, session, framework,
-            pluginLog);
+            pluginLog, targets);
         services.AddSingleton<IChatBridge>(chat);
         talk = new TalkInbox(chat, pearl, clock, session, paths.State("talk"));
         services.AddSingleton<ITalk>(talk);
@@ -192,7 +193,7 @@ public sealed class HandsetHost : IDisposable
 
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
-        var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat);
+        var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files);
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));

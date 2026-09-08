@@ -4,12 +4,10 @@ using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
-using CSGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
@@ -29,6 +27,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     private readonly IGameSession session;
     private readonly IFramework framework;
     private readonly IPluginLog log;
+    private readonly ITargetManager targets;
     private readonly object friendGate = new();
     private readonly object commandGate = new();
     private readonly Queue<OutgoingLine> outgoing = new();
@@ -42,7 +41,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     private string pendingTellWorld = string.Empty;
 
     public FfxivChatBridge(IChatGui chat, IClientState clientState, IPartyList party, IObjectTable objects,
-        IDataManager data, IGameSession session, IFramework framework, IPluginLog log)
+        IDataManager data, IGameSession session, IFramework framework, IPluginLog log, ITargetManager targets)
     {
         this.chat = chat;
         this.clientState = clientState;
@@ -52,6 +51,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         this.session = session;
         this.framework = framework;
         this.log = log;
+        this.targets = targets;
         chat.ChatMessage += HandleChatMessage;
         framework.Update += HandleUpdate;
     }
@@ -173,11 +173,9 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             }
 
             offeredFriends.Add(target);
-            pendingAddTarget = target;
-            pendingAddWait = 60;
         }
 
-        QueueFriend("accept", name, home);
+        QueueFriend("add", name, home);
         chat.Print("Adding " + name + " as a friend.", "Linkpearl");
     }
 
@@ -247,7 +245,8 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             return;
         }
 
-        Queue("/invite " + target);
+        SplitFriendTarget(target, out var name, out var home);
+        QueueFriend("invite", name, home);
     }
 
     private bool TryFormatPlayer(string characterName, string world, out string target)
@@ -277,6 +276,11 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         else
         {
             name = CanonicalName(name);
+        }
+
+        if (name.IndexOf(' ') < 0)
+        {
+            return false;
         }
 
         target = home.Length == 0 ? name : name + "@" + home;
@@ -608,17 +612,11 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
 
         var world = WorldOf(message.Sender);
-        if (world.Length == 0)
-        {
-            world = WorldOf(message.Message);
-        }
-
-        if (TryFirstPlayer(message.Sender, out var payloadName, out var payloadWorld) ||
-            TryFirstPlayer(message.Message, out payloadName, out payloadWorld))
+        if (TryFirstPlayer(message.Sender, out var payloadName, out var payloadWorld))
         {
             if (!outgoingTell || !IsLocal(payloadName))
             {
-                sender = payloadName;
+                sender = PreferFullName(sender, payloadName);
             }
 
             if (payloadWorld.Length > 0)
@@ -745,20 +743,89 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     {
         liveName = string.Empty;
         liveWorld = string.Empty;
-        var nearby = NearbyPlayers;
-        for (var index = 0; index < nearby.Count; index++)
+        if (TryMatchPlayer(NearbyPlayers, name, requireExact: true, out liveName, out liveWorld) ||
+            TryMatchFriend(name, requireExact: true, out liveName, out liveWorld) ||
+            TryMatchPlayer(NearbyPlayers, name, requireExact: false, out liveName, out liveWorld) ||
+            TryMatchFriend(name, requireExact: false, out liveName, out liveWorld))
         {
-            if (!NamesMatch(nearby[index].Name, name))
-            {
-                continue;
-            }
-
-            liveName = nearby[index].Name;
-            liveWorld = nearby[index].World;
             return true;
         }
 
         return false;
+    }
+
+    private static bool TryMatchPlayer(IReadOnlyList<GamePeer> nearby, string name, bool requireExact,
+        out string liveName, out string liveWorld)
+    {
+        liveName = string.Empty;
+        liveWorld = string.Empty;
+        var hits = 0;
+        for (var index = 0; index < nearby.Count; index++)
+        {
+            if (requireExact
+                    ? !nearby[index].Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                    : !NamesMatch(nearby[index].Name, name))
+            {
+                continue;
+            }
+
+            hits++;
+            liveName = nearby[index].Name;
+            liveWorld = nearby[index].World;
+            if (requireExact)
+            {
+                return true;
+            }
+        }
+
+        return hits == 1;
+    }
+
+    private bool TryMatchFriend(string name, bool requireExact, out string liveName, out string liveWorld)
+    {
+        liveName = string.Empty;
+        liveWorld = string.Empty;
+        IReadOnlyList<GameFriend> roster;
+        lock (friendGate)
+        {
+            roster = friends;
+        }
+
+        var hits = 0;
+        for (var index = 0; index < roster.Count; index++)
+        {
+            if (requireExact
+                    ? !roster[index].Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                    : !NamesMatch(roster[index].Name, name))
+            {
+                continue;
+            }
+
+            hits++;
+            liveName = roster[index].Name;
+            liveWorld = roster[index].World;
+            if (requireExact)
+            {
+                return true;
+            }
+        }
+
+        return hits == 1;
+    }
+
+    private static string PreferFullName(string shown, string payload)
+    {
+        if (payload.IndexOf(' ') >= 0 && shown.IndexOf(' ') < 0)
+        {
+            return payload;
+        }
+
+        if (shown.IndexOf(' ') >= 0)
+        {
+            return shown;
+        }
+
+        return payload.Length > shown.Length ? payload : shown;
     }
 
     private static void RememberPeer(List<GamePeer> list, string name, string world, string local)
@@ -793,8 +860,26 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         return false;
     }
 
-    private static bool NamesMatch(string left, string right) =>
-        left.Equals(right, StringComparison.OrdinalIgnoreCase);
+    private static bool NamesMatch(string left, string right)
+    {
+        if (left.Equals(right, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return FirstNameEquals(left, right) || FirstNameEquals(right, left);
+    }
+
+    private static bool FirstNameEquals(string full, string token)
+    {
+        if (token.IndexOf(' ') >= 0)
+        {
+            return false;
+        }
+
+        var space = full.IndexOf(' ');
+        return space > 0 && full.AsSpan(0, space).Equals(token, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string CanonicalName(string name)
     {
@@ -1072,25 +1157,71 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
     private unsafe void ExecuteFriend(string verb, string name, string world)
     {
-        if (TryAimAtPlayer(name, world))
+        if (TryResolvePlayer(name, out var liveName, out var liveWorld))
         {
-            ExecuteNow("/friendlist " + verb);
+            name = liveName;
+            if (liveWorld.Length > 0)
+            {
+                world = liveWorld;
+            }
+        }
+
+        if (name.IndexOf(' ') < 0)
+        {
+            chat.Print("Linkpearl needs a first and last name to do that.", "Linkpearl");
             return;
         }
 
-        var built = new SeStringBuilder();
-        built.AddText("/friendlist " + verb + " ");
-        built.AddText(name);
-        if (world.Length > 0)
+        var invite = verb.Equals("invite", StringComparison.OrdinalIgnoreCase);
+        if (TryAimAtPlayer(name, world))
         {
-            built.Add(new RawPayload([0x02, 0x12, 0x02, 0x59, 0x03]));
-            built.AddText(world);
+            ExecuteNow(invite ? "/invite <t>" : "/friendlist add <t>");
+            return;
+        }
+
+        var prefix = invite ? "/invite " : "/friendlist add ";
+        var worldId = ResolveWorldId(name, world);
+        var built = new SeStringBuilder();
+        built.AddText(prefix);
+        if (worldId != 0)
+        {
+            built.Add(new PlayerPayload(name, worldId));
+        }
+        else
+        {
+            built.AddText("\"" + name + "\"");
         }
 
         ExecutePayload(built.Build().Encode());
     }
 
-    private unsafe bool TryAimAtPlayer(string name, string world)
+    private uint ResolveWorldId(string name, string world)
+    {
+        var id = WorldRowId(world);
+        if (id != 0)
+        {
+            return id;
+        }
+
+        foreach (var obj in objects)
+        {
+            if (obj is not IPlayerCharacter player)
+            {
+                continue;
+            }
+
+            if (!player.Name.TextValue.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return player.HomeWorld.RowId;
+        }
+
+        return 0;
+    }
+
+    private bool TryAimAtPlayer(string name, string world)
     {
         foreach (var obj in objects)
         {
@@ -1111,13 +1242,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
                 continue;
             }
 
-            var sys = TargetSystem.Instance();
-            if (sys is null)
-            {
-                return false;
-            }
-
-            sys->Target = (CSGameObject*)obj.Address;
+            targets.Target = player;
             return true;
         }
 

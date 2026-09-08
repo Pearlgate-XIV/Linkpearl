@@ -32,7 +32,8 @@ public readonly record struct TalkLine(
     string Body,
     DateTimeOffset At,
     bool Mine,
-    string Tag = "");
+    string Tag = "",
+    string World = "");
 
 public readonly record struct TalkPeer(
     string Id,

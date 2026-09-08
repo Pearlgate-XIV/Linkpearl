@@ -1,5 +1,5 @@
+using System.Globalization;
 using NAudio.CoreAudioApi;
-using NAudio.Wave;
 
 namespace Linkpearl.Audio;
 
@@ -25,146 +25,65 @@ public sealed class WindowsAudioPorts : IAudioPorts
 
     public void Refresh()
     {
-        var outs = new List<AudioPort>();
-        CollectWasapi(outs, DataFlow.Render, DeviceState.Active);
-        if (outs.Count == 0)
-        {
-            CollectWasapi(outs, DataFlow.Render, DeviceState.All);
-        }
-
-        CollectWaveOut(outs);
-
-        var ins = new List<AudioPort>();
-        CollectWasapi(ins, DataFlow.Capture, DeviceState.Active);
-        if (ins.Count == 0)
-        {
-            CollectWasapi(ins, DataFlow.Capture, DeviceState.All);
-        }
-
-        CollectWaveIn(ins);
-
-        speakers = outs.ToArray();
-        mics = ins.ToArray();
-        defaultSpeakerId = WasapiEndpoint.DefaultId(DataFlow.Render);
-        defaultMicId = WasapiEndpoint.DefaultId(DataFlow.Capture);
-        status = speakers.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-            " playback · " +
-            mics.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) + " capture";
-    }
-
-    private static void CollectWasapi(List<AudioPort> list, DataFlow flow, DeviceState state)
-    {
         try
         {
-            using var enumerator = new MMDeviceEnumerator();
-            var found = enumerator.EnumerateAudioEndPoints(flow, state);
-            var count = found.Count;
-            for (var index = 0; index < count; index++)
-            {
-                try
-                {
-                    var device = found[index];
-                    var id = device.ID ?? string.Empty;
-                    var name = (device.FriendlyName ?? string.Empty).Trim();
-                    if (name.Length == 0)
-                    {
-                        name = flow == DataFlow.Render ? "Playback " : "Input ";
-                        name += (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    }
-
-                    if (id.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    if (Named(list, name) || Ided(list, id))
-                    {
-                        continue;
-                    }
-
-                    list.Add(new AudioPort(id, name));
-                }
-                catch (Exception)
-                {
-                }
-            }
+            speakers = Map(WasapiDeviceScan.Render());
+            mics = Map(WasapiDeviceScan.Capture());
+            defaultSpeakerId = WasapiEndpoint.DefaultId(DataFlow.Render);
+            defaultMicId = WasapiEndpoint.DefaultId(DataFlow.Capture);
+            status = speakers.Length.ToString(CultureInfo.InvariantCulture) +
+                " playback · " +
+                mics.Length.ToString(CultureInfo.InvariantCulture) +
+                " capture · WASAPI/MME/DirectSound/ASIO";
         }
         catch (Exception)
         {
+            status = "Could not rescan this PC's audio devices.";
         }
     }
 
-    private static void CollectWaveOut(List<AudioPort> list)
+    private static AudioPort[] Map(ScannedPort[] found)
     {
-        try
+        var ports = new List<AudioPort>();
+        for (var index = 0; index < found.Length; index++)
         {
-            var count = WaveOut.DeviceCount;
-            for (var index = 0; index < count; index++)
+            var port = new AudioPort(found[index].Id, found[index].Label, found[index].Note);
+            var existing = ports.FindIndex(row => SameName(row.Label, port.Label));
+            if (existing < 0)
             {
-                var name = WaveOut.GetCapabilities(index).ProductName.Trim();
-                if (name.Length == 0 || Named(list, name))
-                {
-                    continue;
-                }
-
-                list.Add(new AudioPort("waveout:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    name));
+                ports.Add(port);
+                continue;
             }
-        }
-        catch (Exception)
-        {
-        }
-    }
 
-    private static void CollectWaveIn(List<AudioPort> list)
-    {
-        try
-        {
-            var count = WaveIn.DeviceCount;
-            for (var index = 0; index < count; index++)
+            if (Rank(port.Id) < Rank(ports[existing].Id))
             {
-                var name = WaveIn.GetCapabilities(index).ProductName.Trim();
-                if (name.Length == 0 || Named(list, name))
-                {
-                    continue;
-                }
-
-                list.Add(new AudioPort("wavein:" + index.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    name));
-            }
-        }
-        catch (Exception)
-        {
-        }
-    }
-
-    private static bool Ided(List<AudioPort> list, string id)
-    {
-        for (var index = 0; index < list.Count; index++)
-        {
-            if (string.Equals(list[index].Id, id, StringComparison.Ordinal))
-            {
-                return true;
+                ports[existing] = port;
             }
         }
 
-        return false;
-    }
-
-    private static bool Named(List<AudioPort> list, string name)
-    {
-        for (var index = 0; index < list.Count; index++)
-        {
-            if (SameName(list[index].Label, name))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return ports.ToArray();
     }
 
     private static bool SameName(string left, string right) =>
-        left.StartsWith(right, StringComparison.OrdinalIgnoreCase) ||
-        right.StartsWith(left, StringComparison.OrdinalIgnoreCase);
+        WasapiDevices.NamesMatch(left, right);
+
+    private static int Rank(string id)
+    {
+        if (id.StartsWith("ds", StringComparison.Ordinal))
+        {
+            return 4;
+        }
+
+        if (id.StartsWith("wave", StringComparison.Ordinal))
+        {
+            return 3;
+        }
+
+        if (id.StartsWith("asio:", StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        return 0;
+    }
 }
