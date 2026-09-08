@@ -17,6 +17,8 @@ internal static class VybeChrome
     public const float HoldSeconds = 1f;
 
     public static readonly Vector4 Online = new(0.000f, 0.902f, 0.463f, 1f);
+    public static readonly Vector4 PlusViolet = new(0.620f, 0.280f, 0.920f, 1f);
+    public const byte LalafellRace = 3;
 
     public static readonly NightPalette Night = new(
         new Vector4(0f, 0f, 0f, 1f),
@@ -43,6 +45,11 @@ internal static class VybeChrome
         new Vector4(0.780f, 0.280f, 0.320f, 1f));
 
     public static NightPalette Tone(bool night) => night ? Night : Day;
+
+    public static bool IsLalafell(byte raceId, string raceName) =>
+        raceId == LalafellRace ||
+        raceName.Contains("Lalafell", StringComparison.OrdinalIgnoreCase) ||
+        raceName.Contains("ララフェル", StringComparison.Ordinal);
 
     public static void Stage(in AppletFrame frame)
     {
@@ -80,27 +87,124 @@ internal static class VybeChrome
         frame.Paint.Stroke(area, tone.Faint, frame.Units(1f), radius);
     }
 
+    public static void WashFill(in AppletFrame frame, Rect area, float radius)
+    {
+        frame.Paint.FillSquircleGradient(area, Night.Accent, PlusViolet, PlusViolet, Night.Accent, radius);
+    }
+
     public static void Glow(in AppletFrame frame, Rect area, float radius, bool on, bool night)
     {
         var tone = Tone(night);
-        frame.Paint.Fill(area, on ? tone.AccentDim : tone.Card, radius);
-        frame.Paint.Stroke(area, on ? tone.Accent : tone.Faint, frame.Units(1.2f), radius);
+        if (on)
+        {
+            WashFill(frame, area, radius);
+        }
+        else
+        {
+            frame.Paint.Fill(area, tone.Card, radius);
+            frame.Paint.Stroke(area, tone.Faint, frame.Units(1.2f), radius);
+        }
     }
 
     public static void Primary(in AppletFrame frame, Rect area, string label, bool night)
     {
-        var tone = Tone(night);
-        frame.Paint.Fill(area, tone.Accent, frame.Units(12f));
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, tone.AccentInk, TextAlign.Center));
+        _ = night;
+        WashFill(frame, area, frame.Units(12f));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
+    }
+
+    public static void PlusButton(in AppletFrame frame, Rect area, string label, bool enabled)
+    {
+        var radius = area.Height * 0.5f;
+        if (enabled)
+        {
+            WashFill(frame, area, radius);
+        }
+        else
+        {
+            frame.Paint.Fill(area, Night.CardHi, radius);
+        }
+
+        frame.Text.DrawIn(area, label,
+            new TextStyle(FontRole.BodyStrong, enabled ? Vector4.One : Night.Mute, TextAlign.Center));
+    }
+
+    public static void Brand(in AppletFrame frame, Rect area, bool plus)
+    {
+        var tone = Tone(plus);
+        var word = "VYBE";
+        var wide = frame.Text.Measure(word, FontRole.Title).X;
+        frame.Text.DrawIn(area, word, new TextStyle(FontRole.Title, tone.Ink));
+        if (!plus)
+        {
+            return;
+        }
+
+        var mark = Rect.FromSize(new Vector2(area.Min.X + wide + frame.Units(3f), area.Min.Y),
+            new Vector2(frame.Units(18f), area.Height));
+        frame.Text.DrawIn(mark, "+", new TextStyle(FontRole.Title, tone.Accent, TextAlign.Center));
+    }
+
+    public static float PlusTagWidth(in AppletFrame frame) =>
+        frame.Text.Measure("VYBE+", FontRole.CaptionStrong).X + frame.Units(12f);
+
+    public static void PlusTag(in AppletFrame frame, Rect area)
+    {
+        if (area.Width < frame.Units(8f) || area.Height < frame.Units(8f))
+        {
+            return;
+        }
+
+        WashFill(frame, area, area.Height * 0.5f);
+        frame.Text.DrawIn(area, "VYBE+",
+            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
     }
 
     public static bool Pill(in AppletFrame frame, Rect area, string label, bool on, bool night)
     {
         var tone = Tone(night);
-        frame.Paint.Fill(area, on ? tone.Accent : tone.CardHi, area.Height * 0.5f);
+        var radius = area.Height * 0.5f;
+        if (on)
+        {
+            WashFill(frame, area, radius);
+        }
+        else
+        {
+            frame.Paint.Fill(area, tone.CardHi, radius);
+        }
+
         frame.Text.DrawEllipsized(area.Inset(new Edges(frame.Units(4f), 0f)), label,
-            new TextStyle(FontRole.CaptionStrong, on ? tone.AccentInk : tone.Mute, TextAlign.Center));
+            new TextStyle(FontRole.CaptionStrong, on ? Vector4.One : tone.Mute, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
+    }
+
+    public static int ModeSlider(in AppletFrame frame, Rect area, bool plus)
+    {
+        var tone = Tone(plus);
+        var radius = area.Height * 0.5f;
+        frame.Paint.Fill(area, new Vector4(1f, 1f, 1f, 0.05f), radius);
+        frame.Paint.Stroke(area, new Vector4(1f, 1f, 1f, 0.10f), frame.Units(1.1f), radius);
+        var pad = frame.Units(3f);
+        var inner = area.Inset(pad);
+        var thumb = (plus ? inner.RightSlice(inner.Width * 0.5f) : inner.LeftSlice(inner.Width * 0.5f));
+        WashFill(frame, thumb, thumb.Height * 0.5f);
+        var day = inner.LeftSlice(inner.Width * 0.5f);
+        var night = inner.RightSlice(inner.Width * 0.5f);
+        frame.Text.DrawIn(day, "VYBE",
+            new TextStyle(FontRole.CaptionStrong, plus ? tone.Mute : Vector4.One, TextAlign.Center));
+        frame.Text.DrawIn(night, "VYBE+",
+            new TextStyle(FontRole.CaptionStrong, plus ? Vector4.One : tone.Mute, TextAlign.Center));
+        if (frame.Input.ConsumeClick(day))
+        {
+            return 0;
+        }
+
+        if (frame.Input.ConsumeClick(night))
+        {
+            return 1;
+        }
+
+        return -1;
     }
 
     public static bool Segment(in AppletFrame frame, Rect area, string label, bool on, bool night)
@@ -270,9 +374,18 @@ internal static class VybeChrome
     public static bool Chip(in AppletFrame frame, Rect area, string label, bool on, bool night)
     {
         var tone = Tone(night);
-        frame.Paint.Fill(area, on ? tone.Accent : tone.CardHi, frame.Units(12f));
+        var radius = frame.Units(12f);
+        if (on)
+        {
+            WashFill(frame, area, radius);
+        }
+        else
+        {
+            frame.Paint.Fill(area, tone.CardHi, radius);
+        }
+
         frame.Text.DrawIn(area, label,
-            new TextStyle(FontRole.CaptionStrong, on ? tone.AccentInk : tone.Mute, TextAlign.Center));
+            new TextStyle(FontRole.CaptionStrong, on ? Vector4.One : tone.Mute, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
     }
 
@@ -315,8 +428,7 @@ internal static class VybeChrome
             }
         }
 
-        frame.Text.DrawIn(area.Inset(new Edges(frame.Units(28f), 0f, 0f, 0f)), night ? "AFTERDARK" : "VYBE",
-            new TextStyle(FontRole.CaptionStrong, tone.Accent));
+        Brand(frame, area.Inset(new Edges(frame.Units(28f), 0f, 0f, 0f)), night);
         return mark;
     }
 

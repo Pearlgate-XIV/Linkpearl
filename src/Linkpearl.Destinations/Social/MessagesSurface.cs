@@ -909,10 +909,11 @@ internal sealed class MessagesSurface
 
     private void DrawComposer(in AppletFrame frame, Rect composer, TalkThread? thread)
     {
-        var glass = frame.Theme.Palette.SurfaceOverlay with { W = 0.34f };
+        var live = frame.TextField.Owns("messages-draft");
+        var glass = frame.Theme.Palette.SurfaceOverlay with { W = live ? 0.48f : 0.34f };
         frame.Paint.Fill(composer, glass, frame.Units(12f));
-        frame.Paint.Stroke(composer, frame.Theme.Palette.WarmAccent with { W = 0.22f }, frame.Theme.Metrics.Hairline,
-            frame.Units(12f));
+        frame.Paint.Stroke(composer, frame.Theme.Palette.WarmAccent with { W = live ? 0.55f : 0.22f },
+            live ? frame.Units(1.4f) : frame.Theme.Metrics.Hairline, frame.Units(12f));
         var inner = composer.Inset(frame.Units(6f));
         var pop = inner.LeftSlice(frame.Units(26f));
         var send = inner.RightSlice(frame.Units(52f));

@@ -707,7 +707,13 @@ public sealed class PhoneApplet : IApplet
         var plus = bar.LeftSlice(frame.Units(32f)).Inset(frame.Units(6f));
         var faces = bar.RightSlice(frame.Units(90f)).LeftSlice(frame.Units(28f)).Inset(new Edges(0f, frame.Units(8f)));
         var send = bar.RightSlice(frame.Units(52f)).Inset(frame.Units(6f));
-        frame.Paint.Fill(bar.Inset(new Edges(frame.Units(32f), 0f, frame.Units(90f), 0f)), Pill, bar.Height * 0.5f);
+        var type = bar.Inset(new Edges(frame.Units(32f), 0f, frame.Units(90f), 0f));
+        var live = frame.TextField.Owns("phone-sms");
+        frame.Paint.Fill(type, live ? Pill with { W = MathF.Min(1f, Pill.W + 0.18f) } : Pill, bar.Height * 0.5f);
+        if (live)
+        {
+            frame.Paint.Stroke(type, Ink with { W = 0.55f }, frame.Units(1.2f), bar.Height * 0.5f);
+        }
         tray.DrawPlus(frame, plus, Vector4.One);
         tray.DrawFaces(frame, faces, Vector4.One);
         draft = frame.TextField.Draw("phone-sms", bar.Inset(new Edges(frame.Units(36f), frame.Units(6f),

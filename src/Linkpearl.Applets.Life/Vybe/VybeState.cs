@@ -27,6 +27,7 @@ internal enum FeedPick : byte
     ForYou = 0,
     Following = 1,
     Groups = 2,
+    Plus = 3,
 }
 
 internal enum NightPage : byte
@@ -76,6 +77,10 @@ internal sealed class VybeState
     public bool PickedMode { get; set; }
 
     public bool Consented { get; set; }
+
+    public bool PlusAgreed { get; set; }
+
+    public bool PlusBlocked { get; set; }
 
     public bool Onboarded { get; set; }
 
@@ -190,6 +195,31 @@ internal sealed class VybeState
     [JsonIgnore]
     public GroupLane GroupLane { get; set; } = GroupLane.Suggested;
 
+    [JsonIgnore]
+    public bool PeoplePlus { get; set; }
+
+    [JsonIgnore]
+    public bool GalleryPlus { get; set; }
+
+    [JsonIgnore]
+    public bool DiscoverPostPlus { get; set; }
+
+    public void HidePlusLanes()
+    {
+        if (FeedPick == FeedPick.Plus)
+        {
+            FeedPick = FeedPick.ForYou;
+        }
+
+        PeoplePlus = false;
+        GalleryPlus = false;
+        DiscoverPostPlus = false;
+        if (GroupLane == GroupLane.Plus)
+        {
+            GroupLane = GroupLane.Suggested;
+        }
+    }
+
     public HashSet<string> JoinedGroups { get; } = new(StringComparer.Ordinal);
 
     [JsonIgnore]
@@ -197,6 +227,9 @@ internal sealed class VybeState
 
     [JsonIgnore]
     public float HottDrag { get; set; }
+
+    [JsonIgnore]
+    public float HottPlusDrag { get; set; }
 
     public int ProfilePane { get; set; }
 
@@ -306,9 +339,10 @@ internal sealed class VybeState
                 if (dto is not null)
                 {
                     fromDisk = true;
-                    state.Mode = dto.Night ? SocialMode.AfterDark : SocialMode.Daylight;
+                    state.PlusAgreed = dto.PlusAgreed;
+                    state.Consented = state.PlusAgreed;
+                    state.Mode = state.PlusAgreed && dto.Night ? SocialMode.AfterDark : SocialMode.Daylight;
                     state.PickedMode = dto.PickedMode;
-                    state.Consented = dto.Consented;
                     state.Onboarded = dto.Onboarded;
                     state.Discoverable = dto.Discoverable;
                     state.DisplayName = dto.DisplayName ?? string.Empty;
@@ -376,9 +410,10 @@ internal sealed class VybeState
             state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
         }
 
-        if (state.Night && !state.Consented)
+        if (state.Night && !state.PlusAgreed)
         {
-            state.Page = NightPage.Gate;
+            state.Mode = SocialMode.Daylight;
+            state.Page = NightPage.Tabs;
         }
         else if (!state.Onboarded)
         {
@@ -407,7 +442,8 @@ internal sealed class VybeState
             {
                 Night = Night,
                 PickedMode = PickedMode,
-                Consented = Consented,
+                Consented = PlusAgreed,
+                PlusAgreed = PlusAgreed,
                 Onboarded = Onboarded,
                 Discoverable = Discoverable,
                 DisplayName = DisplayName,
@@ -472,6 +508,7 @@ internal sealed class VybeState
         if (mode == SocialMode.Daylight)
         {
             Mode = SocialMode.Daylight;
+            HidePlusLanes();
             Scroll = 0f;
             if (Page is NightPage.Gate or NightPage.Rules)
             {
@@ -481,15 +518,22 @@ internal sealed class VybeState
             return;
         }
 
+        if (PlusBlocked)
+        {
+            Mode = SocialMode.Daylight;
+            return;
+        }
+
+        if (!PlusAgreed)
+        {
+            Mode = SocialMode.Daylight;
+            Open(NightPage.Gate);
+            return;
+        }
+
         Mode = SocialMode.AfterDark;
         PickedMode = true;
         Scroll = 0f;
-        if (!Consented)
-        {
-            ReturnTo = Page == NightPage.Settings ? NightPage.Settings : NightPage.Tabs;
-            Page = NightPage.Gate;
-            return;
-        }
 
         if (Page is NightPage.Gate or NightPage.Rules)
         {
@@ -497,10 +541,37 @@ internal sealed class VybeState
         }
     }
 
+    public void AgreePlus()
+    {
+        PlusAgreed = true;
+        Consented = true;
+        Mode = SocialMode.AfterDark;
+        PickedMode = true;
+    }
+
+    public void RevokePlus()
+    {
+        PlusAgreed = false;
+        Consented = false;
+        Mode = SocialMode.Daylight;
+        HidePlusLanes();
+        Wash = 0f;
+        if (Page is NightPage.Gate or NightPage.Rules)
+        {
+            Page = NightPage.OnboardIdentity;
+        }
+    }
+
     public void StartWash(bool toNight)
     {
-        if (Washing)
+        if (Washing || (toNight && PlusBlocked))
         {
+            return;
+        }
+
+        if (toNight && !PlusAgreed)
+        {
+            Open(NightPage.Gate);
             return;
         }
 
@@ -522,6 +593,12 @@ internal sealed class VybeState
             HoldMark += delta;
             if (HoldMark >= VybeChrome.HoldSeconds)
             {
+                if (!Night && PlusBlocked)
+                {
+                    HoldMark = 0f;
+                    return;
+                }
+
                 StartWash(!Night);
             }
         }
@@ -1043,6 +1120,8 @@ internal sealed class VybeState
 
         public bool Consented { get; set; }
 
+        public bool PlusAgreed { get; set; }
+
         public bool Onboarded { get; set; }
 
         public bool Discoverable { get; set; }
@@ -1193,7 +1272,7 @@ internal sealed class VybeState
 internal readonly record struct ScenePerson(
     int Id, string GateId, string Name, string Handle, string World, string Line, bool Online, int Photos, bool NightOnly,
     Vector4 Wash, string[] Intents, string[] Tags, string AvatarUrl = "", string Gender = "", string Sexuality = "",
-    string Relationship = "", bool? DmsOpen = null);
+    string Relationship = "", bool? DmsOpen = null, bool PlusMember = false);
 
 internal readonly record struct ScenePost(
     int Id, string Author, int AuthorId, string When, string Body, string Place, bool ConnectionsOnly, int Likes,
