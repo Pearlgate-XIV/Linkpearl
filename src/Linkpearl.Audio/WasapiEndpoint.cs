@@ -16,6 +16,11 @@ internal static class WasapiEndpoint
         if (deviceId.Length > 0)
         {
             var device = FindExact(deviceId);
+            if (device is null)
+            {
+                device = FindByPort(deviceId);
+            }
+
             if (device is not null)
             {
                 var name = device.FriendlyName ?? string.Empty;
@@ -34,6 +39,13 @@ internal static class WasapiEndpoint
                     return wave;
                 }
             }
+
+            var labeled = LabelOf(deviceId);
+            var mapped = OpenWaveOut(labeled, latencyMs);
+            if (mapped is not null)
+            {
+                return mapped;
+            }
         }
 
         try
@@ -50,7 +62,39 @@ internal static class WasapiEndpoint
     {
         if (deviceId.Length == 0 ||
             deviceId.StartsWith("waveout:", StringComparison.Ordinal) ||
-            deviceId.StartsWith("wavein:", StringComparison.Ordinal))
+            deviceId.StartsWith("wavein:", StringComparison.Ordinal) ||
+            deviceId.StartsWith("dsout:", StringComparison.Ordinal) ||
+            deviceId.StartsWith("dsin:", StringComparison.Ordinal) ||
+            deviceId.StartsWith("asio:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var id = deviceId;
+        if (id.StartsWith("out:", StringComparison.Ordinal))
+        {
+            id = id[4..];
+        }
+        else if (id.StartsWith("in:", StringComparison.Ordinal))
+        {
+            id = id[3..];
+        }
+
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            return enumerator.GetDevice(id);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static MMDevice? FindByPort(string deviceId)
+    {
+        var label = LabelOf(deviceId);
+        if (label.Length == 0)
         {
             return null;
         }
@@ -58,12 +102,32 @@ internal static class WasapiEndpoint
         try
         {
             using var enumerator = new MMDeviceEnumerator();
-            return enumerator.GetDevice(deviceId);
+            return WasapiDevices.Find(enumerator, DataFlow.Render, label);
         }
         catch (Exception)
         {
             return null;
         }
+    }
+
+    private static string LabelOf(string deviceId)
+    {
+        try
+        {
+            var ports = WasapiDeviceScan.Render();
+            for (var index = 0; index < ports.Length; index++)
+            {
+                if (string.Equals(ports[index].Id, deviceId, StringComparison.Ordinal))
+                {
+                    return ports[index].Label;
+                }
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        return string.Empty;
     }
 
     public static string DefaultId(DataFlow flow)

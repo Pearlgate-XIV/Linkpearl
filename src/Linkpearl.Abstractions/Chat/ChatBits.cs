@@ -1,0 +1,289 @@
+using System.IO;
+using Linkpearl.Applets;
+using Linkpearl.Emoji;
+using Linkpearl.Geometry;
+using Linkpearl.Media;
+using Linkpearl.Painting;
+using Linkpearl.Platform;
+
+namespace Linkpearl.Chat;
+
+public enum ChatBitKind : byte
+{
+    Text = 0,
+    Place = 1,
+    Pic = 2,
+    Sticker = 3,
+    Gif = 4,
+}
+
+public readonly record struct ChatBit(ChatBitKind Kind, string Body, string Path);
+
+public static class ChatBits
+{
+    public const string PlaceMark = "📍 ";
+    public const string LocMark = "¶loc:";
+    public const string PicMark = "¶img:";
+    public const string StickerMark = "¶stk:";
+    public const string GifMark = "¶gif:";
+
+    public static string Place(string zone, string world) =>
+        Location(zone, world, 0, 0f, 0f, 0);
+
+    public static string Location(string zone, string world, uint territory, float x, float y, uint aetheryte)
+    {
+        var here = zone.Length > 0 ? zone : "Unknown zone";
+        var home = world.Length > 0 ? world : "";
+        return LocMark + here.Replace('|', '/') + "|" + home.Replace('|', '/') + "|" +
+               territory.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" +
+               x.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "|" +
+               y.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "|" +
+               aetheryte.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public static string Pic(string path) => PicMark + path;
+
+    public static string Sticker(string id) => StickerMark + id;
+
+    public static string Gif(string id) => GifMark + id;
+
+    public static ChatBit Read(string body)
+    {
+        if (body.StartsWith(PicMark, StringComparison.Ordinal))
+        {
+            var path = body[PicMark.Length..];
+            return new ChatBit(ChatBitKind.Pic, "Photo", path);
+        }
+
+        if (body.StartsWith(StickerMark, StringComparison.Ordinal))
+        {
+            return new ChatBit(ChatBitKind.Sticker, body[StickerMark.Length..], string.Empty);
+        }
+
+        if (body.StartsWith(GifMark, StringComparison.Ordinal))
+        {
+            return new ChatBit(ChatBitKind.Gif, body[GifMark.Length..], string.Empty);
+        }
+
+        if (body.StartsWith(LocMark, StringComparison.Ordinal))
+        {
+            return new ChatBit(ChatBitKind.Place, PlaceLabel(body), body);
+        }
+
+        if (body.StartsWith(PlaceMark, StringComparison.Ordinal))
+        {
+            return new ChatBit(ChatBitKind.Place, body[PlaceMark.Length..], body);
+        }
+
+        return new ChatBit(ChatBitKind.Text, body, string.Empty);
+    }
+
+    public static string Preview(string body)
+    {
+        var bit = Read(body);
+        return bit.Kind switch
+        {
+            ChatBitKind.Place => "📍 " + bit.Body,
+            ChatBitKind.Pic => "Sent a photo",
+            ChatBitKind.Sticker => "Sent a sticker",
+            ChatBitKind.Gif => "Sent a GIF",
+            _ => body,
+        };
+    }
+
+    public static float BubbleHeight(in AppletFrame frame, float width, string body)
+    {
+        var bodyH = BodyHeight(frame, width, body);
+        return Read(body).Kind == ChatBitKind.Text ? PadPlain(frame, bodyH) : bodyH;
+    }
+
+    /// <summary>
+    /// Tell / live-feed rows draw a name band above the bubble and inset the copy.
+    /// Those chrome slices are not part of <see cref="BubbleHeight"/>.
+    /// </summary>
+    public static float NamedRowHeight(in AppletFrame frame, float width, string body) =>
+        frame.Units(32f) + BodyHeight(frame, width, body);
+
+    private static float BodyHeight(in AppletFrame frame, float width, string body)
+    {
+        var bit = Read(body);
+        return bit.Kind switch
+        {
+            ChatBitKind.Pic => StillBox(frame, width * 0.78f, bit.Path).Y,
+            ChatBitKind.Gif => frame.Units(118f),
+            ChatBitKind.Sticker => frame.Units(88f),
+            ChatBitKind.Place => frame.Units(74f),
+            _ => EmojiText.MeasureHeight(frame, bit.Body,
+                    MathF.Max(frame.Units(40f), width * 0.78f - frame.Units(20f)),
+                    EmojiText.Style(bit.Body, Vector4.One)) +
+                EmojiText.BubbleExtra(frame, bit.Body),
+        };
+    }
+
+    private static float PadPlain(in AppletFrame frame, float body) =>
+        MathF.Max(frame.Units(38f), body + frame.Units(26f));
+
+    public static Vector2 StillBox(in AppletFrame frame, float maxWidth, string path)
+    {
+        var side = frame.Units(16f);
+        var foot = frame.Units(20f);
+        var innerW = MathF.Max(frame.Units(72f), maxWidth - side);
+        var maxH = frame.Units(268f);
+        var minH = frame.Units(88f);
+        if (path.Length > 0 && File.Exists(path))
+        {
+            var texture = frame.Textures.FromFile(path);
+            if (texture is { IsReady: true } && texture.Size.X > 1f)
+            {
+                var h = innerW * (texture.Size.Y / texture.Size.X);
+                if (h > maxH)
+                {
+                    h = maxH;
+                    innerW = h * (texture.Size.X / texture.Size.Y);
+                }
+
+                if (h < minH)
+                {
+                    h = minH;
+                }
+
+                return new Vector2(innerW + side, h + foot);
+            }
+        }
+
+        return new Vector2(maxWidth, frame.Units(148f));
+    }
+
+    public static void Draw(in AppletFrame frame, Rect area, string body, Vector4 ink, Vector4 mute,
+        ILifestream? stream = null)
+    {
+        var bit = Read(body);
+        switch (bit.Kind)
+        {
+            case ChatBitKind.Place:
+                DrawPlace(frame, area, bit, ink, mute, stream);
+                return;
+            case ChatBitKind.Pic:
+                DrawStill(frame, area, bit.Path, "Photo", ink, mute);
+                return;
+            case ChatBitKind.Gif:
+                DrawPack(frame, area, ChatPack.Gif(bit.Body), "GIF", ink, mute);
+                return;
+            case ChatBitKind.Sticker:
+                DrawPack(frame, area, ChatPack.Sticker(bit.Body), "Sticker", ink, mute);
+                return;
+            default:
+                EmojiText.Draw(frame, area, bit.Body, ink);
+                return;
+        }
+    }
+
+    private static void DrawPlace(in AppletFrame frame, Rect area, ChatBit bit, Vector4 ink, Vector4 mute,
+        ILifestream? stream)
+    {
+        TryReadLoc(bit.Path.Length > 0 ? bit.Path : bit.Body, out var loc);
+        var gate = loc.Aetheryte;
+        if (gate == 0 && stream is not null && loc.Territory != 0)
+        {
+            gate = stream.NearestAetheryte(loc.Territory);
+        }
+
+        frame.Text.DrawIn(area.TopSlice(frame.Units(14f)), "Location",
+            new TextStyle(FontRole.CaptionStrong, mute));
+        frame.Text.DrawEllipsized(area.Inset(new Edges(0f, frame.Units(16f), 0f, frame.Units(22f))), bit.Body,
+            new TextStyle(FontRole.Body, ink));
+        var go = area.BottomSlice(frame.Units(20f)).RightSlice(frame.Units(72f));
+        var live = stream is { Ready: true } && gate != 0;
+        frame.Paint.Fill(go, live ? new Vector4(0.20f, 0.72f, 0.46f, 0.95f) : mute with { W = 0.22f },
+            go.Height * 0.5f);
+        frame.Text.DrawIn(go, "Teleport",
+            new TextStyle(FontRole.CaptionStrong, live ? Vector4.One : mute, TextAlign.Center));
+        if (stream is { Ready: true } && gate != 0 && frame.Input.ConsumeClick(go))
+        {
+            stream.TryTeleport(gate);
+        }
+    }
+
+    public static string PlaceLabel(string body)
+    {
+        if (!TryReadLoc(body, out var loc))
+        {
+            return body.StartsWith(PlaceMark, StringComparison.Ordinal) ? body[PlaceMark.Length..] : body;
+        }
+
+        var line = loc.Zone;
+        if (loc.World.Length > 0)
+        {
+            line += " · " + loc.World;
+        }
+
+        if (loc.X != 0f || loc.Y != 0f)
+        {
+            line += " · X " + loc.X.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) +
+                    "  Y " + loc.Y.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return line;
+    }
+
+    public static bool TryReadLoc(string body, out ChatPlace loc)
+    {
+        loc = default;
+        var raw = body.StartsWith(LocMark, StringComparison.Ordinal) ? body[LocMark.Length..] : string.Empty;
+        if (raw.Length == 0)
+        {
+            return false;
+        }
+
+        var parts = raw.Split('|');
+        if (parts.Length < 6)
+        {
+            return false;
+        }
+
+        _ = uint.TryParse(parts[2], System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var territory);
+        _ = float.TryParse(parts[3], System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var x);
+        _ = float.TryParse(parts[4], System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var y);
+        _ = uint.TryParse(parts[5], System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var aetheryte);
+        loc = new ChatPlace(parts[0], parts[1], territory, x, y, aetheryte);
+        return true;
+    }
+
+    private static void DrawStill(in AppletFrame frame, Rect area, string path, string fallback, Vector4 ink,
+        Vector4 mute)
+    {
+        if (path.Length > 0 && File.Exists(path))
+        {
+            var texture = frame.Textures.FromFile(path);
+            if (texture is { IsReady: true })
+            {
+                var dest = CoverFit.Contained(texture.Size, area);
+                frame.Paint.ImageRounded(texture, dest, Vector2.Zero, Vector2.One, Vector4.One, frame.Units(10f));
+                return;
+            }
+        }
+
+        frame.Text.DrawIn(area, fallback, new TextStyle(FontRole.Body, ink));
+    }
+
+    private static void DrawPack(in AppletFrame frame, Rect area, ChatFace face, string kind, Vector4 ink, Vector4 mute)
+    {
+        if (face.File.Length > 0)
+        {
+            var path = frame.Paths.Asset(Path.Combine("Icons", "vybe-demo", face.File));
+            DrawStill(frame, area, path, face.Label.Length > 0 ? face.Label : kind, ink, mute);
+            return;
+        }
+
+        frame.Text.DrawIn(area.TopSlice(area.Height - frame.Units(16f)), face.Glyph,
+            new TextStyle(FontRole.Display, ink, TextAlign.Center));
+        frame.Text.DrawIn(area.BottomSlice(frame.Units(16f)), face.Label.Length > 0 ? face.Label : kind,
+            new TextStyle(FontRole.Caption, mute, TextAlign.Center));
+    }
+}
+
+public readonly record struct ChatPlace(string Zone, string World, uint Territory, float X, float Y, uint Aetheryte);

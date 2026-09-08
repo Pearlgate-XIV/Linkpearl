@@ -38,8 +38,9 @@ public static class WallpaperCatalog
     public static IReadOnlyList<WallpaperPlate> All { get; } = new[]
     {
         new WallpaperPlate("lagoon", "Lagoon", "lagoon-day.png", "lagoon-night.png", 0.20f, 0.11f),
-        new WallpaperPlate("vine", "Vine", "vine-fiber.png", "vine-fiber.png", 0.216f, 0.216f),
-        new WallpaperPlate("grove", "Grove", "grove.png", "grove.png", 0.434f, 0.434f),
+        new WallpaperPlate("vine", "Vine", "vine-fiber.png", "vine-fiber.png", 0.16f, 0.16f),
+        new WallpaperPlate("grove", "Eclipse", "eclipse.png", "eclipse.png", 0.08f, 0.08f),
+        new WallpaperPlate("shady", "Shady", "shady.png", "shady.png", 0.48f, 0.48f),
     };
 
     public static WallpaperPlate Default => All[0];
