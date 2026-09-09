@@ -1002,7 +1002,7 @@ public sealed partial class VybeApplet
                 talkAlbum = true;
                 talkAlbumLock = true;
                 talkTray.Close();
-            });
+            }, gifs);
         return hold;
     }
 
@@ -1179,6 +1179,8 @@ public sealed partial class VybeApplet
         var maxW = row.Width * 0.78f;
         var bubbleW = bit.Kind == ChatBitKind.Pic
             ? ChatBits.StillBox(frame, maxW, bit.Path).X
+            : bit.Kind == ChatBitKind.Gif && GifCache.IsUrl(bit.Body)
+            ? ChatBits.StillBox(frame, maxW, GifCache.PathFor(frame.Paths, bit.Body)).X
             : bit.Kind is ChatBitKind.Gif or ChatBitKind.Sticker or ChatBitKind.Place
             ? maxW
             : MathF.Max(frame.Units(56f),
@@ -1191,7 +1193,7 @@ public sealed partial class VybeApplet
             bubble = row.RightSlice(bubbleW);
             frame.Paint.Fill(bubble, tone.Accent, frame.Units(18f));
             ChatBits.Draw(frame, bubble.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f),
-                    frame.Units(16f))), line.Body, tone.AccentInk, tone.AccentInk with { W = 0.72f }, lifestream);
+                    frame.Units(16f))), line.Body, tone.AccentInk, tone.AccentInk with { W = 0.72f }, lifestream, gifs);
             frame.Text.DrawIn(bubble.BottomSlice(frame.Units(14f)).Inset(new Edges(frame.Units(10f), 0f)),
                 line.When.Length > 0 ? line.When : "Now",
                 new TextStyle(FontRole.Caption, tone.AccentInk with { W = 0.72f }, TextAlign.Right, 1f, 0.85f));
@@ -1210,7 +1212,7 @@ public sealed partial class VybeApplet
             new Vector2(bubbleW, row.Height));
         frame.Paint.Fill(bubble, incoming, frame.Units(18f));
         ChatBits.Draw(frame, bubble.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f),
-                frame.Units(16f))), line.Body, tone.Ink, tone.Mute, lifestream);
+                frame.Units(16f))), line.Body, tone.Ink, tone.Mute, lifestream, gifs);
         frame.Text.DrawIn(bubble.BottomSlice(frame.Units(14f)).Inset(new Edges(frame.Units(10f), 0f)),
             line.When.Length > 0 ? line.When : "Now",
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Left, 1f, 0.85f));

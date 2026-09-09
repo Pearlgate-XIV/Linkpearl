@@ -13,6 +13,7 @@ public enum ChatTrayPane : byte
     Closed = 0,
     Attach = 1,
     Faces = 2,
+    Gifs = 3,
 }
 
 public sealed class ChatTray
@@ -22,6 +23,9 @@ public sealed class ChatTray
     private readonly EmojiPick faces = new();
     private bool albumOpen;
     private bool albumLock;
+    private string gifQuery = string.Empty;
+    private float gifScroll;
+    private string gifScrollQuery = "\u0001";
 
     public float SheetHeight(in AppletFrame frame)
     {
@@ -32,7 +36,7 @@ public sealed class ChatTray
 
         if (Pane == ChatTrayPane.Attach)
         {
-            return albumOpen ? frame.Units(196f) : frame.Units(96f);
+            return albumOpen ? frame.Units(196f) : frame.Units(140f);
         }
 
         return frame.Units(248f);
@@ -43,6 +47,9 @@ public sealed class ChatTray
         Pane = ChatTrayPane.Closed;
         albumOpen = false;
         albumLock = false;
+        gifQuery = string.Empty;
+        gifScroll = 0f;
+        gifScrollQuery = "\u0001";
     }
 
     public void Toggle(ChatTrayPane pane)
@@ -134,9 +141,29 @@ public sealed class ChatTray
         return true;
     }
 
+    public bool DrawGif(in AppletFrame frame, Rect area, Vector4 idle)
+    {
+        var on = Pane == ChatTrayPane.Gifs;
+        var ink = Mark(frame, area, idle, on);
+        frame.Text.DrawIn(area, "GIF", new TextStyle(FontRole.CaptionStrong, ink, TextAlign.Center));
+        if (on)
+        {
+            frame.Paint.Fill(area.BottomSlice(frame.Units(2f)).Inset(new Edges(frame.Units(6f), 0f)), ink,
+                frame.Units(1f));
+        }
+
+        if (!frame.Input.ConsumeClick(area))
+        {
+            return false;
+        }
+
+        Toggle(ChatTrayPane.Gifs);
+        return true;
+    }
+
     public void DrawSheet(in AppletFrame frame, Rect area, Vector4 ink, Vector4 mute, Vector4 accent, Vector4 card,
         IFilePicker? files, string galleryFolder, Action<string> insertEmote, Action<string> send,
-        Action? openGallery = null)
+        Action? openGallery = null, IGifDesk? gifs = null)
     {
         _ = galleryFolder;
         if (Pane == ChatTrayPane.Closed || area.Height <= 0f)
@@ -147,7 +174,11 @@ public sealed class ChatTray
         frame.Paint.Fill(area, card, frame.Units(16f));
         if (Pane == ChatTrayPane.Attach)
         {
-            DrawAttach(frame, area.Inset(frame.Units(10f)), ink, mute, files, send, openGallery);
+            DrawAttach(frame, area.Inset(frame.Units(10f)), ink, mute, files, send, openGallery, gifs);
+        }
+        else if (Pane == ChatTrayPane.Gifs)
+        {
+            DrawGifs(frame, area.Inset(frame.Units(10f)), ink, mute, send, gifs);
         }
         else
         {
@@ -158,7 +189,7 @@ public sealed class ChatTray
     }
 
     private void DrawAttach(in AppletFrame frame, Rect area, Vector4 ink, Vector4 mute, IFilePicker? files,
-        Action<string> send, Action? openGallery)
+        Action<string> send, Action? openGallery, IGifDesk? gifs)
     {
         if (albumOpen)
         {
@@ -168,10 +199,17 @@ public sealed class ChatTray
 
         var rowH = frame.Units(36f);
         var gap = frame.Units(6f);
-        var gallery = area.TopSlice(rowH);
+        var gifRow = area.TopSlice(rowH);
+        var gallery = Rect.FromSize(new Vector2(area.Min.X, gifRow.Max.Y + gap), new Vector2(area.Width, rowH));
         var pc = Rect.FromSize(new Vector2(area.Min.X, gallery.Max.Y + gap), new Vector2(area.Width, rowH));
+        DrawAttachRow(frame, gifRow, mute, ink, "GIFs", DrawGifMark);
         DrawAttachRow(frame, gallery, mute, ink, "Gallery", DrawGalleryMark);
         DrawAttachRow(frame, pc, mute, ink, "This PC", DrawPcMark);
+        if (gifs is not null && frame.Input.ConsumeClick(gifRow))
+        {
+            Toggle(ChatTrayPane.Gifs);
+        }
+
         if (frame.Input.ConsumeClick(gallery))
         {
             if (openGallery is not null)
@@ -189,6 +227,95 @@ public sealed class ChatTray
         {
             files.BeginImagePick();
         }
+    }
+
+    private void DrawGifs(in AppletFrame frame, Rect area, Vector4 ink, Vector4 mute, Action<string> send,
+        IGifDesk? gifs)
+    {
+        if (gifs is null)
+        {
+            frame.Text.DrawIn(area, "GIF search is not available.",
+                new TextStyle(FontRole.Caption, mute, TextAlign.Center));
+            return;
+        }
+
+        gifs.Warm();
+        var search = area.TopSlice(frame.Units(32f));
+        frame.Paint.Fill(search, mute with { W = 0.14f }, search.Height * 0.5f);
+        var query = frame.TextField.Draw("chat-gif-search", search.Inset(new Edges(frame.Units(10f), 0f)),
+            gifQuery, "Search GIPHY");
+        gifQuery = query;
+        gifs.NoteQuery(gifQuery);
+        if (gifQuery != gifScrollQuery)
+        {
+            gifScroll = 0f;
+            gifScrollQuery = gifQuery;
+        }
+
+        var foot = area.BottomSlice(frame.Units(16f));
+        frame.Text.DrawIn(foot, "Powered by GIPHY",
+            new TextStyle(FontRole.Caption, mute, TextAlign.Center));
+
+        var grid = new Rect(new Vector2(area.Min.X, search.Max.Y + frame.Units(8f)),
+            new Vector2(area.Max.X, foot.Min.Y - frame.Units(4f)));
+        var hits = gifs.Hits;
+        if (hits.Count == 0)
+        {
+            var copy = gifs.Busy ? "Looking…" : (gifs.Notice.Length > 0 ? gifs.Notice : "No GIFs yet.");
+            frame.Text.DrawIn(grid, copy, new TextStyle(FontRole.Caption, mute, TextAlign.Center));
+            return;
+        }
+
+        var gap = frame.Units(6f);
+        var cols = 2;
+        var cellW = (grid.Width - gap) / cols;
+        var cellH = cellW * 0.72f;
+        var stride = cellH + gap;
+        var rows = (hits.Count + cols - 1) / cols;
+        var plane = rows * stride;
+        if (frame.Input.IsHovering(grid) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
+        {
+            gifScroll = Math.Clamp(gifScroll - frame.Input.ScrollDelta * frame.Units(28f), 0f,
+                MathF.Max(0f, plane - grid.Height));
+        }
+
+        if (gifs.CanMore && gifScroll + grid.Height > plane - stride * 2f)
+        {
+            gifs.More();
+        }
+
+        frame.Paint.PushClip(grid);
+        var first = Math.Max(0, (int)(gifScroll / stride) * cols);
+        var last = Math.Min(hits.Count, first + cols * ((int)(grid.Height / stride) + 3));
+        for (var index = first; index < last; index++)
+        {
+            var col = index % cols;
+            var row = index / cols;
+            var dest = Rect.FromSize(
+                new Vector2(grid.Min.X + (cellW + gap) * col, grid.Min.Y + stride * row - gifScroll),
+                new Vector2(cellW, cellH));
+            var hit = hits[index];
+            gifs.Ensure(hit.PreviewUrl);
+            var path = gifs.PathFor(hit.PreviewUrl);
+            var texture = ChatBits.LoadMotion(frame, path);
+            if (texture is { IsReady: true })
+            {
+                var uv = CoverFit.Uv(texture.Size, dest.Size);
+                frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, frame.Units(8f));
+            }
+            else
+            {
+                frame.Paint.Fill(dest, mute with { W = 0.14f }, frame.Units(8f));
+            }
+
+            if (frame.Input.ConsumeClick(dest))
+            {
+                send(ChatBits.Gif(hit.SendUrl));
+                Close();
+            }
+        }
+
+        frame.Paint.PopClip();
     }
 
     private void DrawAlbum(in AppletFrame frame, Rect area, Vector4 ink, Vector4 mute, Action<string> send)
@@ -261,6 +388,16 @@ public sealed class ChatTray
         mark(frame.Paint, icon, wash);
         frame.Text.DrawIn(area.Inset(new Edges(area.Height, 0f, frame.Units(12f), 0f)), title,
             new TextStyle(FontRole.CaptionStrong, wash, TextAlign.Left));
+    }
+
+    private static void DrawGifMark(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var stroke = MathF.Max(1.4f, area.Width * 0.10f);
+        paint.Stroke(area.Inset(area.Width * 0.08f), ink, stroke, area.Width * 0.18f);
+        paint.Line(area.Min + new Vector2(area.Width * 0.28f, area.Height * 0.62f),
+            area.Min + new Vector2(area.Width * 0.48f, area.Height * 0.38f), ink, stroke);
+        paint.Line(area.Min + new Vector2(area.Width * 0.48f, area.Height * 0.38f),
+            area.Min + new Vector2(area.Width * 0.78f, area.Height * 0.70f), ink, stroke);
     }
 
     private static void DrawGalleryMark(IPaintSurface paint, Rect area, Vector4 ink)

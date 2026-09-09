@@ -30,7 +30,7 @@ public sealed class DisplayPreferences
     private float titleGlowG = 0.78f;
     private float titleGlowB = 0.42f;
     private NameGlowWeight titleGlowWeight = NameGlowWeight.Medium;
-    private bool testingAccount = true;
+    private bool testingAccount;
     private TitleMotion nameMotion;
     private bool nameGlow;
     private float nameGlowR = 0.92f;

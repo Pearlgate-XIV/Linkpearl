@@ -47,6 +47,10 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private readonly HashSet<string> unfolded = new(StringComparer.Ordinal);
     private string listQuery = string.Empty;
+    private string listNeedle = string.Empty;
+    private string searchPinned = string.Empty;
+    private float pendingFocusY;
+    private bool hasFocusY;
     private bool creditsOpen;
     private string sliderDrag = string.Empty;
     private long lastPortScan;
@@ -120,6 +124,18 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         return false;
     }
 
+    public bool TryTakeScrollIntoView(out float y)
+    {
+        y = pendingFocusY;
+        if (!hasFocusY)
+        {
+            return false;
+        }
+
+        hasFocusY = false;
+        return true;
+    }
+
     public float Compose(in AppletFrame frame)
     {
         hoverHint = string.Empty;
@@ -142,6 +158,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
 
         DrawHoverTip(frame);
+        frame.Input.ConsumeClick(frame.Content);
         return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 
@@ -175,6 +192,12 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void DrawBook(AppletFrame frame, ref Stack stack)
     {
         DrawSearch(frame, stack.Take(frame.Units(32f)));
+        var needle = listQuery.Trim();
+        if (needle != listNeedle)
+        {
+            listNeedle = needle;
+            searchPinned = string.Empty;
+        }
         DrawPreviewCard(frame, stack.Take(frame.Units(108f)));
         DrawTopic(frame, ref stack, "General", "Lock, combat, and how the phone behaves",
             "lock pin combat portraits cutscenes motion behavior", OptionBand(frame, 6), DrawGeneralPage);
@@ -747,8 +770,17 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     {
         var head = OptionHeight(frame);
         var pad = frame.Units(12f);
-        var open = listQuery.Trim().Length > 0 || unfolded.Contains(title);
-        return head + (open ? pad + inner + pad : 0f);
+        return head + (TopicOpen(title) ? pad + inner + pad : 0f);
+    }
+
+    private bool TopicOpen(string title)
+    {
+        if (listQuery.Trim().Length == 0)
+        {
+            return unfolded.Contains(title);
+        }
+
+        return searchPinned.Length == 0 || searchPinned == title;
     }
 
     private float AppearanceInnerHeight(in AppletFrame frame)
@@ -1172,9 +1204,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             return;
         }
 
-        var searching = listQuery.Trim().Length > 0;
         DrawSquareCategory(frame, ref stack, title, blurb, innerHeight, draw,
-            open: searching || unfolded.Contains(title), canToggle: !searching);
+            open: TopicOpen(title), canToggle: listQuery.Trim().Length == 0);
     }
 
     private void DrawOpenSheet(AppletFrame frame, ref Stack stack, string title, string blurb, float innerHeight,
@@ -1199,11 +1230,20 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         frame.Text.DrawIn(inner.RightSlice(inner.Width * 0.3f), open ? "Close" : "Open",
             new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
         Note(frame, head, blurb);
-        if (canToggle && frame.Input.ConsumeClick(head))
+        if (frame.Input.ConsumeClick(head))
         {
-            if (!unfolded.Add(title))
+            if (canToggle)
             {
-                unfolded.Remove(title);
+                if (!unfolded.Add(title))
+                {
+                    unfolded.Remove(title);
+                }
+            }
+            else if (listQuery.Trim().Length > 0)
+            {
+                searchPinned = title;
+                pendingFocusY = card.Min.Y - frame.Content.Min.Y;
+                hasFocusY = true;
             }
         }
 

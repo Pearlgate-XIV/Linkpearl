@@ -106,6 +106,8 @@ public interface ITextureSource
 
     ITextureHandle? FromBytes(ReadOnlySpan<byte> data, string cacheKey);
 
+    ITextureHandle? FromGif(string path) => FromFile(path);
+
     CoverUv FileOpaqueUv(string path) => CoverUv.Full;
 
     void ForgetFile(string path)
@@ -128,6 +130,8 @@ public interface IFilePicker
     }
 
     bool TryTakeImages(out IReadOnlyList<string> paths);
+
+    void BeginAttachPick() => BeginImagePick();
 
     bool TryTakeFolder(out string path)
     {

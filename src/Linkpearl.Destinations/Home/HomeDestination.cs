@@ -183,7 +183,8 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
-        var name = GlassName.ProfileName(display, ShownName.Linked(game.Character.Name, snapshot.MeName));
+        var name = GlassName.ProfileName(display, ShownName.Linked(game.Character.Name, snapshot.MeName),
+            GlassName.IsPatron(badges, snapshot, display, development));
         if (name.Length == 0)
         {
             name = "Linkpearl";

@@ -380,14 +380,14 @@ public sealed class ProfileChrome
     private string CardName(PearlSnapshot snapshot)
     {
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
-        var name = GlassName.ProfileName(display, linked);
+        var name = GlassName.ProfileName(display, linked, GlassName.IsPatron(book, snapshot, display, development));
         return name.Length > 0 ? name : "Not logged in";
     }
 
     private void PushApps(PearlSnapshot snapshot)
     {
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
-        var name = ShownName.Source(display, linked);
+        var name = ShownName.Source(display, linked, GlassName.IsPatron(book, snapshot, display, development));
         if (name.Length == 0)
         {
             name = ShownName.Sanitize(display.OwnName);
@@ -403,7 +403,14 @@ public sealed class ProfileChrome
         if (development)
         {
             DrawChoice(frame, stack.Take(frame.Units(40f)), "Testing account", display.TestingAccount,
-                () => display.TestingAccount = !display.TestingAccount);
+                () =>
+                {
+                    display.TestingAccount = !display.TestingAccount;
+                    if (!display.TestingAccount && !snapshot.IsPatron)
+                    {
+                        GlassName.Relinquish(display);
+                    }
+                });
             DrawNotice(frame, stack.Take(frame.Units(40f)),
                 display.TestingAccount
                     ? "Testing account: Patron rows are unlocked on this handset."
@@ -415,17 +422,19 @@ public sealed class ProfileChrome
         DrawChoice(frame, stack.Take(frame.Units(40f)), "First name", display.NameStyle == NameStyle.Given,
             () => display.NameStyle = NameStyle.Given);
 
-        var nameRow = stack.Take(frame.Units(52f));
-        CardChrome.DrawGold(frame, nameRow);
-        var namePad = nameRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
-        frame.Text.DrawIn(namePad.TopSlice(frame.Units(14f)), "Name",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        display.OwnName = frame.TextField.Draw("profile-own-name", namePad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
-            display.OwnName, "Leave blank for your in-game name", ShownName.OwnNameLimit, out _);
+        if (patron)
+        {
+            var nameRow = stack.Take(frame.Units(52f));
+            CardChrome.DrawGold(frame, nameRow);
+            var namePad = nameRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
+            frame.Text.DrawIn(namePad.TopSlice(frame.Units(14f)), "Name",
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+            display.OwnName = frame.TextField.Draw("profile-own-name", namePad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
+                display.OwnName, "Leave blank for your in-game name", ShownName.OwnNameLimit, out _);
+        }
 
-        var faceUnlocked = patron || development;
         var dreamsOn = string.Equals(display.DisplayFace, FounderFaces.Dreams, StringComparison.Ordinal);
-        if (faceUnlocked)
+        if (patron)
         {
             DrawToggle(frame, stack.Take(frame.Units(40f)), "Dreams typeface", dreamsOn, () =>
                 display.DisplayFace = dreamsOn ? FounderFaces.Inter : FounderFaces.Dreams);

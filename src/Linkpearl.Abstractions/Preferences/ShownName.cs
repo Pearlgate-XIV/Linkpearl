@@ -33,9 +33,10 @@ public static class ShownName
     public static string ForGlass(DisplayPreferences display, string linked, bool allowCustom = false) =>
         ApplyStyle(Source(display, linked, allowCustom), display.NameStyle);
 
-    public static string Preferred(DisplayPreferences display, string linked, string stored, string fallback)
+    public static string Preferred(DisplayPreferences display, string linked, string stored, string fallback,
+        bool allowCustom = true)
     {
-        var handset = Source(display, linked);
+        var handset = Source(display, linked, allowCustom);
         var local = Sanitize(stored);
         var raw = local.Length > 0 ? local : handset;
         if (display.NameStyle == NameStyle.Full &&

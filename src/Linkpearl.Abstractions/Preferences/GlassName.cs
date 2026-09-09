@@ -20,19 +20,31 @@ public static class GlassName
     };
 
     public static bool IsPatron(BadgeBook book, PearlSnapshot snapshot) =>
-        IsPatron(book, snapshot, testing: false);
+        snapshot.IsPatron;
 
     public static bool IsPatron(BadgeBook book, PearlSnapshot snapshot, DisplayPreferences display, bool development) =>
-        IsPatron(book, snapshot, development && display.TestingAccount);
+        Unlocked(snapshot, display, development);
 
     public static bool IsPatron(BadgeBook book, PearlSnapshot snapshot, bool testing) =>
         testing || snapshot.IsPatron;
 
+    public static bool Unlocked(PearlSnapshot snapshot, DisplayPreferences display, bool development) =>
+        snapshot.IsPatron || (development && display.TestingAccount);
+
+    public static void Relinquish(DisplayPreferences display)
+    {
+        display.DisplayFace = FounderFaces.Inter;
+        display.NameGlow = false;
+    }
+
     public static string Resolve(DisplayPreferences display, string linked, bool patron) =>
         ShownName.ForGlass(display, linked, patron);
 
+    public static string ProfileName(DisplayPreferences display, string linked, bool patron) =>
+        ShownName.ForGlass(display, linked, patron);
+
     public static string ProfileName(DisplayPreferences display, string linked) =>
-        ShownName.ForGlass(display, linked, allowCustom: true);
+        ProfileName(display, linked, false);
 
     public static string Honorific(DisplayPreferences display) =>
         ShownName.ClampTitle(display.OwnTitle).Trim();

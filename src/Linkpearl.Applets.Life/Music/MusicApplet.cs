@@ -44,6 +44,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private readonly IBroadcastPush push;
     private readonly IAudioPorts ports;
     private readonly IFeedbackDesk desk;
+    private readonly HostEnvironment environment;
     private readonly MusicState state;
     private int profileStamp;
     private float nameClock;
@@ -69,7 +70,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     public MusicApplet(IGameSession game, HostPaths paths, DisplayPreferences display, IHandsetAudio audio,
         IPublicRadio publicRadio, ICommunityRadio community, IPearlHub pearl, IFilePicker files, BadgeBook badges,
         IBroadcastSense sense, IBroadcastPush push, IAudioPorts ports, IFeedbackDesk desk,
-        HandsetProfileDesk profiles)
+        HandsetProfileDesk profiles, HostEnvironment environment)
     {
         this.game = game;
         this.paths = paths;
@@ -84,6 +85,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
         this.push = push;
         this.ports = ports;
         this.desk = desk;
+        this.environment = environment;
         state = MusicState.Load(paths, game.Character.Name);
         FillFromCharacter();
         profiles.Add(this);
@@ -112,7 +114,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private string HandsetName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        var name = HandsetLook.Name(display, linked);
+        var name = HandsetLook.Name(display, linked,
+            GlassName.IsPatron(badges, pearl.Current, display, environment.IsDevelopment));
         return name.Length > 0 ? name : game.Character.Name;
     }
 
@@ -138,13 +141,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private string SharedName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        return ShownName.Preferred(display, linked, state.DisplayName, "Listener");
+        return ShownName.Preferred(display, linked, state.DisplayName, "Listener", FancyName());
     }
 
     private string EditableName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        var handset = ShownName.Source(display, linked);
+        var handset = ShownName.Source(display, linked, FancyName());
         var stored = state.DisplayName.Trim();
         if (stored.Length > 0)
         {
@@ -157,7 +160,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink
     private string SharedHonorific() => state.Honorific.Trim();
 
     private bool FancyName() =>
-        GlassName.IsPatron(badges, pearl.Current, display.TestingAccount);
+        GlassName.IsPatron(badges, pearl.Current, display, environment.IsDevelopment);
 
     private void DrawFlowName(in AppletFrame frame, Rect area, string name) =>
         NameMark.DrawName(frame, area, name, display, MusicChrome.Ink, FancyName(), nameClock);

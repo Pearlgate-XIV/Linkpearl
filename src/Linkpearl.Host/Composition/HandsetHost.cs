@@ -10,6 +10,7 @@ using Linkpearl.Canvas.Painting;
 using Linkpearl.Canvas.Text;
 using Linkpearl.Canvas.Theming;
 using Linkpearl.Chassis;
+using Linkpearl.Chat;
 using Linkpearl.Destinations;
 using Linkpearl.Destinations.Explore;
 using Linkpearl.Destinations.Home;
@@ -168,7 +169,10 @@ public sealed class HandsetHost : IDisposable
         var textures = new DalamudTextureSource(textureProvider);
         services.AddSingleton<ITextureSource>(textures);
         var files = new WindowsImagePicker();
+        var fileGlass = new FilePickWindow(files.AcceptGlass);
+        files.Bind(fileGlass);
         services.AddSingleton<IFilePicker>(files);
+        services.AddSingleton<IGifDesk>(new GiphyGifDesk(paths, ReadGiphyKey(paths, config)));
 
         var hub = new DestinationHub();
         services.AddSingleton(hub);
@@ -186,14 +190,15 @@ public sealed class HandsetHost : IDisposable
 
         fonts = new HandsetFontService(pluginInterface);
         fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,
-            isDevelopment || preferences.TestingAccount));
+            GlassName.Unlocked(pearl.Current, preferences, isDevelopment)));
         var theme = new HandsetTheme(1f, preferences);
         popouts = new TalkPopoutBoard(windowSystem, talk, theme, RememberPopouts);
         popouts.Restore(config.PopoutTalkIds, config.PopoutTalkPlaces);
 
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
-        var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files);
+        var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
+            provider.GetRequiredService<IGifDesk>());
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));
@@ -233,6 +238,7 @@ public sealed class HandsetHost : IDisposable
             RequestPowerOff);
         shapePreference.Changed += OnShapeChanged;
         windowSystem.AddWindow(window);
+        windowSystem.AddWindow(fileGlass);
 
         pluginInterface.UiBuilder.DisableGposeUiHide = preferences.StayInPortraits;
         preferences.Changed += () =>
@@ -341,7 +347,12 @@ public sealed class HandsetHost : IDisposable
     private void ApplyDisplayFace()
     {
         var snapshot = pearl.Current;
-        var unlocked = isDevelopment || snapshot.IsPatron || display.TestingAccount;
+        var unlocked = GlassName.Unlocked(snapshot, display, isDevelopment);
+        if (!unlocked)
+        {
+            GlassName.Relinquish(display);
+        }
+
         fonts.SetDisplayFace(FounderFaces.Active(display.DisplayFace, unlocked));
     }
 
@@ -573,5 +584,31 @@ public sealed class HandsetHost : IDisposable
         config.PocketY = placement.Pocket.Y;
         placement.ClearDirty();
         pluginInterface.SavePluginConfig(config);
+    }
+
+    private static string ReadGiphyKey(HostPaths paths, HandsetConfig cfg)
+    {
+        var env = Environment.GetEnvironmentVariable("LINKPEARL_GIPHY_KEY");
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            return env.Trim();
+        }
+
+        if (cfg.GiphyApiKey.Length > 0)
+        {
+            return cfg.GiphyApiKey;
+        }
+
+        var file = paths.State("giphy.key");
+        if (File.Exists(file))
+        {
+            var fromFile = File.ReadAllText(file).Trim();
+            if (fromFile.Length > 0)
+            {
+                return fromFile;
+            }
+        }
+
+        return string.Empty;
     }
 }

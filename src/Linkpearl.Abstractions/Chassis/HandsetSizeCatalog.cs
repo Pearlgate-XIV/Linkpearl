@@ -13,6 +13,13 @@ public static class HandsetSizeCatalog
 
     public const float DefaultStep = 1.000f;
 
+    // Settings S is 0.80. High Dalamud UI scale still needs a lower floor so the
+    // window can fit the game viewport.
+    public const float FloorScale = 0.35f;
+
+    // Idle size must not eat the whole game view. Corner-drag uses the same fill.
+    public const float ViewFill = 0.62f;
+
     // Free drag may grow past the last settings preset, but never past the display.
     public const float FreeCeiling = 8f;
 
@@ -40,7 +47,7 @@ public static class HandsetSizeCatalog
 
     public static Vector2 SizeFor(HandsetForm form, HandsetCase casing, float scale)
     {
-        var clamped = Math.Clamp(scale, MinScale, FreeCeiling);
+        var clamped = Math.Clamp(scale, FloorScale, FreeCeiling);
         return BaseUnits(form, casing) * clamped;
     }
 
@@ -68,7 +75,7 @@ public static class HandsetSizeCatalog
     }
 
     public static float ClampFree(float scale, float maxFit) =>
-        Math.Clamp(scale, MinScale, Math.Clamp(maxFit, MinScale, FreeCeiling));
+        Math.Clamp(scale, FloorScale, Math.Clamp(maxFit, FloorScale, FreeCeiling));
 
     public static float FitScale(HandsetForm form, HandsetCase casing, Vector2 maxPixels, float dip, bool landscape)
     {
@@ -76,9 +83,9 @@ public static class HandsetSizeCatalog
         var sized = landscape ? new Vector2(units.Y, units.X) : units;
         if (sized.X < 1f || sized.Y < 1f || maxPixels.X < 1f || maxPixels.Y < 1f)
         {
-            return MinScale;
+            return FloorScale;
         }
 
-        return MathF.Max(MinScale, MathF.Min(maxPixels.X / sized.X, maxPixels.Y / sized.Y));
+        return MathF.Max(FloorScale, MathF.Min(maxPixels.X / sized.X, maxPixels.Y / sized.Y));
     }
 }

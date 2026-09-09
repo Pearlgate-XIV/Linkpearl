@@ -38,8 +38,10 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private readonly DisplayPreferences display;
     private readonly BadgeBook badges;
     private readonly IFilePicker files;
+    private readonly IGifDesk gifs;
     private readonly ILifestream lifestream;
     private readonly IFeedbackDesk desk;
+    private readonly HostEnvironment environment;
     private readonly VybeState state;
     private readonly ChatTray talkTray = new();
     private bool talkAlbum;
@@ -58,7 +60,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
     public VybeApplet(IGameSession game, HostPaths paths, IPearlHub pearl, DisplayPreferences display,
         BadgeBook badges, HandsetProfileDesk profiles, IFilePicker files, ILifestream lifestream,
-        IFeedbackDesk desk)
+        IFeedbackDesk desk, IGifDesk gifs, HostEnvironment environment)
     {
         this.game = game;
         this.paths = paths;
@@ -66,8 +68,10 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         this.display = display;
         this.badges = badges;
         this.files = files;
+        this.gifs = gifs;
         this.lifestream = lifestream;
         this.desk = desk;
+        this.environment = environment;
         state = VybeState.Load(paths, game.Character.Name);
         profiles.Add(this);
         if (state.UsesHandsetIdentity || state.UsesHandsetProfile)
@@ -79,20 +83,21 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private string HandsetName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        var name = HandsetLook.Name(display, linked);
+        var name = HandsetLook.Name(display, linked,
+            GlassName.IsPatron(badges, pearl.Current, display, environment.IsDevelopment));
         return name.Length > 0 ? name : game.Character.Name;
     }
 
     private string ProfileName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        return ShownName.Preferred(display, linked, state.DisplayName, "You");
+        return ShownName.Preferred(display, linked, state.DisplayName, "You", FancyName());
     }
 
     private string EditableName()
     {
         var linked = ShownName.Linked(game.Character.Name, pearl.Current.MeName);
-        var handset = ShownName.Source(display, linked);
+        var handset = ShownName.Source(display, linked, FancyName());
         var stored = state.DisplayName.Trim();
         if (stored.Length > 0)
         {
@@ -267,7 +272,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     }
 
     private bool FancyName() =>
-        GlassName.IsPatron(badges, pearl.Current, display.TestingAccount);
+        GlassName.IsPatron(badges, pearl.Current, display, environment.IsDevelopment);
 
     private void DrawFlowName(in AppletFrame frame, Rect area, string name, bool night) =>
         NameMark.DrawName(frame, area, name, display, VybeChrome.Tone(night).Ink, FancyName(), nameClock);

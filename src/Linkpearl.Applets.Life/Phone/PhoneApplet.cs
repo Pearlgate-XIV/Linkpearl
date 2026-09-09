@@ -68,6 +68,7 @@ public sealed class PhoneApplet : IApplet
     private readonly BadgeBook badges;
     private readonly IGameSession game;
     private readonly IFilePicker files;
+    private readonly IGifDesk gifs;
     private readonly ChatTray tray = new();
     private int tab;
     private string openNumber = string.Empty;
@@ -86,7 +87,7 @@ public sealed class PhoneApplet : IApplet
     private float noteScroll;
 
     public PhoneApplet(IHandsetLine line, IBroadcastSense sense, DisplayPreferences display, IPearlHub pearl,
-        BadgeBook badges, IGameSession game, IFilePicker files)
+        BadgeBook badges, IGameSession game, IFilePicker files, IGifDesk gifs)
     {
         this.line = line;
         this.sense = sense;
@@ -95,6 +96,7 @@ public sealed class PhoneApplet : IApplet
         this.badges = badges;
         this.game = game;
         this.files = files;
+        this.gifs = gifs;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -696,7 +698,7 @@ public sealed class PhoneApplet : IApplet
             var bubble = Rect.FromSize(new Vector2(log.Min.X + inset, cursor),
                 new Vector2(log.Width - inset - trail, height));
             frame.Paint.Fill(bubble, note.Mine ? Bubble with { W = 0.55f } : Pill, frame.Units(14f));
-            ChatBits.Draw(frame, bubble.Inset(frame.Units(8f)), note.Body, Ink, Muted);
+            ChatBits.Draw(frame, bubble.Inset(frame.Units(8f)), note.Body, Ink, Muted, null, gifs);
             cursor += height + frame.Units(8f);
         }
 
@@ -705,9 +707,10 @@ public sealed class PhoneApplet : IApplet
 
         tray.TickFiles(files, body => line.SendNote(number, body));
         var plus = bar.LeftSlice(frame.Units(32f)).Inset(frame.Units(6f));
+        var gif = bar.RightSlice(frame.Units(118f)).LeftSlice(frame.Units(28f)).Inset(new Edges(0f, frame.Units(8f)));
         var faces = bar.RightSlice(frame.Units(90f)).LeftSlice(frame.Units(28f)).Inset(new Edges(0f, frame.Units(8f)));
         var send = bar.RightSlice(frame.Units(52f)).Inset(frame.Units(6f));
-        var type = bar.Inset(new Edges(frame.Units(32f), 0f, frame.Units(90f), 0f));
+        var type = bar.Inset(new Edges(frame.Units(32f), 0f, frame.Units(118f), 0f));
         var live = frame.TextField.Owns("phone-sms");
         frame.Paint.Fill(type, live ? Pill with { W = MathF.Min(1f, Pill.W + 0.18f) } : Pill, bar.Height * 0.5f);
         if (live)
@@ -715,9 +718,10 @@ public sealed class PhoneApplet : IApplet
             frame.Paint.Stroke(type, Ink with { W = 0.55f }, frame.Units(1.2f), bar.Height * 0.5f);
         }
         tray.DrawPlus(frame, plus, Vector4.One);
+        tray.DrawGif(frame, gif, Vector4.One);
         tray.DrawFaces(frame, faces, Vector4.One);
         draft = frame.TextField.Draw("phone-sms", bar.Inset(new Edges(frame.Units(36f), frame.Units(6f),
-            frame.Units(94f), frame.Units(6f))), draft, "Text", 240, out var sent);
+            frame.Units(122f), frame.Units(6f))), draft, "Text", 240, out var sent);
         frame.Text.DrawIn(send, "Send",
             new TextStyle(FontRole.CaptionStrong, Bubble, TextAlign.Center));
         if ((sent || frame.Input.ConsumeClick(send)) && draft.Trim().Length > 0)
@@ -733,7 +737,7 @@ public sealed class PhoneApplet : IApplet
                 draft = fields.Insert("phone-sms", draft, glyph);
                 fields.Focus("phone-sms");
             },
-            body => line.SendNote(number, body));
+            body => line.SendNote(number, body), null, gifs);
     }
 
     private void DrawContacts(in AppletFrame frame, Rect area)

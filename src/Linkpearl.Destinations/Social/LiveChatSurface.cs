@@ -31,12 +31,16 @@ internal sealed class LiveChatSurface
     private int seenGeneration = -1;
     private FeedMenu? menu;
 
-    public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell)
+    private readonly IGifDesk gifs;
+
+    public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell,
+        IGifDesk gifs)
     {
         this.talk = talk;
         this.display = display;
         this.chat = chat;
         this.openTell = openTell;
+        this.gifs = gifs;
     }
 
     public bool HasMenu => menu is not null;
@@ -373,7 +377,7 @@ internal sealed class LiveChatSurface
         frame.Paint.Stroke(top, lineColor, frame.Units(1.5f), radius);
         var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f), frame.Units(8f)));
         frame.Paint.PushClip(copy);
-        ChatBits.Draw(frame, copy, line.Body, lineColor, lineColor with { W = 0.72f });
+        ChatBits.Draw(frame, copy, line.Body, lineColor, lineColor with { W = 0.72f }, null, gifs);
         frame.Paint.PopClip();
         if (menu is null && !line.Mine && line.Sender.Length > 0 &&
             frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
