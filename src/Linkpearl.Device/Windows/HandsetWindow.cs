@@ -46,6 +46,7 @@ public sealed class HandsetWindow : Window
     private readonly ResizeGrip resizeGrip = new();
     private readonly SideButton powerButton = new(SideEdge.Right);
     private readonly PocketUnlock pocketUnlock = new();
+    private readonly HandsetBoot boot = new();
     private bool wantFold;
     private float fold;
     private bool presencePocket;
@@ -123,9 +124,12 @@ public sealed class HandsetWindow : Window
         pocketUnlock.Reset();
         pocketMoving = false;
         textField.Release();
+        boot.Cancel();
         persistMinimized(true);
         savePlacement = true;
     }
+
+    public void PlayBoot() => boot.Play(display.ReduceMotion);
 
     public void Restore()
     {
@@ -148,6 +152,7 @@ public sealed class HandsetWindow : Window
         pocketUnlock.Reset();
         pocketMoving = false;
         textField.Release();
+        boot.Cancel();
     }
 
     public override void PreDraw()
@@ -354,14 +359,13 @@ public sealed class HandsetWindow : Window
         {
             paint.PushClip(screen);
             clipped = true;
-            screenField.Paint(paint, theme, screen, deltaSeconds, screenRadius);
-            if (!fonts.Ready)
+            if (boot.Covering)
             {
-                paint.PopClip();
-                clipped = false;
-                DrawCase(paint, skin, windowRect, body, screen, screenRadius, plate.CornerOn(windowRect),
-                    plate.GasketOn(windowRect), asleep);
-                return;
+                boot.PaintVeil(paint, screen);
+            }
+            else
+            {
+                screenField.Paint(paint, theme, screen, deltaSeconds, screenRadius);
             }
 
             var powerArea = usingSkin ? plate.PowerOn(windowRect) : powerButton.Area(windowRect, railDepth, scale);
@@ -371,7 +375,7 @@ public sealed class HandsetWindow : Window
             var lockHit = showLock ? LockButton.HitArea(windowRect, screen, scale) : Rect.Empty;
             var pointer = input.Pointer;
             var overChrome = powerHit.Contains(pointer) || lockHit.Contains(pointer);
-            IInputProbe frameInput = overChrome ? SilentInput.Instance : input;
+            IInputProbe frameInput = overChrome || boot.Covering ? SilentInput.Instance : input;
             var frame = new AppletFrame(screen, paint, text, frameInput, theme, router, textField, textures, paths,
                 scale, deltaSeconds);
             textField.Dress(paint, text, textures, paths);
@@ -391,18 +395,29 @@ public sealed class HandsetWindow : Window
                     }
                 }
 
-                woke = shell.DrawMinimized(frame, screen, pocketUnlock,
-                    allowSlide: !pocketMoving && !overChrome);
+                if (fonts.Ready)
+                {
+                    woke = shell.DrawMinimized(frame, screen, pocketUnlock,
+                        allowSlide: !pocketMoving && !overChrome);
+                }
             }
             else
             {
-                try
+                if (fonts.Ready && !boot.Covering)
                 {
-                    shell.Draw(frame, screen);
+                    try
+                    {
+                        shell.Draw(frame, screen);
+                    }
+                    catch
+                    {
+                        // Keep the chassis, gasket, and soft keys if a page throws.
+                    }
                 }
-                catch
+
+                if (boot.Active)
                 {
-                    // Keep the chassis, gasket, and soft keys if a page throws.
+                    boot.Draw(frame, screen);
                 }
 
                 pocketNow = shell.ConsumePocket();
@@ -413,7 +428,7 @@ public sealed class HandsetWindow : Window
                     powerOffPlugin();
                     return;
                 }
-                if (display.Brightness < 0.995f)
+                if (display.Brightness < 0.995f && !boot.Active)
                 {
                     paint.Fill(screen, new Vector4(0f, 0f, 0f, 1f - display.Brightness));
                 }
@@ -684,12 +699,8 @@ public sealed class HandsetWindow : Window
 
         room = new Vector2(MathF.Max(1f, MathF.Min(room.X, viewport.WorkSize.X)),
             MathF.Max(1f, MathF.Min(room.Y, viewport.WorkSize.Y)));
-        var roomFit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, room,
+        return HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, room,
             ImGuiHelpers.GlobalScale, display.Landscape);
-        var viewFit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case,
-            viewport.WorkSize * HandsetSizeCatalog.ViewFill,
-            ImGuiHelpers.GlobalScale, display.Landscape);
-        return MathF.Min(roomFit, viewFit);
     }
 
     private Vector2 lastWorkSize;
@@ -707,8 +718,7 @@ public sealed class HandsetWindow : Window
             if (jumped)
             {
                 lastWorkSize = work;
-                var fit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case,
-                    work * HandsetSizeCatalog.ViewFill,
+                var fit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, work,
                     ImGuiHelpers.GlobalScale, display.Landscape);
                 if (shapePreference.ScaleStep > fit + 0.002f)
                 {
@@ -722,9 +732,14 @@ public sealed class HandsetWindow : Window
         Size = presenceVanish ? new Vector2(8f, 8f) : Vector2.Lerp(full, face, Ease(fold));
     }
 
-    private Vector2 FaceSize() =>
-        HandsetPlacement.FaceSize(shapePreference.Form, shapePreference.Case, shapePreference.PocketScale,
+    private Vector2 FaceSize()
+    {
+        var pocket = game.IsInGpose
+            ? HandsetShapePreference.PocketSteps[0]
+            : shapePreference.PocketScale;
+        return HandsetPlacement.FaceSize(shapePreference.Form, shapePreference.Case, pocket,
             ImGuiHelpers.GlobalScale);
+    }
 
     private Vector2 FullSize()
     {

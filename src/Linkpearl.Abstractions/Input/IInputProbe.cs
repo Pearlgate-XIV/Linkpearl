@@ -25,6 +25,7 @@ public interface IInputProbe
 
     bool IsHeld(PointerButton button = PointerButton.Primary);
 
+    // Tap: released over the area without dragging. A drag-release is not a click.
     bool WasClicked(Rect area, PointerButton button = PointerButton.Primary);
 
     bool ConsumeClick(Rect area, PointerButton button = PointerButton.Primary);
@@ -34,4 +35,12 @@ public interface IInputProbe
     void Claim(Rect area);
 
     bool IsClaimed(Rect area);
+
+    bool PointerClaimed();
+
+    // True this frame when Escape was pressed. Search sheets use it to dismiss.
+    bool EscapePressed();
+
+    // Mouse-up this frame that was not a drag, anywhere on screen (including off the phone).
+    bool PointerReleased(PointerButton button = PointerButton.Primary);
 }

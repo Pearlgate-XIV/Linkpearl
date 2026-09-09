@@ -3,7 +3,6 @@ using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Notices;
-using Linkpearl.Painting;
 using Linkpearl.Talk;
 using Linkpearl.Time;
 
@@ -12,9 +11,7 @@ namespace Linkpearl.Destinations.Home;
 internal sealed class AnnouncementShelf
 {
     private readonly IPearlHub pearl;
-    private readonly ITalk talk;
     private readonly IClock clock;
-    private readonly DestinationHub hub;
     private readonly NoticeLedger ledger;
     private bool open;
     private string selectedId = string.Empty;
@@ -22,10 +19,10 @@ internal sealed class AnnouncementShelf
     public AnnouncementShelf(IPearlHub pearl, ITalk talk, IClock clock, DestinationHub hub, NoticeLedger ledger)
     {
         this.pearl = pearl;
-        this.talk = talk;
         this.clock = clock;
-        this.hub = hub;
         this.ledger = ledger;
+        _ = talk;
+        _ = hub;
     }
 
     public bool IsOpen => open;
@@ -82,24 +79,24 @@ internal sealed class AnnouncementShelf
         var inset = frame.Units(16f);
         var content = frame.Content.Inset(new Edges(inset, frame.Units(8f), inset, frame.Units(10f)));
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
-        AnnouncementChrome.Toolbar(frame, stack.Take(frame.Units(36f)), "Announcements", "Clear all", night, Close,
-            () => ledger.Clear(snapshot, talk));
+        AnnouncementChrome.Toolbar(frame, stack.Take(frame.Units(36f)), "Announcements", string.Empty, night, Close,
+            null);
 
-        var items = ledger.Visible(snapshot, talk, clock);
-        if (items.Count == 0)
+        var items = snapshot.Announcements ?? [];
+        if (items.Length == 0)
         {
             AnnouncementChrome.Empty(frame, stack.Take(frame.Units(88f)),
                 snapshot.SignedIn
-                    ? "Nothing waiting."
-                    : "Sign in from You to load notices from Pearlgate.", night);
+                    ? "When Linkpearl posts, it will land here."
+                    : "Sign in from You to load announcements from Pearlgate.", night);
             return (content.Height - stack.Remaining.Height) + inset * 2f;
         }
 
-        for (var index = 0; index < items.Count; index++)
+        for (var index = 0; index < items.Length; index++)
         {
             var item = items[index];
-            AnnouncementChrome.Story(frame, stack.Take(frame.Units(72f)), item.Title, item.Detail, item.When, night,
-                () => Open(item));
+            AnnouncementChrome.Story(frame, stack.Take(frame.Units(72f)), item.Title, Snippet(item.Body),
+                AnnouncementChrome.Ago(item.CreatedAtUnix, clock.Now), night, () => OpenPosted(item));
         }
 
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -117,29 +114,21 @@ internal sealed class AnnouncementShelf
         return content.Height + inset * 2f;
     }
 
-    private void Open(in GlassNotice notice)
+    private void OpenPosted(in PearlAnnouncement notice)
     {
-        ledger.Dismiss(notice.Id);
-        if (notice.Kind == NoticeKind.Announcement && notice.TargetId.Length > 0)
+        if (notice.Id.Length == 0)
         {
-            selectedId = notice.TargetId;
             return;
         }
 
-        Close();
-        if (notice.Kind == NoticeKind.Chat && notice.TargetId.Length > 0)
-        {
-            hub.OpenTalk(notice.TargetId);
-            return;
-        }
+        ledger.Dismiss("ann:" + notice.Id);
+        selectedId = notice.Id;
+    }
 
-        if (notice.Kind == NoticeKind.Calendar)
-        {
-            hub.OpenApplet("calendar", notice.TargetId);
-            return;
-        }
-
-        hub.Open(notice.Tab, notice.Section);
+    private static string Snippet(string body)
+    {
+        var text = body.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return text.Length <= 72 ? text : text[..72].TrimEnd() + "...";
     }
 
     private static PearlAnnouncement? Find(PearlAnnouncement[] items, string id)

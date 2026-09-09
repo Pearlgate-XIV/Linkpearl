@@ -188,7 +188,9 @@ public sealed class DalamudTextField : ITextField
 
         using var font = fonts.Handle(FontRole.Body).Push();
         var line = ImGui.GetTextLineHeight();
-        var padY = MathF.Max((area.Height - line) * 0.5f, 0f);
+        var padY = area.Height > line * 2.2f
+            ? MathF.Max(area.Height * 0.06f, 6f)
+            : MathF.Max((area.Height - line) * 0.5f, 0f);
         var padX = MathF.Max(area.Height * 0.18f, 8f);
         var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
         var native = ownerId == id;
@@ -352,7 +354,7 @@ public sealed class DalamudTextField : ITextField
             }
         }
 
-        if (current.Length == 0 && !itemActive)
+        if (current.Length == 0 && !itemActive && ownerId != id)
         {
             var draw = ImGui.GetWindowDrawList();
             draw.AddText(area.Min + new Vector2(pad * 0.35f, pad * 0.25f),
@@ -475,21 +477,30 @@ public sealed class DalamudTextField : ITextField
         _ = line;
         if (paint is not null && text is not null && textures is not null && paths is not null)
         {
-            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, CaretOn(focused));
+            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, focused,
+                CaretOn(focused));
             return;
         }
 
         var draw = ImGui.GetWindowDrawList();
         draw.PushClipRect(area.Min, area.Max, true);
         var empty = current.Length == 0;
-        var shown = empty ? placeholder : current;
+        var hint = empty && !focused;
+        var shown = hint ? placeholder : current;
         var origin = area.Min + new Vector2(padX, padY);
-        draw.AddText(origin, ImGui.GetColorU32(empty ? ink with { W = 0.42f } : ink), shown);
+        if (hint || !empty)
+        {
+            draw.AddText(origin, ImGui.GetColorU32(hint ? ink with { W = 0.42f } : ink), shown);
+        }
+
         if (CaretOn(focused))
         {
-            var caretX = empty ? origin.X : origin.X + ImGui.CalcTextSize(shown).X + 1f;
-            var top = area.Center.Y - line * 0.35f;
-            draw.AddLine(new Vector2(caretX, top), new Vector2(caretX, top + line * 0.7f),
+            var pad = MathF.Max(2f, area.Height * 0.18f);
+            var caretH = MathF.Max(8f, area.Height - pad * 2f);
+            var caretX = Math.Clamp(empty ? origin.X : origin.X + ImGui.CalcTextSize(shown).X + 1f,
+                area.Min.X + 1f, area.Max.X - 2f);
+            var top = area.Min.Y + (area.Height - caretH) * 0.5f;
+            draw.AddLine(new Vector2(caretX, top), new Vector2(caretX, top + caretH),
                 ImGui.GetColorU32(ink), 1.35f);
         }
 

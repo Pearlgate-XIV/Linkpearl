@@ -147,7 +147,8 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
                     var id = row.StationUuid ?? url;
                     merged[id] = new PublicStation(id, Clean(row.Name), genre, PlaceOf(row), url, row.Bitrate,
                         (row.Favicon ?? string.Empty).Trim(),
-                        string.Equals(original, url, StringComparison.Ordinal) ? string.Empty : original);
+                        string.Equals(original, url, StringComparison.Ordinal) ? string.Empty : original,
+                        Math.Max(0, row.ClickCount), Math.Max(0, row.Votes));
                 }
             }
 
@@ -368,6 +369,12 @@ public sealed class UsGenreRadio : IPublicRadio, IDisposable
 
         [JsonPropertyName("hls")]
         public int Hls { get; set; }
+
+        [JsonPropertyName("clickcount")]
+        public int ClickCount { get; set; }
+
+        [JsonPropertyName("votes")]
+        public int Votes { get; set; }
     }
 
     private sealed class ClickRow

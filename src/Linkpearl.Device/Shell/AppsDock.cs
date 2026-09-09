@@ -217,7 +217,7 @@ public sealed class AppsDock
         var threshold = MathF.Max(10f, 14f * scale);
         var span = destLane ? 1f : MathF.Max(1f, extras + 1);
 
-        if (!tracking && input.WasPressed(glass))
+        if (!tracking && !input.PointerClaimed() && input.WasPressed(glass))
         {
             tracking = true;
             dragging = false;

@@ -295,12 +295,7 @@ internal sealed class MessagesSurface
         var listHeight = plane - list.Remaining.Height;
         frame.Paint.PopClip();
 
-        if (inboxMenu is null && frame.Input.IsHovering(body) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            inboxScroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        inboxScroll = Math.Clamp(inboxScroll, 0f, MathF.Max(0f, listHeight - body.Height));
+        ScrollSlider.Apply(frame, body, ref inboxScroll, listHeight, live: inboxMenu is null);
         DrawInboxMenu(frame, body);
         return content.Height;
     }
@@ -723,6 +718,11 @@ internal sealed class MessagesSurface
         var hero = stack.Take(frame.Units(88f));
         CardChrome.DrawGold(frame, hero);
         DrawProfileHero(frame, hero.Inset(frame.Units(12f)), person);
+        var peerTime = PeerTime(person);
+        if (peerTime.Length > 0)
+        {
+            DrawFact(frame, stack.Take(frame.Units(48f)), "Local time", peerTime);
+        }
 
         if (person.OnPearlgate)
         {
@@ -790,6 +790,33 @@ internal sealed class MessagesSurface
         }
 
         talk.SetNote(profileId, noteDraft);
+    }
+
+    private string PeerTime(TalkPeer person)
+    {
+        if (string.Equals(person.Id, pearl.Current.MeId, StringComparison.OrdinalIgnoreCase))
+        {
+            return ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock);
+        }
+
+        var stored = string.Empty;
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            if (string.Equals(people[index].Id, person.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                stored = people[index].TimeZoneId;
+                break;
+            }
+        }
+
+        return ZoneLine(stored, person.Id);
+    }
+
+    private string ZoneLine(string? stored, string key)
+    {
+        var zone = WorldZones.ForPerson(stored, key);
+        return zone.Length > 0 ? ZoneClock.Line(zone, display.Use24HourClock) : string.Empty;
     }
 
     private static void DrawProfileHero(in AppletFrame frame, Rect inset, TalkPeer person)
@@ -895,6 +922,11 @@ internal sealed class MessagesSurface
 
             DrawFact(frame, stack.Take(frame.Units(48f)), "Linkpearl",
                 person.IsMutual ? "Registered · mutual" : "Registered");
+            var gateTime = ZoneLine(person.TimeZoneId, person.Id);
+            if (gateTime.Length > 0)
+            {
+                DrawFact(frame, stack.Take(frame.Units(48f)), "Local time", gateTime);
+            }
         }
 
         if (name.Length > 0)

@@ -834,7 +834,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var name = string.IsNullOrWhiteSpace(item.Alias) ? item.DisplayName : item.Alias;
             mapped[index] = new PearlPerson(item.UserId, name ?? string.Empty, item.Handle ?? string.Empty,
                 item.PhoneNumber ?? string.Empty, item.IsMutual, item.AvatarUrl ?? string.Empty,
-                item.Race ?? string.Empty, item.World ?? string.Empty);
+                item.Race ?? string.Empty, item.World ?? string.Empty, item.TimeZoneId ?? string.Empty);
         }
 
         return mapped;

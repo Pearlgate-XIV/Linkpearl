@@ -130,12 +130,7 @@ public sealed class CalendarApplet : IApplet, IDisposable
             out var hit);
         frame.Paint.PopClip();
         ApplyHit(hit, now);
-        if (frame.Input.IsHovering(inner) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            scroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        scroll = Math.Clamp(scroll, 0f, MathF.Max(0f, content - inner.Height));
+        ScrollSlider.Apply(frame, inner, ref scroll, content);
     }
 
     private void ApplyHit(in CalendarAppHit hit, DateTimeOffset now)

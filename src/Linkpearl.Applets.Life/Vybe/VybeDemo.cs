@@ -4,6 +4,7 @@ using System.IO;
 using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Vybe;
 
@@ -153,8 +154,7 @@ internal static class VybeDemo
             new ChatLine(false, "I keep the unfiltered dumps off the main board.", "1:03 AM"));
     }
 
-    public static bool IsPlusPost(PearlPost post) =>
-        post.Id.StartsWith("plus-", StringComparison.Ordinal);
+    public static bool IsPlusPost(PearlPost post) => VybePostMark.IsPlus(post);
 
     private static void TryConnect(VybeState state, int personId)
     {
@@ -265,7 +265,8 @@ internal static class VybeDemo
             new Vector4(r, g, b, 1f),
             nightOnly ? ["Dating", "ERP"] : ["Friends", "GPose"],
             nightOnly ? ["After Dark", "18+"] : ["Playful"],
-            Face(paths, face.Length > 0 ? face : key), PlusMember: plusMember);
+            Face(paths, face.Length > 0 ? face : key), PlusMember: plusMember,
+            TimeZoneId: WorldZones.PickFor(key));
     }
 
     public static bool HasPlusAccount(ScenePerson person) => person.PlusMember || person.NightOnly;

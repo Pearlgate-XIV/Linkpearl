@@ -51,7 +51,7 @@ public static class EmojiText
     }
 
     public static void DrawField(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
-        Rect area, string body, string placeholder, Vector4 ink, float padX, bool caret)
+        Rect area, string body, string placeholder, Vector4 ink, float padX, bool focused, bool caret)
     {
         if (area.Width < 1f || area.Height < 1f)
         {
@@ -59,13 +59,16 @@ public static class EmojiText
         }
 
         var empty = body.Length == 0;
-        var shown = empty ? placeholder : body;
-        var color = empty ? ink with { W = ink.W * 0.42f } : ink;
+        var hint = empty && !focused;
+        var shown = hint ? placeholder : body;
+        var color = hint ? ink with { W = ink.W * 0.42f } : ink;
         var style = new TextStyle(FontRole.Body, color);
         var inner = MathF.Max(area.Width - padX * 2f, 1f);
         var wide = MeasureWidth(paint, text, textures, paths, shown, style);
         var scroll = !empty && wide > inner ? wide - inner : 0f;
-        var origin = new Vector2(area.Min.X + padX - scroll, area.Min.Y);
+        var face = MathF.Max(text.Measure("Ag", style.Role).Y, 1f);
+        var textY = area.Min.Y + MathF.Max(0f, (area.Height - face) * 0.5f);
+        var origin = new Vector2(area.Min.X + padX - scroll, textY);
         var height = 0f;
         var used = 0f;
         paint.PushClip(area);
@@ -73,10 +76,11 @@ public static class EmojiText
             true);
         if (caret)
         {
-            var face = MathF.Max(14f, text.LineHeight(style.Role));
-            var x = empty ? origin.X : origin.X + wide + 1f;
-            var y = area.Center.Y - face * 0.35f;
-            paint.Line(new Vector2(x, y), new Vector2(x, y + face * 0.7f), ink, 1.35f);
+            var pad = MathF.Max(2f, area.Height * 0.18f);
+            var caretH = MathF.Max(8f, area.Height - pad * 2f);
+            var x = Math.Clamp(empty ? origin.X : origin.X + wide + 1f, area.Min.X + 1f, area.Max.X - 2f);
+            var top = area.Min.Y + (area.Height - caretH) * 0.5f;
+            paint.Line(new Vector2(x, top), new Vector2(x, top + caretH), ink, 1.35f);
         }
 
         paint.PopClip();
@@ -195,12 +199,51 @@ public static class EmojiText
         var start = 0;
         while (start < value.Length)
         {
+            if (value[start] == '\r')
+            {
+                start++;
+                continue;
+            }
+
+            if (value[start] == '\n')
+            {
+                if (oneLine)
+                {
+                    PlaceDots(text, style, draw, origin, x, y, ref dots);
+                    return;
+                }
+
+                start++;
+                x = 0f;
+                y += line;
+                line = face;
+                continue;
+            }
+
+            if (x == 0f)
+            {
+                while (start < value.Length && value[start] == ' ')
+                {
+                    start++;
+                }
+
+                if (start >= value.Length)
+                {
+                    break;
+                }
+
+                if (value[start] is '\n' or '\r')
+                {
+                    continue;
+                }
+            }
+
             var take = value.Length - start;
             var slice = value.AsSpan(start, take);
             var size = text.Measure(slice, style.Role) * style.Scale;
-            if (x > 0f && x + size.X > width && take > 0)
+            if (x + size.X > width && take > 0)
             {
-                var fit = Fit(text, value, start, width - x, style);
+                var fit = FitLine(text, value, start, width - x, x <= 0f || oneLine, style);
                 if (fit == 0)
                 {
                     if (oneLine)
@@ -216,12 +259,6 @@ public static class EmojiText
                 }
 
                 take = fit;
-                slice = value.AsSpan(start, take);
-                size = text.Measure(slice, style.Role) * style.Scale;
-            }
-            else if (x == 0f && size.X > width)
-            {
-                take = Math.Max(1, Fit(text, value, start, width, style));
                 slice = value.AsSpan(start, take);
                 size = text.Measure(slice, style.Role) * style.Scale;
             }
@@ -264,6 +301,68 @@ public static class EmojiText
             text.Draw(origin + new Vector2(x, y), "...",
                 new TextStyle(style.Role, style.Color, TextAlign.Left, style.Scale));
         }
+    }
+
+    private static int FitLine(ITextPainter text, string value, int start, float room, bool allowHardWrap,
+        TextStyle style)
+    {
+        if (room <= 0f || start >= value.Length)
+        {
+            return 0;
+        }
+
+        if (value[start] is '\n' or '\r')
+        {
+            return 0;
+        }
+
+        var fit = Fit(text, value, start, room, style);
+        if (fit == 0)
+        {
+            return 0;
+        }
+
+        for (var index = start; index < start + fit; index++)
+        {
+            if (value[index] is '\n' or '\r')
+            {
+                return index - start;
+            }
+        }
+
+        if (start + fit >= value.Length)
+        {
+            return fit;
+        }
+
+        var next = start + fit;
+        if (IsWrapSpace(value[next]) || IsWrapSpace(value[next - 1]))
+        {
+            return fit;
+        }
+
+        var last = LastWrap(value, start, next);
+        if (last > start)
+        {
+            return last - start;
+        }
+
+        return allowHardWrap ? Math.Max(1, fit) : 0;
+    }
+
+    private static bool IsWrapSpace(char c) => char.IsWhiteSpace(c);
+
+    private static int LastWrap(string value, int start, int end)
+    {
+        for (var index = end - 1; index >= start; index--)
+        {
+            if (IsWrapSpace(value[index]))
+            {
+                return index + 1;
+            }
+        }
+
+        return start;
     }
 
     private static int Fit(ITextPainter text, string value, int start, float room, TextStyle style)

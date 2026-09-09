@@ -140,12 +140,6 @@ public sealed class EmojiPick
         var cell = (area.Width - gap * (cols - 1)) / cols;
         var rows = (marks.Count + cols - 1) / cols;
         var plane = rows * (cell + gap);
-        if (frame.Input.IsHovering(area) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(28f), 0f,
-                MathF.Max(0f, plane - area.Height));
-        }
-
         frame.Paint.PushClip(area);
         var first = Math.Max(0, (int)(scroll / (cell + gap)) * cols);
         var last = Math.Min(marks.Count, first + cols * ((int)(area.Height / (cell + gap)) + 3));
@@ -160,6 +154,7 @@ public sealed class EmojiPick
         }
 
         frame.Paint.PopClip();
+        ScrollSlider.Apply(frame, area, ref scroll, plane);
     }
 
     private void DrawCell(in AppletFrame frame, Rect area, Rect clip, EmojiMark mark, Vector4 ink, Vector4 accent,

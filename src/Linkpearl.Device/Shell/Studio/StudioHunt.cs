@@ -36,6 +36,13 @@ internal sealed class StudioHunt
 
     public static float BarHeight(in AppletFrame frame) => frame.Units(36f);
 
+    public bool IsOpen => query.Trim().Length > 0;
+
+    public void Dismiss()
+    {
+        query = string.Empty;
+    }
+
     public void Draw(in AppletFrame frame, Rect bar, Rect dropBound, IPearlHub pearl, ITalk talk, DestinationHub hub,
         Action<string, Rect> openApplet)
     {
@@ -44,48 +51,67 @@ internal sealed class StudioHunt
         frame.Paint.Stroke(bar, gold with { W = 0.38f }, frame.Theme.Metrics.Hairline, bar.Height * 0.5f);
         SearchMark.Draw(frame.Paint, bar.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)),
             frame.Theme.Palette.InkMuted);
-        var type = bar.Inset(new Edges(frame.Units(28f), 0f, frame.Units(8f), 0f));
+        var type = bar.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(8f), frame.Units(4f)));
         query = frame.TextField.Draw("studio-hunt", type, query, "Search the phone");
         pearl.NoteQuery(query);
 
+        if (IsOpen && frame.Input.EscapePressed())
+        {
+            Dismiss();
+            frame.TextField.Release();
+            return;
+        }
+
         var count = Fill(pearl.Current, talk, query);
-        if (count == 0)
+        var sheet = default(Rect);
+        var hasSheet = false;
+        if (count > 0)
         {
-            return;
-        }
-
-        var rowH = frame.Units(44f);
-        var pad = frame.Units(8f);
-        var gap = frame.Units(4f);
-        var sheetH = MathF.Min(dropBound.Max.Y - bar.Max.Y - frame.Units(6f),
-            pad * 2f + count * rowH + MathF.Max(0, count - 1) * gap);
-        if (sheetH < frame.Units(40f))
-        {
-            return;
-        }
-
-        var sheet = new Rect(new Vector2(bar.Min.X, bar.Max.Y + frame.Units(6f)),
-            new Vector2(bar.Max.X, bar.Max.Y + frame.Units(6f) + sheetH));
-        frame.Paint.Fill(sheet, frame.Theme.Palette.SurfaceRaised with { W = 0.96f }, frame.Units(12f));
-        frame.Paint.Stroke(sheet, gold with { W = 0.40f }, frame.Theme.Metrics.Hairline, frame.Units(12f));
-        frame.Input.Claim(sheet);
-
-        var inner = sheet.Inset(pad);
-        var stack = new Stack(inner, StackAxis.Vertical, gap);
-        var shown = 0;
-        for (var index = 0; index < count; index++)
-        {
-            if (stack.Remaining.Height < rowH * 0.6f)
+            var rowH = frame.Units(44f);
+            var pad = frame.Units(8f);
+            var gap = frame.Units(4f);
+            var sheetH = MathF.Min(dropBound.Max.Y - bar.Max.Y - frame.Units(6f),
+                pad * 2f + count * rowH + MathF.Max(0, count - 1) * gap);
+            if (sheetH >= frame.Units(40f))
             {
-                break;
-            }
+                hasSheet = true;
+                sheet = new Rect(new Vector2(bar.Min.X, bar.Max.Y + frame.Units(6f)),
+                    new Vector2(bar.Max.X, bar.Max.Y + frame.Units(6f) + sheetH));
+                frame.Paint.Fill(sheet, frame.Theme.Palette.SurfaceRaised with { W = 0.96f }, frame.Units(12f));
+                frame.Paint.Stroke(sheet, gold with { W = 0.40f }, frame.Theme.Metrics.Hairline, frame.Units(12f));
 
-            var row = stack.Take(rowH);
-            DrawHit(frame, row, hits[index], hub, openApplet);
-            shown++;
+                var inner = sheet.Inset(pad);
+                var stack = new Stack(inner, StackAxis.Vertical, gap);
+                for (var index = 0; index < count; index++)
+                {
+                    if (stack.Remaining.Height < rowH * 0.6f)
+                    {
+                        break;
+                    }
+
+                    DrawHit(frame, stack.Take(rowH), hits[index], hub, openApplet);
+                }
+
+                // After rows so a result can take the tap. Then cover the sheet so dock/widgets
+                // under it cannot fire on the same press.
+                frame.Input.Claim(sheet);
+            }
         }
 
-        _ = shown;
+        if (!IsOpen || !frame.Input.PointerReleased())
+        {
+            return;
+        }
+
+        var at = frame.Input.Pointer;
+        if (bar.Contains(at) || (hasSheet && sheet.Contains(at)))
+        {
+            return;
+        }
+
+        Dismiss();
+        frame.TextField.Release();
+        frame.Input.Claim(frame.Content);
     }
 
     private void DrawHit(in AppletFrame frame, Rect row, in StudioHit hit, DestinationHub hub,
@@ -102,29 +128,49 @@ internal sealed class StudioHunt
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), hit.Blurb,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        if (!frame.Input.ConsumeClick(row))
+        if (!frame.Input.ConsumeClick(row) && !frame.Input.PressedInside(row))
         {
             return;
         }
 
-        if (hit.TalkId.Length > 0)
+        OpenHit(hit, hub, openApplet, row);
+        Dismiss();
+        frame.TextField.Release();
+    }
+
+    private static void OpenHit(in StudioHit hit, DestinationHub hub, Action<string, Rect> openApplet, Rect row)
+    {
+        var talkId = hit.TalkId ?? "";
+        var profileId = hit.ProfileId ?? "";
+        var appletId = hit.AppletId ?? "";
+        if (talkId.Length > 0)
         {
-            hub.OpenTalk(hit.TalkId);
-        }
-        else if (hit.ProfileId.Length > 0)
-        {
-            hub.OpenProfile(hit.ProfileId);
-        }
-        else if (hit.AppletId.Length > 0)
-        {
-            openApplet(hit.AppletId, row);
-        }
-        else if (hit.OpensTab)
-        {
-            hub.Open(hit.Tab, hit.Pane);
+            hub.OpenTalk(talkId);
+            return;
         }
 
-        query = string.Empty;
+        if (profileId.Length > 0)
+        {
+            hub.OpenProfile(profileId);
+            return;
+        }
+
+        if (appletId.Length > 0)
+        {
+            if (AppShelf.Find(appletId) is { Kind: AppKind.Shortcut } spec)
+            {
+                hub.Open(spec.Tab, spec.Pane, spec.Name);
+                return;
+            }
+
+            openApplet(appletId, row);
+            return;
+        }
+
+        if (hit.OpensTab)
+        {
+            hub.Open(hit.Tab, hit.Pane, hit.Title ?? "");
+        }
     }
 
     private int Fill(PearlSnapshot snapshot, ITalk talk, string raw)

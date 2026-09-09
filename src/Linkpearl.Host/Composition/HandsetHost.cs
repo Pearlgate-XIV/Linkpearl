@@ -227,7 +227,8 @@ public sealed class HandsetHost : IDisposable
         this.textField = textField;
         var wife = new WifeSyncBridge(pluginInterface, commands);
         var shell = new HandsetShell(destinations, clock, session, preferences, textField, pearl, hub, router, talk,
-            apps, wife, notices, weather, isDevelopment, badges, audio, publicRadio);
+            apps, wife, notices, weather, isDevelopment, badges, audio, publicRadio,
+            provider.GetRequiredService<IStationMarks>());
         var screenField = new ScreenField(textures, paths, preferences, clock);
 
         placement = new HandsetPlacement();
@@ -240,9 +241,8 @@ public sealed class HandsetHost : IDisposable
         windowSystem.AddWindow(window);
         windowSystem.AddWindow(fileGlass);
 
-        pluginInterface.UiBuilder.DisableGposeUiHide = preferences.StayInPortraits;
-        preferences.Changed += () =>
-            pluginInterface.UiBuilder.DisableGposeUiHide = preferences.StayInPortraits;
+        ApplyGposeUi();
+        preferences.Changed += ApplyGposeUi;
 
         pluginInterface.UiBuilder.Draw += OnUiDraw;
         pluginInterface.UiBuilder.OpenMainUi += ToggleHandset;
@@ -252,6 +252,10 @@ public sealed class HandsetHost : IDisposable
         if (config.HandsetMinimized)
         {
             window.SnapMinimized();
+        }
+        else
+        {
+            window.PlayBoot();
         }
     }
 
@@ -272,8 +276,12 @@ public sealed class HandsetHost : IDisposable
         window.Minimize();
     }
 
+    private void ApplyGposeUi() =>
+        pluginInterface.UiBuilder.DisableGposeUiHide = display.StayInPortraits || session.IsInGpose;
+
     private void OnFrameworkUpdate(IFramework _)
     {
+        ApplyGposeUi();
         var unread = talk.UnreadTotal;
         ApplyDisplayFace();
         if (window.IsOpen && window.IsMinimized && display.WakeInPocket &&
@@ -299,6 +307,7 @@ public sealed class HandsetHost : IDisposable
     {
         window.IsOpen = true;
         window.Restore();
+        window.PlayBoot();
     }
 
     private void RequestPowerOff()
@@ -390,6 +399,13 @@ public sealed class HandsetHost : IDisposable
         }
 
         preferences.CustomBannerFile = config.CustomBannerFile;
+        preferences.BannerZoom = config.BannerZoom > 0f ? config.BannerZoom : 1f;
+        preferences.BannerFocusX = config.BannerFocusX == 0f && config.BannerFocusY == 0f
+            ? 0.5f
+            : config.BannerFocusX;
+        preferences.BannerFocusY = config.BannerFocusX == 0f && config.BannerFocusY == 0f
+            ? 0.5f
+            : config.BannerFocusY;
         preferences.Colorway = config.Colorway;
         preferences.Core = config.Core;
         preferences.Shade = (ShadeLevel)config.Shade;
@@ -399,6 +415,7 @@ public sealed class HandsetHost : IDisposable
         preferences.TestingAccount = config.TestingAccount;
         preferences.OwnName = config.OwnName;
         preferences.OwnTitle = config.OwnTitle;
+        preferences.OwnTimeZoneId = config.OwnTimeZoneId;
         preferences.TitleMotion = (TitleMotion)config.TitleMotion;
         preferences.TitleGlow = config.TitleGlow;
         preferences.TitleGlowWeight = (NameGlowWeight)config.TitleGlowWeight;
@@ -461,6 +478,9 @@ public sealed class HandsetHost : IDisposable
         config.CustomPlateFile = display.CustomPlateFile;
         config.CustomPlateFiles = display.CustomPlateFiles.ToArray();
         config.CustomBannerFile = display.CustomBannerFile;
+        config.BannerZoom = display.BannerZoom;
+        config.BannerFocusX = display.BannerFocus.X;
+        config.BannerFocusY = display.BannerFocus.Y;
         config.Colorway = display.Colorway;
         config.Core = display.Core;
         config.Shade = (int)display.Shade;
@@ -470,6 +490,7 @@ public sealed class HandsetHost : IDisposable
         config.TestingAccount = display.TestingAccount;
         config.OwnName = display.OwnName;
         config.OwnTitle = display.OwnTitle;
+        config.OwnTimeZoneId = display.OwnTimeZoneId;
         config.TitleMotion = (int)display.TitleMotion;
         config.TitleGlow = display.TitleGlow;
         config.TitleGlowWeight = (int)display.TitleGlowWeight;

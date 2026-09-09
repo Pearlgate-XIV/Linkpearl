@@ -101,11 +101,7 @@ public sealed class MarketApplet : IApplet
         var shifted = body.Translate(new Vector2(0f, -scroll));
         var height = itemOpen ? DrawItem(frame, shifted) : DrawBrowse(frame, shifted);
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(body) && frame.Input.ScrollDelta != 0f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(22f), 0f,
-                MathF.Max(0f, height - body.Height));
-        }
+        ScrollSlider.Apply(frame, body, ref scroll, height);
     }
 
     private float DrawBrowse(in AppletFrame frame, Rect area)

@@ -51,4 +51,6 @@ public interface ICommunityRadio
     bool StationLiked(string stationId);
 
     void ToggleStationLike(string stationId);
+
+    void ToggleStationLike(string stationId, int shownCount);
 }

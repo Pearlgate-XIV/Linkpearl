@@ -127,11 +127,7 @@ public sealed class EorzeaApplet : IApplet
 
         var height = MathF.Max(0f, shifted.Height - stack.Remaining.Height);
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(body) && frame.Input.ScrollDelta != 0f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(22f), 0f,
-                MathF.Max(0f, height - body.Height));
-        }
+        ScrollSlider.Apply(frame, body, ref scroll, height);
     }
 
     private void DrawTabs(in AppletFrame frame, Rect row)
@@ -267,11 +263,7 @@ public sealed class EorzeaApplet : IApplet
 
         var height = MathF.Max(0f, shifted.Height - stack.Remaining.Height);
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(body) && frame.Input.ScrollDelta != 0f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(22f), 0f,
-                MathF.Max(0f, height - body.Height));
-        }
+        ScrollSlider.Apply(frame, body, ref scroll, height);
     }
 
     private static void DrawGroup(in AppletFrame frame, Rect row, string label)

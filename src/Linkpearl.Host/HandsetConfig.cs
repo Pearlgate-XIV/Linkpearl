@@ -2,6 +2,7 @@ using Dalamud.Configuration;
 using Linkpearl.Chassis;
 using Linkpearl.Media;
 using Linkpearl.Preferences;
+using Linkpearl.Time;
 
 namespace Linkpearl.Host.Composition;
 
@@ -61,6 +62,12 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string CustomBannerFile { get; set; } = string.Empty;
 
+    public float BannerZoom { get; set; } = 1f;
+
+    public float BannerFocusX { get; set; } = 0.5f;
+
+    public float BannerFocusY { get; set; } = 0.5f;
+
     public string Colorway { get; set; } = ColorwayId.Night;
 
     public string Core { get; set; } = CoreId.Blue;
@@ -78,6 +85,8 @@ public sealed class HandsetConfig : IPluginConfiguration
     public string OwnName { get; set; } = string.Empty;
 
     public string OwnTitle { get; set; } = string.Empty;
+
+    public string OwnTimeZoneId { get; set; } = string.Empty;
 
     public int TitleMotion { get; set; }
 
@@ -236,6 +245,17 @@ public sealed class HandsetConfig : IPluginConfiguration
 
         CustomPlateFiles = plates;
         CustomBannerFile = Path.GetFileName(CustomBannerFile ?? string.Empty);
+        BannerZoom = BannerZoom <= 0f ? 1f : Math.Clamp(BannerZoom, CoverFit.PlaceZoomMin, CoverFit.PlaceZoomMax);
+        if (BannerFocusX == 0f && BannerFocusY == 0f)
+        {
+            BannerFocusX = 0.5f;
+            BannerFocusY = 0.5f;
+        }
+        else
+        {
+            BannerFocusX = Math.Clamp(BannerFocusX, 0f, 1f);
+            BannerFocusY = Math.Clamp(BannerFocusY, 0f, 1f);
+        }
         Colorway = ColorwayId.Sanitize(Colorway);
         Core = CoreId.Sanitize(Core);
         Appearance = Math.Clamp(Appearance, 0, 2);
@@ -245,6 +265,7 @@ public sealed class HandsetConfig : IPluginConfiguration
         NameStyle = Math.Clamp(NameStyle, 0, 2);
         OwnName = ShownName.Sanitize(OwnName ?? string.Empty);
         OwnTitle = ShownName.ClampTitle(OwnTitle ?? string.Empty).Trim();
+        OwnTimeZoneId = WorldZones.Sanitize(OwnTimeZoneId);
         TitleMotion = Math.Clamp(TitleMotion, 0, 2);
         TitleGlowWeight = Math.Clamp(TitleGlowWeight, 0, 2);
         TitleInkR = Math.Clamp(TitleInkR, 0f, 1f);

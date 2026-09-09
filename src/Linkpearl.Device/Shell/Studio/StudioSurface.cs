@@ -57,7 +57,7 @@ internal sealed class StudioSurface
     public StudioSurface(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
         IWeatherOracle weather, DisplayPreferences display, bool development, BadgeBook badges, NoticeLedger notices,
         ProfileChrome profile, Action<string, Rect> openApplet, Action<Rect, string> openRadioStations, IHandsetAudio audio,
-        IPublicRadio radio, GlassEdit glass)
+        IPublicRadio radio, IStationMarks marks, GlassEdit glass)
     {
         this.clock = clock;
         this.game = game;
@@ -72,10 +72,14 @@ internal sealed class StudioSurface
         this.profile = profile;
         this.openApplet = openApplet;
         sky = new StudioWeather(game, clock, weather);
-        musicDock = new StudioMusicDock(audio, radio, pearl, openRadioStations);
+        musicDock = new StudioMusicDock(audio, radio, pearl, marks, openRadioStations);
     }
 
     public bool OverlayOpen => profile.OverlayOpen;
+
+    public bool HuntOpen => hunt.IsOpen;
+
+    public void DismissHunt() => hunt.Dismiss();
 
     public bool Editing => glass.Active || appsEdit;
 
@@ -108,7 +112,8 @@ internal sealed class StudioSurface
 
     public bool BlocksPager(Vector2 at, bool held)
     {
-        if (musicDock.BlocksPager || pressId is not null || dragId is not null || pickSlot >= 0 || appsEdit)
+        if (hunt.IsOpen || musicDock.BlocksPager || pressId is not null || dragId is not null || pickSlot >= 0 ||
+            appsEdit)
         {
             return true;
         }
@@ -118,6 +123,12 @@ internal sealed class StudioSurface
 
     public bool Back()
     {
+        if (hunt.IsOpen)
+        {
+            hunt.Dismiss();
+            return true;
+        }
+
         if (pickSlot >= 0)
         {
             pickSlot = -1;
@@ -157,7 +168,12 @@ internal sealed class StudioSurface
             return profile.DrawOverlay(frame);
         }
 
-        TickDrag(frame, content);
+        var hunting = hunt.IsOpen;
+        if (!hunting)
+        {
+            TickDrag(frame, content);
+        }
+
         widgetHits.Clear();
         appHits.Clear();
 
@@ -174,40 +190,43 @@ internal sealed class StudioSurface
             return content.Height;
         }
 
-        HomeHeaderTools.Draw(frame, frame.Content, notices.Count(snapshot, talk, clock),
+        // Results paint after widgets. Mute everything under the sheet so a result tap
+        // cannot also open weather (or any other tile) on the same press.
+        var behind = hunting ? frame.WithInput(SilentInput.Instance) : frame;
+        HomeHeaderTools.Draw(behind, frame.Content, notices.Count(snapshot, talk, clock),
             display.Hushed(game.IsInDuty || game.IsInCutscene), out var notice, out var settings);
-        if (frame.Input.ConsumeClick(settings))
+        if (!hunting && frame.Input.ConsumeClick(settings))
         {
             hub.Open(DestinationTab.Settings);
         }
-        else if (frame.Input.ConsumeClick(notice))
+        else if (!hunting && frame.Input.ConsumeClick(notice))
         {
             hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
         var huntH = StudioHunt.BarHeight(frame);
         var huntBar = stack.Take(huntH);
-        LayoutWidgets(frame, stack, gap);
+        LayoutWidgets(behind, stack, gap);
         hunt.Draw(frame, huntBar, inset, pearl, talk, hub, openApplet);
-        DrawFlying(frame);
-        if (pickSlot >= 0)
+        DrawFlying(behind);
+        if (pickSlot >= 0 && !hunting)
         {
             DrawAppPicker(frame, inset);
         }
         var dock = content.BottomSlice(dockH + dockLift).Inset(new Edges(0f, 0f, 0f, dockLift));
-        HomeDock.Draw(frame, dock, camera,
+        HomeDock.Draw(behind, dock, camera,
             display.Hushed(game.IsInDuty || game.IsInCutscene),
             () => openApplet("phone", content.BottomSlice(dockH + dockLift)),
             () => openApplet("camera", content.BottomSlice(dockH + dockLift)));
         var at = frame.Input.Pointer;
         var onChrome = huntBar.Contains(at) || notice.Contains(at) || settings.Contains(at) || dock.Contains(at);
-        if ((appsEdit || pickSlot >= 0) && !skipOpen && !appsDockArea.Contains(at) &&
+        if (!hunting && (appsEdit || pickSlot >= 0) && !skipOpen && !appsDockArea.Contains(at) &&
             frame.Input.ConsumeClick(content))
         {
             appsEdit = false;
             pickSlot = -1;
         }
-        else if (glass.Active && !appsEdit && dragId is null && !skipOpen && !onChrome &&
+        else if (!hunting && glass.Active && !appsEdit && dragId is null && !skipOpen && !onChrome &&
                  frame.Input.ConsumeClick(content))
         {
             StopEdit();
@@ -632,9 +651,12 @@ internal sealed class StudioSurface
             return;
         }
 
-        if (!(string.Equals(id, "music", StringComparison.Ordinal) && musicDock.BlocksPager))
+        if (!string.Equals(id, "music", StringComparison.Ordinal) || glass.Active || appsEdit)
         {
-            WatchPress(frame, area, key);
+            if (!(string.Equals(id, "music", StringComparison.Ordinal) && musicDock.BlocksPager))
+            {
+                WatchPress(frame, area, key);
+            }
         }
         var open = !glass.Active && !appsEdit && !skipOpen;
         var drawn = glass.Active ? area.Translate(EditSway(jiggle, area.Min.X, frame.Units(0.4f))) : area;
@@ -1103,6 +1125,11 @@ internal sealed class StudioSurface
     {
         var bells = EorzeaTime.FromUnix(clock.UtcNow.ToUnixTimeSeconds());
         CalendarChrome.Dock(open ? frame : frame.WithInput(SilentInput.Instance), row, clock.Now, bells);
+        if (!display.Hushed(game.IsInDuty || game.IsInCutscene))
+        {
+            AppMarks.DrawCount(frame, row, notices.AppBadge("calendar", talk));
+        }
+
         if (open && frame.Input.ConsumeClick(row))
         {
             openApplet("calendar", row);
@@ -1135,6 +1162,11 @@ internal sealed class StudioSurface
 
         AnnouncementChrome.Dock(open ? frame : frame.WithInput(SilentInput.Instance), area, title, body, when,
             Math.Max(0, notices.Length - 1), clock.Now);
+        if (!display.Hushed(game.IsInDuty || game.IsInCutscene))
+        {
+            AppMarks.DrawCount(frame, area, this.notices.AppBadge("announcements", talk));
+        }
+
         if (open && frame.Input.ConsumeClick(area))
         {
             hub.Open(DestinationTab.Home, HomePane.Announcements);
@@ -1191,7 +1223,7 @@ internal sealed class StudioSurface
         var dropLit = dragId is { Length: > 2 } && dragId.StartsWith("a:", StringComparison.Ordinal) &&
                       cell.Contains(frame.Input.Pointer);
         DrawApp(frame, drawn, appletId, TitleOf(appletId),
-            string.Equals(appletId, "pearlchat", StringComparison.Ordinal) ? talk.UnreadTotal : 0,
+            display.Hushed(game.IsInDuty || game.IsInCutscene) ? 0 : notices.AppBadge(appletId, talk),
             () => OpenHomeApp(appletId, cell), open);
         if (appsEdit)
         {
@@ -1362,14 +1394,7 @@ internal sealed class StudioSurface
             frame.Text.DrawWrapped(caption, label, style);
         }
 
-        if (badge > 0)
-        {
-            var radius = frame.Units(4.6f);
-            var center = new Vector2(bubble.Max.X - radius * 0.15f, bubble.Min.Y + radius * 0.15f);
-            frame.Paint.FillCircle(center, radius, frame.Theme.Palette.Negative);
-            frame.Text.Draw(center, badge > 9 ? "9+" : badge.ToString(CultureInfo.InvariantCulture),
-                new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center, 1f, 0.64f));
-        }
+        AppMarks.DrawCount(frame, bubble, badge);
 
         if (open && frame.Input.ConsumeClick(cell))
         {

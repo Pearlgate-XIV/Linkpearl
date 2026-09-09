@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Linkpearl.Audio;
+using Linkpearl.Media;
 using Linkpearl.Modules;
 
 namespace Linkpearl.Applets.Life.Music;
@@ -35,6 +36,7 @@ internal enum MusicPage : byte
     PlacePhoto = 15,
     Settings = 16,
     PickPhoto = 17,
+    FollowList = 18,
 }
 
 internal enum MusicPhotoKind : byte
@@ -59,6 +61,8 @@ internal sealed class MusicState
     public bool Dj { get; set; }
 
     public bool Venue { get; set; }
+
+    public bool FollowNotifications { get; set; } = true;
 
     public string DisplayName { get; set; } = string.Empty;
 
@@ -134,6 +138,12 @@ internal sealed class MusicState
 
     public HashSet<string> Favorites { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<MusicStationMark> SavedRadio { get; } = new();
+
+    public List<MusicStationMark> LikedRadio { get; } = new();
+
+    public List<FollowedStationSnap> SavedLive { get; } = new();
+
     public HashSet<string> Following { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public List<FollowedStationSnap> FollowedStations { get; } = new();
@@ -171,6 +181,15 @@ internal sealed class MusicState
     [JsonIgnore]
     public string RevealStationId { get; set; } = string.Empty;
 
+    [JsonIgnore]
+    public string RevealStationTitle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool ScrollRailHeld { get; set; }
+
+    [JsonIgnore]
+    public bool FollowListFollowers { get; set; }
+
     public static readonly string[] Genres =
     {
         "Pop", "Hip Hop", "Rock", "Metal", "Electronic", "Bass", "Chill", "Country", "Latin",
@@ -196,6 +215,9 @@ internal sealed class MusicState
 
     [JsonIgnore]
     public bool ReportOpen { get; set; }
+
+    [JsonIgnore]
+    public bool ReportFresh { get; set; }
 
     [JsonIgnore]
     public int ReportReason { get; set; }
@@ -277,6 +299,23 @@ internal sealed class MusicState
         }
 
         return string.Join("  ", tags);
+    }
+
+    private static void AddMarks(List<MusicStationMark> dest, MusicStationMark[]? rows)
+    {
+        if (rows is not { Length: > 0 })
+        {
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            if (row is { Id.Length: > 0 })
+            {
+                dest.RemoveAll(item => string.Equals(item.Id, row.Id, StringComparison.OrdinalIgnoreCase));
+                dest.Add(row);
+            }
+        }
     }
 
     private static void NormalizeTagList(List<string> tags)
@@ -392,6 +431,7 @@ internal sealed class MusicState
                     state.Listener = dto.Listener;
                     state.Dj = dto.Dj;
                     state.Venue = dto.Venue;
+                    state.FollowNotifications = dto.FollowNotifications ?? true;
                     state.DisplayName = dto.DisplayName ?? string.Empty;
                     state.Honorific = dto.Honorific ?? string.Empty;
                     state.Handle = dto.Handle ?? string.Empty;
@@ -454,6 +494,19 @@ internal sealed class MusicState
                             if (!string.IsNullOrWhiteSpace(id))
                             {
                                 state.Favorites.Add(id.Trim());
+                            }
+                        }
+                    }
+
+                    AddMarks(state.SavedRadio, dto.SavedRadio);
+                    AddMarks(state.LikedRadio, dto.LikedRadio);
+                    if (dto.SavedLive is { Length: > 0 })
+                    {
+                        foreach (var snap in dto.SavedLive)
+                        {
+                            if (snap is { Id.Length: > 0 })
+                            {
+                                state.RememberSavedLive(snap);
                             }
                         }
                     }
@@ -530,6 +583,7 @@ internal sealed class MusicState
                 Listener = Listener,
                 Dj = Dj,
                 Venue = Venue,
+                FollowNotifications = FollowNotifications,
                 DisplayName = DisplayName,
                 Honorific = Honorific,
                 Handle = Handle,
@@ -564,6 +618,9 @@ internal sealed class MusicState
                 Interests = Interests.ToArray(),
                 StationTags = StationTags.ToArray(),
                 Favorites = Favorites.ToArray(),
+                SavedRadio = SavedRadio.ToArray(),
+                LikedRadio = LikedRadio.ToArray(),
+                SavedLive = SavedLive.ToArray(),
                 Following = Following.ToArray(),
                 FollowedStations = FollowedStations.ToArray(),
                 Playlists = Playlists.Select(static row => row.ToSave()).ToArray(),
@@ -576,7 +633,7 @@ internal sealed class MusicState
 
     public void AdjustPlacing(float zoom, float focusX, float focusY)
     {
-        zoom = Math.Clamp(zoom, 0.28f, 4.5f);
+        zoom = Math.Clamp(zoom, CoverFit.PlaceZoomMin, CoverFit.PlaceZoomMax);
         if (Placing == MusicPhotoKind.Face)
         {
             FaceZoom = zoom;
@@ -646,6 +703,40 @@ internal sealed class MusicState
                (Following.Contains(bare) || Following.Contains("live:" + bare) || Following.Contains(id));
     }
 
+    public bool FollowsProfile(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        return Following.Contains(id) || FollowsStationId(id);
+    }
+
+    public static int PublicFollowers(string id, bool youFollow)
+    {
+        var bare = BareStationId(id);
+        if (bare.Length == 0)
+        {
+            return youFollow ? 1 : 0;
+        }
+
+        return 8 + Math.Abs(Hash(bare)) % 72 + (youFollow ? 1 : 0);
+    }
+
+    public static int PublicFollowing(string id)
+    {
+        var bare = BareStationId(id);
+        if (bare.Length == 0)
+        {
+            return 0;
+        }
+
+        return 4 + Math.Abs(Hash(bare + "/out")) % 32;
+    }
+
+    private static int Hash(string text) => StringComparer.OrdinalIgnoreCase.GetHashCode(text);
+
     public int FollowingCount()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -712,17 +803,92 @@ internal sealed class MusicState
         FollowedStations.RemoveAll(row => string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase));
     }
 
+    public bool IsFavorite(string id)
+    {
+        var bare = BareStationId(id);
+        return Favorites.Contains(id) || (bare.Length > 0 && Favorites.Contains(bare));
+    }
+
     public void ToggleFavorite(string id)
     {
-        if (id.Length == 0)
+        var key = BareStationId(id);
+        if (key.Length == 0)
+        {
+            key = id.Trim();
+        }
+
+        if (key.Length == 0)
         {
             return;
         }
 
-        if (!Favorites.Remove(id))
+        if (Favorites.Remove(key) | Favorites.Remove(id))
         {
-            Favorites.Add(id);
+            ForgetSavedRadio(key);
+            ForgetSavedLive(key);
+            return;
         }
+
+        Favorites.Add(key);
+    }
+
+    public void RememberSavedRadio(MusicStationMark mark)
+    {
+        if (mark.Id.Length == 0)
+        {
+            return;
+        }
+
+        ForgetSavedRadio(mark.Id);
+        SavedRadio.Add(mark);
+    }
+
+    public void ForgetSavedRadio(string id)
+    {
+        var bare = BareStationId(id);
+        SavedRadio.RemoveAll(row =>
+            string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void RememberLikedRadio(MusicStationMark mark)
+    {
+        if (mark.Id.Length == 0)
+        {
+            return;
+        }
+
+        ForgetLikedRadio(mark.Id);
+        LikedRadio.Add(mark);
+    }
+
+    public void ForgetLikedRadio(string id)
+    {
+        var bare = BareStationId(id);
+        LikedRadio.RemoveAll(row =>
+            string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void RememberSavedLive(FollowedStationSnap snap)
+    {
+        var bare = BareStationId(snap.Id);
+        if (bare.Length == 0)
+        {
+            return;
+        }
+
+        snap.Id = bare;
+        ForgetSavedLive(bare);
+        SavedLive.Add(snap);
+    }
+
+    public void ForgetSavedLive(string id)
+    {
+        var bare = BareStationId(id);
+        SavedLive.RemoveAll(row =>
+            string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase));
     }
 
     public MusicPlaylist? FindPlaylist(string id) =>
@@ -785,6 +951,8 @@ internal sealed class MusicState
         public bool Dj { get; set; }
 
         public bool Venue { get; set; }
+
+        public bool? FollowNotifications { get; set; }
 
         public string? DisplayName { get; set; }
 
@@ -854,6 +1022,12 @@ internal sealed class MusicState
 
         public string[]? Favorites { get; set; }
 
+        public MusicStationMark[]? SavedRadio { get; set; }
+
+        public MusicStationMark[]? LikedRadio { get; set; }
+
+        public FollowedStationSnap[]? SavedLive { get; set; }
+
         public string[]? Following { get; set; }
 
         public FollowedStationSnap[]? FollowedStations { get; set; }
@@ -916,8 +1090,12 @@ internal sealed class MusicStationMark
 
     public string AlternateUrl { get; set; } = string.Empty;
 
+    public int Listeners { get; set; }
+
+    public int Votes { get; set; }
+
     public PublicStation ToPublic() =>
-        new(Id, Title, Genre, Place, StreamUrl, Bitrate, ArtUrl, AlternateUrl);
+        new(Id, Title, Genre, Place, StreamUrl, Bitrate, ArtUrl, AlternateUrl, Listeners, Votes);
 
     public static MusicStationMark From(PublicStation station) =>
         new()
@@ -930,6 +1108,8 @@ internal sealed class MusicStationMark
             Bitrate = station.Bitrate,
             ArtUrl = station.ArtUrl,
             AlternateUrl = station.AlternateUrl,
+            Listeners = station.Listeners,
+            Votes = station.Votes,
         };
 }
 

@@ -29,6 +29,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private readonly IPearlHub pearl;
     private readonly ITalk talk;
     private readonly IChatBridge chat;
+    private readonly DisplayPreferences display;
     private readonly MessagesSurface messages;
     private readonly LiveChatSurface feed;
     private readonly PhonePad phone = new();
@@ -44,6 +45,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         this.pearl = pearl;
         this.talk = talk;
         this.chat = chat;
+        this.display = display;
         friendsBook = new FriendBook(paths);
         messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs);
         feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs);
@@ -275,12 +277,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var listHeight = plane - list.Remaining.Height;
         frame.Paint.PopClip();
 
-        if (menu is null && frame.Input.IsHovering(body) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            peopleScroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        peopleScroll = Math.Clamp(peopleScroll, 0f, MathF.Max(0f, listHeight - body.Height));
+        ScrollSlider.Apply(frame, body, ref peopleScroll, listHeight, live: menu is null);
         DrawFriendMenu(frame, body);
     }
 
@@ -869,13 +866,19 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return false;
     }
 
-    private static void DrawPeer(in AppletFrame frame, Rect inset, TalkPeer peer)
+    private void DrawPeer(in AppletFrame frame, Rect inset, TalkPeer peer)
     {
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), peer.Name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var gate = peer.OnPearlgate ? "Pearlgate" : "Tell";
         var detail = peer.World.Length > 0 ? gate + " · " + peer.World : gate;
+        var zone = WorldZones.ForPerson(string.Empty, peer.Id);
+        if (zone.Length > 0)
+        {
+            detail += " · " + ZoneClock.Line(zone, display.Use24HourClock);
+        }
+
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         if (HasGateLine(peer.Handle, peer.Number))
@@ -908,13 +911,19 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private static void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)
+    private void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)
     {
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), person.DisplayName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var gate = GateLine(person.Handle, person.PhoneNumber);
         var detail = gate.Length > 0 ? gate : "Pearlgate";
+        var zone = WorldZones.ForPerson(person.TimeZoneId, person.Id);
+        if (zone.Length > 0)
+        {
+            detail += " · " + ZoneClock.Line(zone, display.Use24HourClock);
+        }
+
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.WarmAccent));
     }

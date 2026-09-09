@@ -17,9 +17,6 @@ public static class HandsetSizeCatalog
     // window can fit the game viewport.
     public const float FloorScale = 0.35f;
 
-    // Idle size must not eat the whole game view. Corner-drag uses the same fill.
-    public const float ViewFill = 0.62f;
-
     // Free drag may grow past the last settings preset, but never past the display.
     public const float FreeCeiling = 8f;
 

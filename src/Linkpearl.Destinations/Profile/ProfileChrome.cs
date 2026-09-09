@@ -12,13 +12,14 @@ using Linkpearl.Painting;
 using Linkpearl.Phone;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
+using Linkpearl.Time;
 
 namespace Linkpearl.Destinations.Profile;
 
 public sealed class ProfileChrome
 {
     private const float TitleScale = 1f;
-    public const float SheetHeightUnits = 168f;
+    public const float SheetHeightUnits = 184f;
 
     private enum Sheet : byte
     {
@@ -26,6 +27,8 @@ public sealed class ProfileChrome
         Edit = 1,
         PlacePortrait = 2,
         PickBadge = 3,
+        PlaceBanner = 4,
+        PickZone = 5,
     }
 
     private readonly BadgeBook book;
@@ -47,6 +50,7 @@ public sealed class ProfileChrome
     private readonly InkPicker inkPicker = new();
     private bool portraitWait;
     private bool bannerWait;
+    private float zoneScroll;
 
     private enum ColorWell : byte
     {
@@ -85,6 +89,11 @@ public sealed class ProfileChrome
         if (sheet == Sheet.PlacePortrait)
         {
             book.CommitPortrait();
+        }
+
+        if (sheet == Sheet.PlaceBanner)
+        {
+            display.CommitBanner();
         }
 
         draggingPhoto = false;
@@ -258,6 +267,14 @@ public sealed class ProfileChrome
         var placeRow = Rect.FromSize(new Vector2(area.Min.X, y), new Vector2(area.Width, rowH));
         DrawMetaRow(frame, placeRow, icon, ink, place.Length > 0 ? place : "—", true);
         DrawPin(frame, MetaMark(placeRow, icon), gold);
+        y += rowH;
+        if (y + rowH <= area.Max.Y + 1f)
+        {
+            var zoneRow = Rect.FromSize(new Vector2(area.Min.X, y), new Vector2(area.Width, rowH));
+            DrawMetaRow(frame, zoneRow, icon, ink, ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock),
+                true);
+            DrawClockMark(frame, MetaMark(zoneRow, icon), gold);
+        }
     }
 
     private static Rect MetaMark(Rect row, float icon) =>
@@ -298,9 +315,19 @@ public sealed class ProfileChrome
             return DrawPlacePortrait(frame);
         }
 
+        if (sheet == Sheet.PlaceBanner)
+        {
+            return DrawPlaceBanner(frame);
+        }
+
         if (sheet == Sheet.PickBadge)
         {
             return DrawBadgePick(frame);
+        }
+
+        if (sheet == Sheet.PickZone)
+        {
+            return DrawPickZone(frame);
         }
 
         return DrawEditSheet(frame);
@@ -347,6 +374,47 @@ public sealed class ProfileChrome
         return frame.Content.Height;
     }
 
+    private float DrawPlaceBanner(in AppletFrame frame)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        frame.Paint.Fill(frame.Content, frame.Theme.Palette.SurfaceSunken with { W = 0.62f });
+        var inner = frame.Content.Inset(frame.Units(16f));
+        frame.Text.DrawIn(inner.TopSlice(frame.Units(24f)), "Place banner",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        frame.Text.DrawWrapped(inner.Inset(new Edges(0f, frame.Units(28f), 0f, 0f)).TopSlice(frame.Units(36f)),
+            "Drag to move. Scroll to zoom. The frame is what shows on Home and your profile.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+
+        var actions = inner.BottomSlice(frame.Units(40f));
+        var preview = new Rect(inner.Min + new Vector2(0f, frame.Units(72f)),
+            new Vector2(inner.Max.X, actions.Min.Y - frame.Units(12f)));
+        var height = MathF.Min(preview.Height, preview.Width * 0.42f);
+        preview = Rect.FromSize(new Vector2(preview.Min.X, preview.Center.Y - height * 0.5f),
+            new Vector2(preview.Width, height));
+        DrawBanner(frame, preview, place: true);
+        HandleBannerGesture(frame, preview);
+
+        var other = actions.LeftSlice(actions.Width * 0.48f);
+        var done = actions.RightSlice(actions.Width * 0.48f);
+        frame.Paint.Stroke(other, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, frame.Units(12f));
+        frame.Text.DrawIn(other, "Choose another",
+            new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
+        frame.Paint.Fill(done, gold with { W = 0.92f }, frame.Units(12f));
+        frame.Text.DrawIn(done, "Done",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.AccentInk, TextAlign.Center));
+        if (frame.Input.ConsumeClick(other))
+        {
+            PickBanner();
+        }
+
+        if (frame.Input.ConsumeClick(done))
+        {
+            DismissPicker();
+        }
+
+        return frame.Content.Height;
+    }
+
     private float DrawEditSheet(in AppletFrame frame)
     {
         var snapshot = pearl.Current;
@@ -367,11 +435,12 @@ public sealed class ProfileChrome
         DrawBanner(frame, stack.Take(frame.Units(92f)));
         DrawCard(frame, stack.Take(frame.Units(SheetHeightUnits)), CardName(snapshot), GlassJob(), GlassWorld(snapshot),
             game.MapPlace, game.JobIconId);
+        DrawZoneRow(frame, stack.Take(frame.Units(48f)));
         DrawAction(frame, stack.Take(frame.Units(44f)), "Sync to apps", () => PushApps(snapshot));
         DrawNotice(frame, stack.Take(frame.Units(40f)),
             synced
                 ? "Copied to Music and VYBE. Each app can still be edited on its own."
-                : "Copies name, photo, and banner to Music and VYBE.");
+                : "Copies name, photo, and banner to Music and VYBE. Time zone is shared from this profile.");
         DrawNameControls(frame, ref stack, snapshot);
         DrawGateRows(frame, ref stack, snapshot);
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -393,6 +462,8 @@ public sealed class ProfileChrome
             name = ShownName.Sanitize(display.OwnName);
         }
 
+        book.CommitPortrait();
+        display.CommitBanner();
         profiles.Push(name, GlassName.Honorific(display));
         synced = true;
     }
@@ -640,6 +711,79 @@ public sealed class ProfileChrome
         return world.Length > 0 ? world : "Eorzea";
     }
 
+    private void DrawZoneRow(in AppletFrame frame, Rect row)
+    {
+        CardChrome.DrawGold(frame, row);
+        var pad = row.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
+        var auto = display.OwnTimeZoneId.Length == 0;
+        frame.Text.DrawIn(pad.TopSlice(frame.Units(14f)), auto ? "Time zone · Auto" : "Time zone",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        frame.Text.DrawEllipsized(pad.BottomSlice(frame.Units(20f)),
+            ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock),
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        if (frame.Input.ConsumeClick(row))
+        {
+            zoneScroll = 0f;
+            returnToEdit = true;
+            sheet = Sheet.PickZone;
+        }
+    }
+
+    private float DrawPickZone(in AppletFrame frame)
+    {
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
+        var head = content.TopSlice(frame.Units(28f));
+        frame.Text.DrawIn(head.LeftSlice(frame.Units(28f)), "‹",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        frame.Text.DrawIn(head.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)), "Time zone",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        if (frame.Input.ConsumeClick(head.LeftSlice(frame.Units(90f))))
+        {
+            DismissPicker();
+            return frame.Content.Height;
+        }
+
+        var list = content.Inset(new Edges(0f, frame.Units(36f), 0f, 0f));
+        var rows = WorldZones.Catalog.Length + 1;
+        var rowH = frame.Units(52f);
+        var gap = frame.Units(8f);
+        var contentH = MathF.Max(list.Height + 8f, rows * (rowH + gap));
+        ScrollSlider.Apply(frame, list, ref zoneScroll, contentH);
+        frame.Paint.PushClip(list);
+        DrawZoneChoice(frame, Rect.FromSize(new Vector2(list.Min.X, list.Min.Y - zoneScroll),
+            new Vector2(list.Width, rowH)), WorldZones.Auto, "Auto", "Match this Windows PC");
+        for (var index = 0; index < WorldZones.Catalog.Length; index++)
+        {
+            var zone = WorldZones.Catalog[index];
+            var row = Rect.FromSize(
+                new Vector2(list.Min.X, list.Min.Y - zoneScroll + (index + 1) * (rowH + gap)),
+                new Vector2(list.Width, rowH));
+            DrawZoneChoice(frame, row, zone.Id, zone.City, zone.Place);
+        }
+
+        frame.Paint.PopClip();
+        return frame.Content.Height;
+    }
+
+    private void DrawZoneChoice(in AppletFrame frame, Rect row, string id, string city, string place)
+    {
+        var on = string.Equals(display.OwnTimeZoneId, id, StringComparison.OrdinalIgnoreCase);
+        CardChrome.DrawGold(frame, row);
+        var pad = row.Inset(new Edges(frame.Units(14f), frame.Units(8f)));
+        var time = ZoneClock.Stamp(id, display.Use24HourClock);
+        frame.Text.DrawEllipsized(pad.TopSlice(frame.Units(18f)), city + (on ? "  ·  Selected" : string.Empty),
+            new TextStyle(FontRole.BodyStrong, on ? frame.Theme.Palette.WarmAccent : frame.Theme.Palette.Ink));
+        frame.Text.DrawEllipsized(pad.BottomSlice(frame.Units(16f)),
+            place.Length > 0 ? place + "  ·  " + time : time,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        if (frame.Input.ConsumeClick(row))
+        {
+            display.OwnTimeZoneId = id;
+            DismissPicker();
+        }
+    }
+
     private void DrawGateRows(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
     {
         var inGame = ShownName.Linked(game.Character.Name, snapshot.MeName);
@@ -775,6 +919,11 @@ public sealed class ProfileChrome
             book.CommitPortrait();
         }
 
+        if (sheet == Sheet.PlaceBanner)
+        {
+            display.CommitBanner();
+        }
+
         draggingPhoto = false;
         sheet = returnToEdit ? Sheet.Edit : Sheet.None;
     }
@@ -883,37 +1032,39 @@ public sealed class ProfileChrome
 
     public void DrawFace(in AppletFrame frame, Rect area) => DrawPortrait(frame, area, compact: true);
 
-    private void DrawBanner(in AppletFrame frame, Rect area)
+    private void DrawBanner(in AppletFrame frame, Rect area) => DrawBanner(frame, area, place: false);
+
+    private void DrawBanner(in AppletFrame frame, Rect area, bool place)
     {
         var gold = frame.Theme.Palette.WarmAccent;
         CardChrome.DrawGold(frame, area);
         var inner = area.Inset(frame.Units(2f));
+        frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(10f));
         if (display.UsingBanner)
         {
             var texture = textures.FromFile(BannerFiles.Absolute(paths, display.CustomBannerFile));
             if (texture is { IsReady: true })
             {
-                var uv = CoverFit.Uv(texture.Size, inner.Size);
-                frame.Paint.ImageRounded(texture, inner, uv.Min, uv.Max, Vector4.One, frame.Units(10f));
+                CoverFit.Placed(texture.Size, inner, display.BannerZoom, display.BannerFocus, out var dest,
+                    out var uv);
+                frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, frame.Units(10f));
             }
             else
             {
-                frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(10f));
-                frame.Text.DrawIn(inner, "Tap to change banner",
+                frame.Text.DrawIn(inner, place ? "Loading banner" : "Tap to change banner",
                     new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
             }
         }
         else
         {
-            frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(10f));
             frame.Text.DrawIn(inner, "Tap to add a banner",
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
         }
 
         frame.Paint.Stroke(inner, gold with { W = 0.42f }, frame.Theme.Metrics.Hairline, frame.Units(10f));
-        if (frame.Input.ConsumeClick(inner))
+        if (!place && frame.Input.ConsumeClick(inner))
         {
-            PickBanner();
+            OpenBanner();
         }
     }
 
@@ -999,6 +1150,57 @@ public sealed class ProfileChrome
         }
     }
 
+    private void HandleBannerGesture(in AppletFrame frame, Rect preview)
+    {
+        if (!display.UsingBanner)
+        {
+            return;
+        }
+
+        var texture = textures.FromFile(BannerFiles.Absolute(paths, display.CustomBannerFile));
+        if (texture is not { IsReady: true })
+        {
+            return;
+        }
+
+        if (frame.Input.WasPressed(preview))
+        {
+            draggingPhoto = true;
+        }
+
+        if (draggingPhoto && frame.Input.IsHeld())
+        {
+            var cover = CoverFit.Framed(texture.Size, preview.Size, display.BannerZoom, display.BannerFocus);
+            var visible = cover.Max - cover.Min;
+            var next = display.BannerFocus - new Vector2(
+                preview.Width > 1f ? frame.Input.PointerDelta.X / preview.Width * visible.X : 0f,
+                preview.Height > 1f ? frame.Input.PointerDelta.Y / preview.Height * visible.Y : 0f);
+            display.AdjustBanner(display.BannerZoom, next);
+        }
+
+        if (!frame.Input.IsHeld())
+        {
+            draggingPhoto = false;
+        }
+
+        if (frame.Input.IsHovering(preview) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
+        {
+            display.AdjustBanner(display.BannerZoom * (1f + frame.Input.ScrollDelta * 0.14f), display.BannerFocus);
+        }
+    }
+
+    public void OpenBanner()
+    {
+        returnToEdit = sheet == Sheet.Edit || returnToEdit;
+        if (!display.UsingBanner)
+        {
+            PickBanner();
+            return;
+        }
+
+        sheet = Sheet.PlaceBanner;
+    }
+
     private void OpenPortrait()
     {
         returnToEdit = sheet == Sheet.Edit || returnToEdit;
@@ -1059,8 +1261,26 @@ public sealed class ProfileChrome
 
         if (BannerFiles.TryImport(paths, picked[0], out var fileName))
         {
-            display.CustomBannerFile = fileName;
+            ApplyBanner(fileName);
         }
+    }
+
+    private void ApplyBanner(string fileName)
+    {
+        var previous = display.CustomBannerFile;
+        if (previous.Length > 0)
+        {
+            textures.ForgetFile(BannerFiles.Absolute(paths, previous));
+            if (!string.Equals(previous, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                BannerFiles.Delete(paths, previous);
+            }
+        }
+
+        display.ResetBannerCrop();
+        display.CustomBannerFile = fileName;
+        textures.ForgetFile(BannerFiles.Absolute(paths, fileName));
+        sheet = Sheet.PlaceBanner;
     }
 
     private static void DrawEdit(in AppletFrame frame, Rect area, Vector4 gold)
@@ -1136,6 +1356,17 @@ public sealed class ProfileChrome
         }
 
         HomeMarks.Draw(frame.Paint, area, HomeMark.Pin, ink);
+    }
+
+    private static void DrawClockMark(in AppletFrame frame, Rect area, Vector4 ink)
+    {
+        var radius = MathF.Min(area.Width, area.Height) * 0.42f;
+        var stroke = MathF.Max(1.1f, radius * 0.18f);
+        frame.Paint.StrokeCircle(area.Center, radius, ink, stroke);
+        var hour = new Vector2(0f, -radius * 0.42f);
+        var minute = new Vector2(radius * 0.55f, 0f);
+        frame.Paint.Line(area.Center, area.Center + hour, ink, stroke);
+        frame.Paint.Line(area.Center, area.Center + minute, ink, MathF.Max(1f, stroke * 0.72f));
     }
 
     private static void DrawHouse(in AppletFrame frame, Rect area, Vector4 ink)

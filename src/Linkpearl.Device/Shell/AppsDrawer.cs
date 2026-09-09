@@ -24,6 +24,7 @@ public sealed class AppsDrawer
     private readonly DisplayPreferences display;
     private readonly GlassEdit glass;
     private readonly ITalk talk;
+    private readonly NoticeLedger notices;
     private readonly Action rememberReturn;
     private readonly ScrollState scroll = new();
     private readonly HashSet<AppGroup> openGroups = [];
@@ -48,13 +49,14 @@ public sealed class AppsDrawer
     private string? menuFolder;
 
     public AppsDrawer(IReadOnlyList<IApplet> applets, DestinationHub hub, DisplayPreferences display, GlassEdit glass,
-        ITalk talk, Action rememberReturn)
+        ITalk talk, NoticeLedger notices, Action rememberReturn)
     {
         this.applets = applets;
         this.hub = hub;
         this.display = display;
         this.glass = glass;
         this.talk = talk;
+        this.notices = notices;
         this.rememberReturn = rememberReturn;
     }
 
@@ -204,9 +206,7 @@ public sealed class AppsDrawer
             : DrawHomeGrid(list, scrolled, hush, body, interact);
         frame.Paint.PopClip();
 
-        var wheel = !menuOpen && !dragging && frame.Input.IsHovering(body) ? frame.Input.ScrollDelta : 0f;
-        scroll.Update(height, body.Height, wheel, frame.Scale);
-        ScrollState.DrawIndicator(frame.Paint, frame.Theme, body, height, scroll.Offset, frame.Scale);
+        scroll.Apply(frame, body, height, live: !menuOpen && !dragging);
 
         if (page == Page.Shelf && !menuOpen &&
             frame.Input.ConsumeClick(inner, PointerButton.Secondary))
@@ -269,7 +269,7 @@ public sealed class AppsDrawer
         var field = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(32f)));
         frame.Paint.Fill(field, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, field.Height * 0.5f);
         frame.Paint.Stroke(field, gold with { W = 0.35f }, frame.Theme.Metrics.Hairline, field.Height * 0.5f);
-        var type = field.Inset(new Edges(frame.Units(28f), 0f, frame.Units(8f), 0f));
+        var type = field.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(8f), frame.Units(4f)));
         query = frame.TextField.Draw("apps-manage-search", type, query, "Search apps");
         SearchMark.Draw(frame.Paint, field.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)),
             frame.Theme.Palette.InkMuted);
@@ -1062,14 +1062,18 @@ public sealed class AppsDrawer
             return;
         }
 
-        if (string.Equals(id, "pearlchat", StringComparison.Ordinal) && talk.UnreadTotal > 0)
+        var missed = notices.AppBadge(id, talk);
+        if (missed <= 0 && display.TryFolder(id, out _, out var kids))
         {
-            var missed = talk.UnreadTotal;
-            var radius = frame.Units(8f);
-            var center = new Vector2(icon.Max.X - radius * 0.15f, icon.Min.Y + radius * 0.15f);
-            frame.Paint.FillCircle(center, radius, frame.Theme.Palette.Negative);
-            frame.Text.Draw(center, missed > 9 ? "9+" : missed.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center, 1f, 0.64f));
+            for (var index = 0; index < kids.Length; index++)
+            {
+                missed += notices.AppBadge(kids[index], talk);
+            }
+        }
+
+        if (missed > 0)
+        {
+            AppMarks.DrawCount(frame, icon, missed);
             return;
         }
 

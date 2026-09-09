@@ -1,4 +1,6 @@
+using Linkpearl.Applets;
 using Linkpearl.Geometry;
+using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Theming;
 
@@ -27,6 +29,11 @@ public sealed class ScrollState
 
     public void Jump(float y) => offset = MathF.Max(0f, y);
 
+    public void Apply(in AppletFrame frame, Rect viewport, float contentHeight, bool live = true)
+    {
+        ScrollSlider.Apply(frame, viewport, ref offset, contentHeight, live);
+    }
+
     public static void DrawIndicator(IPaintSurface paint, ITheme theme, Rect viewport, float contentHeight,
         float offset, float scale)
     {
@@ -43,5 +50,6 @@ public sealed class ScrollState
         var thumb = new Rect(new Vector2(track.Min.X, thumbTop), new Vector2(track.Max.X, thumbTop + thumbHeight));
 
         paint.Fill(thumb, theme.Palette.InkFaint, trackWidth * 0.5f);
+        _ = theme;
     }
 }

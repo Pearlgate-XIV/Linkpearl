@@ -4,6 +4,8 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using FFXIVClientStructs.FFXIV.Client.System.String;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using Linkpearl.Platform;
 using ClassJobSheet = Lumina.Excel.Sheets.ClassJob;
@@ -39,6 +41,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private readonly object retainerGate = new();
     private GameRetainer[] retainers = [];
     private bool retainersReady;
+    private bool pocketCue;
+    private bool openGpose;
 
     public FfxivGameSession(IClientState clientState, IObjectTable objectTable, ICondition condition,
         IDutyState dutyState, IPartyList party, IFramework framework, IDataManager data, IJobCatalog jobs)
@@ -143,6 +147,17 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         }
     }
 
+    public void OpenGroupPose() => openGpose = true;
+
+    public void CuePocket() => pocketCue = true;
+
+    public bool TakePocketCue()
+    {
+        var ready = pocketCue;
+        pocketCue = false;
+        return ready;
+    }
+
     public string ItemName(uint itemId)
     {
         if (itemId != 0 && data.GetExcelSheet<ItemSheet>().TryGetRow(itemId, out var item))
@@ -151,6 +166,35 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         }
 
         return string.Empty;
+    }
+
+    private static unsafe void RunGroupPoseCommand()
+    {
+        var ui = UIModule.Instance();
+        if (ui is null)
+        {
+            return;
+        }
+
+        var text = Utf8String.FromString("/gpose");
+        if (text is null || text->Length == 0)
+        {
+            if (text is not null)
+            {
+                text->Dtor(true);
+            }
+
+            return;
+        }
+
+        try
+        {
+            ui->ProcessChatBoxEntry(text);
+        }
+        finally
+        {
+            text->Dtor(true);
+        }
     }
 
     private static unsafe uint ReadGil()
@@ -285,6 +329,12 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     private void HandleUpdate(IFramework runningFramework)
     {
+        if (openGpose)
+        {
+            openGpose = false;
+            RunGroupPoseCommand();
+        }
+
         if (!clientState.IsLoggedIn)
         {
             cachedJobId = 0;

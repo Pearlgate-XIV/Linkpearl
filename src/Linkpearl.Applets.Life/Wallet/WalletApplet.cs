@@ -114,11 +114,7 @@ public sealed class WalletApplet : IApplet
             _ => DrawHome(frame, shifted),
         };
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(body) && frame.Input.ScrollDelta != 0f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(22f), 0f,
-                MathF.Max(0f, height - body.Height));
-        }
+        ScrollSlider.Apply(frame, body, ref scroll, height);
 
         DrawNav(frame, frame.Content.BottomSlice(nav));
     }

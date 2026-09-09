@@ -27,9 +27,42 @@ public static class BannerFiles
         }
 
         Directory.CreateDirectory(DirectoryOf(paths));
-        fileName = "yours" + ext.ToLowerInvariant();
-        File.Copy(source, Absolute(paths, fileName), overwrite: true);
-        return true;
+        fileName = "yours-" + Guid.NewGuid().ToString("N") + ext.ToLowerInvariant();
+        try
+        {
+            File.Copy(source, Absolute(paths, fileName), overwrite: false);
+            return true;
+        }
+        catch (IOException)
+        {
+            fileName = string.Empty;
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            fileName = string.Empty;
+            return false;
+        }
+    }
+
+    public static void Delete(HostPaths paths, string fileName)
+    {
+        var name = Path.GetFileName(fileName);
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(Absolute(paths, name));
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     public static void Clear(HostPaths paths)

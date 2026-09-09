@@ -6,6 +6,7 @@ using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Time;
 
 namespace Linkpearl.Destinations.Explore;
 
@@ -229,7 +230,14 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
         CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Player", frame.Theme.Palette.WarmAccent);
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), person.DisplayName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), person.Handle.Length > 0 ? "@" + person.Handle : "Pearlgate",
+        var detail = person.Handle.Length > 0 ? "@" + person.Handle : "Pearlgate";
+        var zone = WorldZones.ForPerson(person.TimeZoneId, person.Id);
+        if (zone.Length > 0)
+        {
+            detail += " · " + ZoneClock.Line(zone, false);
+        }
+
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 

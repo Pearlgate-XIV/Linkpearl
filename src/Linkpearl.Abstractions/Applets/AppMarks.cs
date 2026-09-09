@@ -21,6 +21,20 @@ public static class AppMarks
     public static void DrawFace(in AppletFrame frame, Rect icon, string appletId, bool hover) =>
         DrawFace(frame.Paint, frame.Textures, frame.Paths, icon, appletId, hover);
 
+    public static void DrawCount(in AppletFrame frame, Rect icon, int count)
+    {
+        if (count <= 0 || icon.Width < 8f || icon.Height < 8f)
+        {
+            return;
+        }
+
+        var radius = frame.Units(9f);
+        var center = new Vector2(icon.Max.X - radius * 0.22f, icon.Min.Y + radius * 0.22f);
+        frame.Paint.FillCircle(center, radius, frame.Theme.Palette.Negative);
+        frame.Text.Draw(center, count > 9 ? "9+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center, 1f, 0.92f));
+    }
+
     public static void DrawFace(IPaintSurface paint, ITextureSource textures, HostPaths paths, Rect icon,
         string appletId, bool hover)
     {

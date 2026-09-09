@@ -6,6 +6,13 @@ namespace Linkpearl.Canvas.Input;
 
 public sealed class DalamudInputProbe : IInputProbe
 {
+    // A tap is press+release without travel. The probe is constructed each frame, so
+    // the gesture lives here: resize and content slides must not open what they land on.
+    private const float DragSlop = 6f;
+    private static readonly Vector2[] pressAt = new Vector2[3];
+    private static readonly bool[] armed = new bool[3];
+    private static readonly bool[] dragged = new bool[3];
+
     private readonly HashSet<(Vector2 Min, Vector2 Max)> claimed = new();
 
     public bool Live { get; set; } = true;
@@ -16,7 +23,13 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public float ScrollDelta => Live ? ImGui.GetIO().MouseWheel : 0f;
 
-    public void BeginFrame() => claimed.Clear();
+    public DalamudInputProbe() => RememberDrags();
+
+    public void BeginFrame()
+    {
+        claimed.Clear();
+        RememberDrags();
+    }
 
     // True when some other ImGui window (Penumbra, etc.) is the one under the cursor.
     public static bool OtherWindowAbove()
@@ -39,7 +52,11 @@ public sealed class DalamudInputProbe : IInputProbe
     public bool IsHeld(PointerButton button = PointerButton.Primary) =>
         Live && ImGui.IsMouseDown(ToImGuiButton(button));
 
-    public bool WasClicked(Rect area, PointerButton button = PointerButton.Primary) => WasReleased(area, button);
+    public bool WasClicked(Rect area, PointerButton button = PointerButton.Primary)
+    {
+        var index = ButtonIndex(button);
+        return WasReleased(area, button) && !dragged[index];
+    }
 
     public bool ConsumeClick(Rect area, PointerButton button = PointerButton.Primary)
     {
@@ -77,6 +94,16 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public bool IsClaimed(Rect area) => claimed.Contains((area.Min, area.Max));
 
+    public bool PointerClaimed() => PointerOnClaim();
+
+    public bool EscapePressed() => Live && ImGui.IsKeyPressed(ImGuiKey.Escape, false);
+
+    public bool PointerReleased(PointerButton button = PointerButton.Primary)
+    {
+        var index = ButtonIndex(button);
+        return Live && ImGui.IsMouseReleased(ToImGuiButton(button)) && !dragged[index];
+    }
+
     private bool PointerOnClaim()
     {
         var pointer = Pointer;
@@ -91,10 +118,42 @@ public sealed class DalamudInputProbe : IInputProbe
         return false;
     }
 
-    private static ImGuiMouseButton ToImGuiButton(PointerButton button) => button switch
+    private static void RememberDrags()
     {
-        PointerButton.Secondary => ImGuiMouseButton.Right,
-        PointerButton.Middle => ImGuiMouseButton.Middle,
-        _ => ImGuiMouseButton.Left,
+        var pointer = ImGui.GetMousePos();
+        var slopSq = DragSlop * DragSlop;
+        for (var i = 0; i < 3; i++)
+        {
+            var mouse = (ImGuiMouseButton)i;
+            if (ImGui.IsMouseClicked(mouse))
+            {
+                pressAt[i] = pointer;
+                armed[i] = true;
+                dragged[i] = false;
+            }
+
+            if (armed[i] && ImGui.IsMouseDown(mouse))
+            {
+                var delta = pointer - pressAt[i];
+                if (delta.X * delta.X + delta.Y * delta.Y >= slopSq)
+                {
+                    dragged[i] = true;
+                }
+            }
+            else if (!ImGui.IsMouseDown(mouse) && !ImGui.IsMouseReleased(mouse))
+            {
+                armed[i] = false;
+                dragged[i] = false;
+            }
+        }
+    }
+
+    private static int ButtonIndex(PointerButton button) => button switch
+    {
+        PointerButton.Secondary => 1,
+        PointerButton.Middle => 2,
+        _ => 0,
     };
+
+    private static ImGuiMouseButton ToImGuiButton(PointerButton button) => (ImGuiMouseButton)ButtonIndex(button);
 }

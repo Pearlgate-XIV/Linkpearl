@@ -8,7 +8,9 @@ public readonly record struct PublicStation(
     string StreamUrl,
     int Bitrate,
     string ArtUrl = "",
-    string AlternateUrl = "");
+    string AlternateUrl = "",
+    int Listeners = 0,
+    int Votes = 0);
 
 public interface IPublicRadio
 {

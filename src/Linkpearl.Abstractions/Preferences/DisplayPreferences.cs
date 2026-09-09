@@ -1,5 +1,6 @@
 using Linkpearl.Applets;
 using Linkpearl.Media;
+using Linkpearl.Time;
 
 namespace Linkpearl.Preferences;
 
@@ -13,6 +14,9 @@ public sealed class DisplayPreferences
     private string customPlateFile = string.Empty;
     private string[] customPlateFiles = [];
     private string customBannerFile = string.Empty;
+    private float bannerZoom = 1f;
+    private float bannerFocusX = 0.5f;
+    private float bannerFocusY = 0.5f;
     private string colorway = ColorwayId.Night;
     private string core = CoreId.Blue;
     private ShadeLevel shade = ShadeLevel.Even;
@@ -20,6 +24,7 @@ public sealed class DisplayPreferences
     private LetteringSize lettering = LetteringSize.Medium;
     private NameStyle nameStyle;
     private string ownName = string.Empty;
+    private string ownTimeZoneId = string.Empty;
     private string ownTitle = string.Empty;
     private TitleMotion titleMotion;
     private bool titleGlow = true;
@@ -242,6 +247,42 @@ public sealed class DisplayPreferences
 
     public bool UsingBanner => customBannerFile.Length > 0;
 
+    public float BannerZoom
+    {
+        get => bannerZoom;
+        set => Set(ref bannerZoom, Math.Clamp(value, CoverFit.PlaceZoomMin, CoverFit.PlaceZoomMax));
+    }
+
+    public float BannerFocusX
+    {
+        get => bannerFocusX;
+        set => Set(ref bannerFocusX, Math.Clamp(value, 0f, 1f));
+    }
+
+    public float BannerFocusY
+    {
+        get => bannerFocusY;
+        set => Set(ref bannerFocusY, Math.Clamp(value, 0f, 1f));
+    }
+
+    public Vector2 BannerFocus => new(bannerFocusX, bannerFocusY);
+
+    public void AdjustBanner(float zoom, Vector2 focus)
+    {
+        bannerZoom = Math.Clamp(zoom, CoverFit.PlaceZoomMin, CoverFit.PlaceZoomMax);
+        bannerFocusX = Math.Clamp(focus.X, 0f, 1f);
+        bannerFocusY = Math.Clamp(focus.Y, 0f, 1f);
+    }
+
+    public void CommitBanner() => Changed?.Invoke();
+
+    public void ResetBannerCrop()
+    {
+        bannerZoom = 1f;
+        bannerFocusX = 0.5f;
+        bannerFocusY = 0.5f;
+    }
+
     public string Colorway
     {
         get => colorway;
@@ -301,6 +342,12 @@ public sealed class DisplayPreferences
     {
         get => ownTitle;
         set => Set(ref ownTitle, ShownName.ClampTitle(value));
+    }
+
+    public string OwnTimeZoneId
+    {
+        get => ownTimeZoneId;
+        set => Set(ref ownTimeZoneId, WorldZones.Sanitize(value));
     }
 
     public TitleMotion TitleMotion

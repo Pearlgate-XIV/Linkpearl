@@ -32,6 +32,9 @@ internal enum StudioMark : byte
     Gear = 24,
     Shuffle = 25,
     Speaker = 26,
+    Heart = 27,
+    Star = 28,
+    Follow = 29,
 }
 
 internal static class StudioMarks
@@ -246,6 +249,46 @@ internal static class StudioMarks
                     paint.FillCircle(center + dir * (size * 0.58f), size * 0.12f, color);
                 }
 
+                break;
+            case StudioMark.Heart:
+            {
+                var left = center + new Vector2(-size * 0.22f, -size * 0.08f);
+                var right = center + new Vector2(size * 0.22f, -size * 0.08f);
+                paint.FillCircle(left, size * 0.22f, color);
+                paint.FillCircle(right, size * 0.22f, color);
+                paint.Fill(Rect.FromSize(center + new Vector2(-size * 0.36f, -size * 0.04f),
+                    new Vector2(size * 0.72f, size * 0.28f)), color);
+                paint.Line(center + new Vector2(-size * 0.38f, 0.02f * size),
+                    center + new Vector2(0f, size * 0.48f), color, stroke);
+                paint.Line(center + new Vector2(size * 0.38f, 0.02f * size),
+                    center + new Vector2(0f, size * 0.48f), color, stroke);
+                break;
+            }
+            case StudioMark.Star:
+            {
+                for (var tip = 0; tip < 5; tip++)
+                {
+                    var a = -MathF.PI / 2f + tip * (MathF.PI * 2f / 5f);
+                    var b = a + MathF.PI * 2f / 5f;
+                    var outer = center + new Vector2(MathF.Cos(a), MathF.Sin(a)) * (size * 0.52f);
+                    var inner = center + new Vector2(MathF.Cos(a + MathF.PI / 5f), MathF.Sin(a + MathF.PI / 5f)) *
+                        (size * 0.22f);
+                    var next = center + new Vector2(MathF.Cos(b), MathF.Sin(b)) * (size * 0.52f);
+                    paint.Line(outer, inner, color, stroke);
+                    paint.Line(inner, next, color, stroke);
+                }
+
+                paint.FillCircle(center, size * 0.12f, color);
+                break;
+            }
+            case StudioMark.Follow:
+                paint.FillCircle(center + new Vector2(-size * 0.10f, -size * 0.16f), size * 0.18f, color);
+                paint.Fill(Rect.FromSize(center + new Vector2(-size * 0.36f, size * 0.04f),
+                    new Vector2(size * 0.52f, size * 0.32f)), color, size * 0.16f);
+                paint.Fill(Rect.FromSize(center + new Vector2(size * 0.12f, -size * 0.04f),
+                    new Vector2(size * 0.36f, stroke * 1.1f)), color, stroke * 0.5f);
+                paint.Fill(Rect.FromSize(center + new Vector2(size * 0.26f - stroke * 0.55f, -size * 0.18f),
+                    new Vector2(stroke * 1.1f, size * 0.36f)), color, stroke * 0.5f);
                 break;
         }
     }

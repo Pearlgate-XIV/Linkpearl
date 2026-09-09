@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
@@ -57,10 +58,12 @@ internal enum NightPage : byte
     Following = 22,
     Followers = 23,
     PhotoPick = 24,
+    PlacePhoto = 30,
     PhotoView = 25,
     ShareSend = 26,
     Inbox = 27,
     Alerts = 28,
+    Saves = 29,
 }
 
 internal enum FilterPole : byte
@@ -98,6 +101,18 @@ internal sealed class VybeState
 
     public string ProfileBannerPath { get; set; } = string.Empty;
 
+    public float FaceZoom { get; set; } = 1f;
+
+    public float FaceFocusX { get; set; } = 0.5f;
+
+    public float FaceFocusY { get; set; } = 0.5f;
+
+    public float BannerZoom { get; set; } = 1f;
+
+    public float BannerFocusX { get; set; } = 0.5f;
+
+    public float BannerFocusY { get; set; } = 0.5f;
+
     public bool PickingBanner { get; set; }
 
     public string Handle { get; set; } = string.Empty;
@@ -122,6 +137,31 @@ internal sealed class VybeState
     public string OwnStory { get; set; } = string.Empty;
 
     public bool AudienceEveryone { get; set; } = true;
+
+    public bool DraftPlus { get; set; }
+
+    [JsonIgnore]
+    public ContentRating DraftRating { get; set; } = ContentRating.Sfw;
+
+    [JsonIgnore]
+    public List<string> DraftDescriptors { get; } = new();
+
+    [JsonIgnore]
+    public bool DraftDescOpen { get; set; }
+
+    [JsonIgnore]
+    public ComposeSheet DraftSheet { get; set; }
+
+    [JsonIgnore]
+    public bool DraftSfwOk { get; set; }
+
+    [JsonIgnore]
+    public List<string> DraftTags { get; } = new();
+
+    [JsonIgnore]
+    public string DraftTagDraft { get; set; } = string.Empty;
+
+    public List<PearlPost> Posted { get; } = new();
 
     public FeedPick FeedPick { get; set; } = FeedPick.ForYou;
 
@@ -170,6 +210,9 @@ internal sealed class VybeState
 
     [JsonIgnore]
     public bool ReportOpen { get; set; }
+
+    [JsonIgnore]
+    public bool ReportFresh { get; set; }
 
     [JsonIgnore]
     public int ReportReason { get; set; }
@@ -261,11 +304,11 @@ internal sealed class VybeState
 
     public List<string> Genders { get; } = new();
 
+    public List<string> Sexualities { get; } = new();
+
     public List<string> Intents { get; } = new();
 
     public List<string> Tags { get; } = new();
-
-    public string Sexuality { get; set; } = string.Empty;
 
     public string Relationship { get; set; } = "Rather not say";
 
@@ -285,9 +328,66 @@ internal sealed class VybeState
 
     public HashSet<int> SavedPosts { get; } = new();
 
+    public HashSet<string> KeptPosts { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> KeptShots { get; } = new(StringComparer.Ordinal);
+
+    public int SavePane { get; set; }
+
+    public bool ToggleKeptPost(string id, IEnumerable<string> shots)
+    {
+        if (id.Length == 0)
+        {
+            return KeptPosts.Contains(id);
+        }
+
+        if (!KeptPosts.Add(id))
+        {
+            KeptPosts.Remove(id);
+            foreach (var shot in shots)
+            {
+                if (shot.Length > 0)
+                {
+                    KeptShots.Remove(shot);
+                }
+            }
+
+            return false;
+        }
+
+        foreach (var shot in shots)
+        {
+            if (shot.Length > 0)
+            {
+                KeptShots.Add(shot);
+            }
+        }
+
+        return true;
+    }
+
+    public bool ToggleKeptShot(string url)
+    {
+        if (url.Length == 0)
+        {
+            return false;
+        }
+
+        if (!KeptShots.Add(url))
+        {
+            KeptShots.Remove(url);
+            return false;
+        }
+
+        return true;
+    }
+
     public HashSet<int> Reposted { get; } = new();
 
     public HashSet<int> ViewedStories { get; } = new();
+
+    [JsonIgnore]
+    public HashSet<int> StoryHearts { get; } = new();
 
     public List<ScenePost> Mine { get; } = new();
 
@@ -351,14 +451,21 @@ internal sealed class VybeState
                     state.UsesHandsetIdentity = dto.UsesHandsetIdentity ?? state.UsesHandsetProfile;
                     state.ProfileFacePath = dto.ProfileFacePath ?? string.Empty;
                     state.ProfileBannerPath = dto.ProfileBannerPath ?? string.Empty;
+                    state.FaceZoom = dto.FaceZoom > 0f ? dto.FaceZoom : 1f;
+                    state.FaceFocusX = dto.FaceFocusX == 0f && dto.FaceFocusY == 0f ? 0.5f : dto.FaceFocusX;
+                    state.FaceFocusY = dto.FaceFocusX == 0f && dto.FaceFocusY == 0f ? 0.5f : dto.FaceFocusY;
+                    state.BannerZoom = dto.BannerZoom > 0f ? dto.BannerZoom : 1f;
+                    state.BannerFocusX = dto.BannerFocusX == 0f && dto.BannerFocusY == 0f ? 0.5f : dto.BannerFocusX;
+                    state.BannerFocusY = dto.BannerFocusX == 0f && dto.BannerFocusY == 0f ? 0.5f : dto.BannerFocusY;
                     state.Handle = dto.Handle ?? string.Empty;
                     state.Pronouns = dto.Pronouns ?? string.Empty;
                     state.About = dto.About ?? string.Empty;
                     state.OwnStory = dto.OwnStory ?? string.Empty;
-                    state.Sexuality = dto.Sexuality ?? string.Empty;
                     state.Relationship = dto.Relationship ?? "Rather not say";
                     state.DmsOpen = dto.DmsOpen ?? true;
                     Absorb(state.Genders, dto.Genders);
+                    Absorb(state.Sexualities, dto.Sexualities);
+                    AbsorbJoined(state.Sexualities, dto.Sexuality);
                     Absorb(state.Intents, dto.Intents);
                     state.Intents.RemoveAll(tag => string.Equals(tag, "Sharing", StringComparison.Ordinal));
                     Absorb(state.Tags, dto.Tags);
@@ -368,6 +475,8 @@ internal sealed class VybeState
                     AbsorbKeys(state.StarredChats, dto.StarredChats);
                     AbsorbKeys(state.HiddenChats, dto.HiddenChats);
                     AbsorbKeys(state.JoinedGroups, dto.JoinedGroups);
+                    AbsorbKeys(state.KeptPosts, dto.KeptPosts);
+                    AbsorbKeys(state.KeptShots, dto.KeptShots);
                     state.NearbyDiscovery = dto.NearbyDiscovery;
                     state.DatingDiscovery = dto.DatingDiscovery;
                     if (dto.PeopleFindVybe is not null)
@@ -452,11 +561,18 @@ internal sealed class VybeState
                 UsesHandsetIdentity = UsesHandsetIdentity,
                 ProfileFacePath = ProfileFacePath,
                 ProfileBannerPath = ProfileBannerPath,
+                FaceZoom = FaceZoom,
+                FaceFocusX = FaceFocusX,
+                FaceFocusY = FaceFocusY,
+                BannerZoom = BannerZoom,
+                BannerFocusX = BannerFocusX,
+                BannerFocusY = BannerFocusY,
                 Handle = Handle,
                 Pronouns = Pronouns,
                 About = About,
                 OwnStory = OwnStory,
-                Sexuality = Sexuality,
+                Sexuality = string.Join(", ", Sexualities),
+                Sexualities = Sexualities.ToArray(),
                 Relationship = Relationship,
                 DmsOpen = DmsOpen,
                 Genders = Genders.ToArray(),
@@ -468,6 +584,8 @@ internal sealed class VybeState
                 StarredChats = StarredChats.ToArray(),
                 HiddenChats = HiddenChats.ToArray(),
                 JoinedGroups = JoinedGroups.ToArray(),
+                KeptPosts = KeptPosts.ToArray(),
+                KeptShots = KeptShots.ToArray(),
                 NearbyDiscovery = NearbyDiscovery,
                 DatingDiscovery = DatingDiscovery,
                 PeopleFindVybe = PeopleFindVybe,
@@ -501,6 +619,22 @@ internal sealed class VybeState
         Page = ReturnTo == Page ? NightPage.Tabs : ReturnTo;
         ReturnTo = NightPage.Tabs;
         Scroll = Page == NightPage.Tabs ? keep : 0f;
+    }
+
+    public void AdjustPlacing(float zoom, float focusX, float focusY)
+    {
+        zoom = Math.Clamp(zoom, CoverFit.PlaceZoomMin, CoverFit.PlaceZoomMax);
+        if (PickingAvatar)
+        {
+            FaceZoom = zoom;
+            FaceFocusX = focusX;
+            FaceFocusY = focusY;
+            return;
+        }
+
+        BannerZoom = zoom;
+        BannerFocusX = focusX;
+        BannerFocusY = focusY;
     }
 
     public void EnterMode(SocialMode mode)
@@ -801,7 +935,7 @@ internal sealed class VybeState
             Roster.Add(new ScenePerson(id, person.Id, person.DisplayName.Length > 0 ? person.DisplayName : "Someone",
                 handle, person.World.Length > 0 ? person.World : person.PhoneNumber, string.Empty, person.IsMutual, 0,
                 false, WashOf(id),
-                Array.Empty<string>(), Array.Empty<string>(), person.AvatarUrl));
+                Array.Empty<string>(), Array.Empty<string>(), person.AvatarUrl, TimeZoneId: person.TimeZoneId));
             if (person.IsMutual)
             {
                 Connected.Add(id);
@@ -1058,6 +1192,22 @@ internal sealed class VybeState
         target.AddRange(source);
     }
 
+    private static void AbsorbJoined(List<string> target, string? joined)
+    {
+        if (target.Count > 0 || string.IsNullOrWhiteSpace(joined))
+        {
+            return;
+        }
+
+        foreach (var part in joined.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!target.Contains(part))
+            {
+                target.Add(part);
+            }
+        }
+    }
+
     public static string PearlTalkKey(string id) => "p:" + id;
 
     public static string LocalTalkKey(int id) => "l:" + id.ToString(CultureInfo.InvariantCulture);
@@ -1138,6 +1288,18 @@ internal sealed class VybeState
 
         public string? ProfileBannerPath { get; set; }
 
+        public float FaceZoom { get; set; }
+
+        public float FaceFocusX { get; set; }
+
+        public float FaceFocusY { get; set; }
+
+        public float BannerZoom { get; set; }
+
+        public float BannerFocusX { get; set; }
+
+        public float BannerFocusY { get; set; }
+
         public string? Handle { get; set; }
 
         public string? Pronouns { get; set; }
@@ -1147,6 +1309,8 @@ internal sealed class VybeState
         public string? OwnStory { get; set; }
 
         public string? Sexuality { get; set; }
+
+        public string[]? Sexualities { get; set; }
 
         public string? Relationship { get; set; }
 
@@ -1179,6 +1343,10 @@ internal sealed class VybeState
         public string[]? HiddenChats { get; set; }
 
         public string[]? JoinedGroups { get; set; }
+
+        public string[]? KeptPosts { get; set; }
+
+        public string[]? KeptShots { get; set; }
 
         public int[]? SavedPosts { get; set; }
 
@@ -1272,7 +1440,7 @@ internal sealed class VybeState
 internal readonly record struct ScenePerson(
     int Id, string GateId, string Name, string Handle, string World, string Line, bool Online, int Photos, bool NightOnly,
     Vector4 Wash, string[] Intents, string[] Tags, string AvatarUrl = "", string Gender = "", string Sexuality = "",
-    string Relationship = "", bool? DmsOpen = null, bool PlusMember = false);
+    string Relationship = "", bool? DmsOpen = null, bool PlusMember = false, string TimeZoneId = "");
 
 internal readonly record struct ScenePost(
     int Id, string Author, int AuthorId, string When, string Body, string Place, bool ConnectionsOnly, int Likes,
@@ -1303,9 +1471,9 @@ internal static class SceneBook
         "Female", "Male", "Nonbinary", "Genderfluid", "Transgender", "Female+", "Male+", "Femboy",
     };
 
-    public static readonly string[] Sexuality =
+    public static readonly string[] Sexualities =
     {
-        "Straight", "Gay", "Lesbian", "Bi", "Pan", "Asexual", "Demisexual",
+        "Straight", "Gay", "Lesbian", "Bi", "Pan", "Asexual", "Demisexual", "Demiromantic",
     };
 
     public static readonly string[] Relationships =

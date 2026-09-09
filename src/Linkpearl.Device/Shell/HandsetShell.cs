@@ -56,7 +56,7 @@ public sealed class HandsetShell
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
         DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteStack router,
         ITalk talk, IReadOnlyList<IApplet> applets, IWifeSync wife, NoticeLedger notices, IWeatherOracle weather,
-        bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio)
+        bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks)
     {
         this.clock = clock;
         this.game = game;
@@ -68,7 +68,7 @@ public sealed class HandsetShell
         this.hub = hub;
         this.router = router;
         apps = LifeApps(applets);
-        appsDrawer = new AppsDrawer(apps, hub, preferences, glass, talk, RememberLaunchSeat);
+        appsDrawer = new AppsDrawer(apps, hub, preferences, glass, talk, notices, RememberLaunchSeat);
         search = new UniversalSearchOverlay(pearl, talk, hub);
         this.notices = notices;
         control = new ControlCenter(notices);
@@ -94,12 +94,13 @@ public sealed class HandsetShell
         }
 
         studio = new StudioSurface(clock, game, pearl, talk, hub, weather, preferences, development, badges, notices,
-            profile, LaunchStudioApplet, (origin, hint) => LaunchStudioApplet("music", origin, hint), audio, radio, glass);
+            profile, LaunchStudioApplet, (origin, hint) => LaunchStudioApplet("music", origin, hint), audio, radio, marks,
+            glass);
     }
 
     public bool ConsumePocket()
     {
-        var ready = pocketRequest;
+        var ready = pocketRequest || game.TakePocketCue();
         pocketRequest = false;
         return ready;
     }
@@ -127,6 +128,8 @@ public sealed class HandsetShell
     {
         var scale = outerFrame.Scale;
         var hush = preferences.Hushed(game.IsInDuty || game.IsInCutscene);
+        banner.Observe(pearl.Current, talk, clock, notices, hush);
+        banner.Capture(outerFrame, screen, hub, notices);
         var statusHeight = StatusStrip.Height(scale);
         StatusStrip.Draw(outerFrame, screen, HandsetClockText.Format(clock, preferences),
             game.Character.WorldName, preferences.ShowWorld, preferences.ShowMarks);
@@ -163,7 +166,8 @@ public sealed class HandsetShell
                         !recents.IsOpen && !quickApps.IsOpen;
         var canSwipe = showPager && !awayFromHomeDash &&
                        !studio.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld()) &&
-                       !appsDrawer.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld());
+                       !appsDrawer.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld()) &&
+                       !banner.BlocksPager;
         var swiped = appsDock.CaptureSwipe(outerFrame.Input, swipe, scale, canSwipe);
         var handleTapped = showPager && appsDock.ConsumeHandle(outerFrame.Input, screen, scale);
         appsDock.Advance(outerFrame.DeltaSeconds, preferences.ReduceMotion);
@@ -281,10 +285,9 @@ public sealed class HandsetShell
         ApplyStudioNudge();
         ApplyAppPageNudge();
 
-        banner.Observe(pearl.Current, talk, clock, notices, hush);
         search.Draw(outerFrame.Paint, outerFrame.Text, textField, outerFrame.Input, outerFrame.Theme, screen, scale);
         recents.Draw(outerFrame, screen, router, apps, preferences, clock, ResumeRecent);
-        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, talk, clock, wife,
+        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, talk, clock, wife, game,
             allowStrip: !search.IsOpen && !recents.IsOpen);
         if (controlResult.Recents || router.TakeRecents())
         {
@@ -324,7 +327,8 @@ public sealed class HandsetShell
         }
         SoftKeyBar.Paint(outerFrame.Paint, outerFrame.Theme, outerFrame.Input, screen, scale, canGoBack);
         banner.Draw(outerFrame, screen, hub, notices);
-        quickApps.Draw(outerFrame, screen, preferences, preferences.ReduceMotion, LaunchQuickApp, OpenQuickCustomize);
+        quickApps.Draw(outerFrame, screen, preferences, preferences.ReduceMotion, LaunchQuickApp, OpenQuickCustomize,
+            notices, talk, preferences.Hushed(game.IsInDuty || game.IsInCutscene));
 
         if (handleTapped || swiped)
         {
@@ -416,7 +420,7 @@ public sealed class HandsetShell
             recents.Close();
             quickApps.Close();
             outerFrame.Router.Home();
-            OpenDestination(opened, section, talkId, profileId, noticeId);
+            OpenDestination(opened, section, talkId, profileId, noticeId, hub.TakeLabel());
         }
 
         if (hub.TryTakeSearch())
@@ -459,10 +463,9 @@ public sealed class HandsetShell
             scroll.Jump(focusY);
         }
 
-        ScrollState.DrawIndicator(outerFrame.Paint, outerFrame.Theme, destArea, contentHeight, scroll.Offset, scale);
-
-        var wheelDelta = !overlayOpen && outerFrame.Input.IsHovering(clip) ? outerFrame.Input.ScrollDelta : 0f;
-        scroll.Update(contentHeight, destArea.Height, wheelDelta, scale);
+        _ = clip;
+        _ = scale;
+        scroll.Apply(outerFrame, destArea, contentHeight, live: !overlayOpen);
     }
 
     private void DrawStudio(in AppletFrame outerFrame, Rect studioArea, bool overlayOpen)
@@ -484,10 +487,7 @@ public sealed class HandsetShell
             return;
         }
 
-        ScrollState.DrawIndicator(outerFrame.Paint, outerFrame.Theme, studioArea, height, studioScroll.Offset,
-            outerFrame.Scale);
-        var wheel = !overlayOpen && outerFrame.Input.IsHovering(studioArea) ? outerFrame.Input.ScrollDelta : 0f;
-        studioScroll.Update(height, studioArea.Height, wheel, outerFrame.Scale);
+        studioScroll.Apply(outerFrame, studioArea, height, live: !overlayOpen);
     }
 
     private static bool BeginPageClip(in AppletFrame frame, Rect glass, Rect page)
@@ -820,6 +820,13 @@ public sealed class HandsetShell
 
     private void GoBack(in AppletFrame outerFrame)
     {
+        if (studio.HuntOpen)
+        {
+            studio.DismissHunt();
+            textField.Release();
+            return;
+        }
+
         if (studio.Back())
         {
             return;
@@ -840,6 +847,7 @@ public sealed class HandsetShell
         if (search.IsOpen)
         {
             search.Close();
+            textField.Release();
             return;
         }
 
@@ -1016,7 +1024,7 @@ public sealed class HandsetShell
     }
 
     private void OpenDestination(DestinationTab tab, int section, string talkId = "", string profileId = "",
-        string noticeId = "", bool remember = true)
+        string noticeId = "", string label = "", bool remember = true)
     {
         if (remember)
         {
@@ -1071,6 +1079,13 @@ public sealed class HandsetShell
             destination is ISectionedDestination panes)
         {
             panes.ShowSection(section);
+        }
+
+        if (tab == DestinationTab.Settings && label.Length > 0 &&
+            destinationsByTab.TryGetValue(DestinationTab.Settings, out var settings) &&
+            settings is SettingsDestination book)
+        {
+            book.RevealTopic(label);
         }
 
         if (noticeId.Length > 0 && destinationsByTab.TryGetValue(DestinationTab.Home, out var home) &&

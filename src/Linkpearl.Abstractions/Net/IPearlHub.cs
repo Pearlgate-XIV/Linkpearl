@@ -17,7 +17,8 @@ public readonly record struct PearlPerson(
     bool IsMutual,
     string AvatarUrl,
     string Race = "",
-    string World = "");
+    string World = "",
+    string TimeZoneId = "");
 
 public readonly record struct PearlStory(
     string AuthorId,
@@ -54,7 +55,11 @@ public readonly record struct PearlPost(
     string QuoteOf,
     string QuoteAuthor,
     string QuoteBody,
-    PearlMedia[] Media);
+    PearlMedia[] Media,
+    string Destination = "",
+    string ContentRating = "",
+    string[]? Descriptors = null,
+    string[]? Hashtags = null);
 
 public readonly record struct PearlComment(string Author, string Body, string When, bool Mine);
 

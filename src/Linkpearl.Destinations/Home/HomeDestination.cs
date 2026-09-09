@@ -125,7 +125,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             return profile.DrawOverlay(frame);
         }
 
-        var header = stack.Take(frame.Units(162f));
+        var header = stack.Take(frame.Units(178f));
         DrawBanner(frame, new Rect(new Vector2(frame.Content.Min.X, frame.Content.Min.Y),
             new Vector2(frame.Content.Max.X, header.Max.Y)));
         DrawHeader(frame, header, snapshot);
@@ -157,8 +157,8 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
 
         frame.Paint.PushClip(area);
-        var crop = CoverFit.Uv(texture.Size, area.Size);
-        frame.Paint.Image(texture, area, crop.Min, crop.Max, Vector4.One);
+        CoverFit.Placed(texture.Size, area, display.BannerZoom, display.BannerFocus, out var dest, out var crop);
+        frame.Paint.Image(texture, dest, crop.Min, crop.Max, Vector4.One);
         var wash = frame.Theme.Palette.SurfaceSunken;
         frame.Paint.Fill(area, wash with { W = 0.22f });
         frame.Paint.FillGradient(area.BottomSlice(area.Height * 0.55f), wash with { W = 0.08f },

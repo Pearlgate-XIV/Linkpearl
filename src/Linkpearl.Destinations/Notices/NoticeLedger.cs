@@ -58,6 +58,45 @@ public sealed class NoticeLedger : INoticeTray
         return tray.Count;
     }
 
+    public int AppBadge(string appId, ITalk talk)
+    {
+        if (appId.Length == 0)
+        {
+            return 0;
+        }
+
+        if (string.Equals(appId, "pearlchat", StringComparison.Ordinal))
+        {
+            return Math.Max(0, talk.UnreadTotal);
+        }
+
+        var kind = KindOf(appId);
+        if (kind is not { } match)
+        {
+            return 0;
+        }
+
+        var count = 0;
+        for (var index = 0; index < tray.Count; index++)
+        {
+            if (tray[index].Kind == match)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static NoticeKind? KindOf(string appId) => appId switch
+    {
+        "friends" => NoticeKind.People,
+        "music" => NoticeKind.Music,
+        "announcements" => NoticeKind.Announcement,
+        "calendar" => NoticeKind.Calendar,
+        _ => null,
+    };
+
     public void Ingest(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
         var unread = talk.UnreadTotal + snapshot.UnreadTotal;
@@ -151,6 +190,20 @@ public sealed class NoticeLedger : INoticeTray
         seen.Add(id);
         Keep(new GlassNotice(id, NoticeKind.Calendar, title.Length > 0 ? title : "Calendar",
             Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, itemId));
+    }
+
+    public void PostMusic(string stationId, string title, string detail, IClock clock)
+    {
+        var target = stationId.Trim();
+        if (target.Length == 0)
+        {
+            return;
+        }
+
+        var id = "music:live:" + target + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        seen.Add(id);
+        Keep(new GlassNotice(id, NoticeKind.Music, title.Length > 0 ? title : "Live",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
     }
 
     public void Dismiss(string id)

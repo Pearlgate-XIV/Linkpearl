@@ -69,7 +69,7 @@ public sealed class AppStoreApplet : IApplet
     private void DrawSearch(in AppletFrame frame, Rect field)
     {
         frame.Paint.Fill(field, frame.Theme.Palette.SurfaceRaised with { W = 0.55f }, field.Height * 0.42f);
-        var type = field.Inset(new Edges(frame.Units(28f), 0f, frame.Units(10f), 0f));
+        var type = field.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(10f), frame.Units(4f)));
         var next = frame.TextField.Draw("appstore-search", type, query, "Search apps");
         if (!string.Equals(next, query, StringComparison.Ordinal))
         {
@@ -124,12 +124,7 @@ public sealed class AppStoreApplet : IApplet
 
         var used = visible.Count * (rowH + gap);
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(body) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            scroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        scroll = Math.Clamp(scroll, 0f, MathF.Max(0f, used - body.Height));
+        ScrollSlider.Apply(frame, body, ref scroll, used);
     }
 
     private void DrawListing(in AppletFrame frame, Rect row, AppSpec spec)

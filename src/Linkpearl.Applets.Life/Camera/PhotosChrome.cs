@@ -1,5 +1,6 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
+using Linkpearl.Layout;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Applets.Life.Camera;
@@ -15,11 +16,7 @@ internal static class PhotosChrome
 
     public static void Wheel(in AppletFrame frame, Rect area, ref float scroll, float content)
     {
-        if (frame.Input.IsHovering(area) && frame.Input.ScrollDelta != 0f)
-        {
-            scroll = Math.Clamp(scroll - frame.Input.ScrollDelta * frame.Units(18f), 0f,
-                MathF.Max(0f, content - area.Height));
-        }
+        ScrollSlider.Apply(frame, area, ref scroll, content);
     }
 
     public static void Cover(in AppletFrame frame, Rect area, ITextureHandle texture)

@@ -253,7 +253,9 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         }
     }
 
-    public void ToggleStationLike(string stationId)
+    public void ToggleStationLike(string stationId) => ToggleStationLike(stationId, 0);
+
+    public void ToggleStationLike(string stationId, int shownCount)
     {
         var id = BareStationId(stationId);
         if (id.Length == 0)
@@ -262,14 +264,20 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
         }
 
         bool liked;
+        bool hub;
         lock (gate)
         {
             liked = !StationLikedLocked(id);
-            ApplyLikeLocked(id, liked, StationLikesLocked(id) + (liked ? 1 : -1));
+            var current = Math.Max(StationLikesLocked(id), Math.Max(0, shownCount));
+            ApplyLikeLocked(id, liked, current + (liked ? 1 : -1));
             SaveBookLocked();
+            hub = rows.Any(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
         }
 
-        _ = Task.Run(() => PushLikeAsync(id, liked));
+        if (hub)
+        {
+            _ = Task.Run(() => PushLikeAsync(id, liked));
+        }
     }
 
     public void Dispose()

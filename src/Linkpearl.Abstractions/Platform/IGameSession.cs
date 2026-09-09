@@ -101,6 +101,12 @@ public interface IGameSession
 
     string ItemName(uint itemId);
 
+    void OpenGroupPose();
+
+    void CuePocket();
+
+    bool TakePocketCue();
+
     event Action? LoggedIn;
 
     event Action? LoggedOut;

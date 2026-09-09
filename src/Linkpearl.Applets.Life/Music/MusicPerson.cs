@@ -1,5 +1,6 @@
 using Linkpearl.Audio;
 using Linkpearl.Net;
+using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Music;
 
@@ -14,14 +15,16 @@ internal readonly record struct MusicPerson(
     bool Live,
     string StreamUrl,
     int Listeners,
-    bool Mine);
+    bool Mine,
+    string TimeZoneId = "");
 
 internal static class MusicRoster
 {
     public static string SelfId(PearlSnapshot pearl) =>
         pearl.MeId.Length > 0 ? pearl.MeId : "me";
 
-    public static MusicPerson Self(MusicState state, PearlSnapshot pearl, bool broadcasting, string shownName = "")
+    public static MusicPerson Self(MusicState state, PearlSnapshot pearl, bool broadcasting, string shownName = "",
+        string timeZoneId = "")
     {
         var role = state.Dj ? "DJ" : state.Venue ? "Venue" : "Listener";
         var name = shownName.Length > 0 ? shownName : (state.DisplayName.Length > 0 ? state.DisplayName : "Listener");
@@ -36,7 +39,8 @@ internal static class MusicRoster
             broadcasting,
             string.Empty,
             0,
-            true);
+            true,
+            timeZoneId);
     }
 
     public static MusicPerson FromLive(CommunityStation station) =>
@@ -51,7 +55,8 @@ internal static class MusicRoster
             station.Live,
             station.ListenUrl,
             station.Listeners,
-            false);
+            false,
+            WorldZones.PickFor("live:" + station.Id));
 
     public static MusicPerson FromPearl(PearlPerson person) =>
         new(
@@ -65,14 +70,16 @@ internal static class MusicRoster
             false,
             string.Empty,
             0,
-            false);
+            false,
+            person.TimeZoneId);
 
     public static IReadOnlyList<MusicPerson> Directory(MusicState state, PearlSnapshot pearl,
         IReadOnlyList<CommunityStation> live, IReadOnlyList<CommunityStation> mine,
-        IReadOnlyList<CommunityStation> listed, bool broadcasting, string shownName = "")
+        IReadOnlyList<CommunityStation> listed, bool broadcasting, string shownName = "",
+        string timeZoneId = "")
     {
         var byId = new Dictionary<string, MusicPerson>(StringComparer.OrdinalIgnoreCase);
-        var self = Self(state, pearl, broadcasting, shownName);
+        var self = Self(state, pearl, broadcasting, shownName, timeZoneId);
         byId[self.Id] = self;
         AddLive(byId, live);
         AddLive(byId, mine);

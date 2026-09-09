@@ -12,6 +12,7 @@ internal sealed class StudioMusicDock
     private readonly IHandsetAudio audio;
     private readonly IPublicRadio radio;
     private readonly IPearlHub pearl;
+    private readonly IStationMarks marks;
     private readonly Action<Rect, string> openStations;
     private bool volumeOpen;
     private bool volumeDrag;
@@ -19,16 +20,19 @@ internal sealed class StudioMusicDock
     private string waveId = string.Empty;
     private float playedSeconds;
     private float scroll;
+    private bool markBusy;
 
-    public StudioMusicDock(IHandsetAudio audio, IPublicRadio radio, IPearlHub pearl, Action<Rect, string> openStations)
+    public StudioMusicDock(IHandsetAudio audio, IPublicRadio radio, IPearlHub pearl, IStationMarks marks,
+        Action<Rect, string> openStations)
     {
         this.audio = audio;
         this.radio = radio;
         this.pearl = pearl;
+        this.marks = marks;
         this.openStations = openStations;
     }
 
-    public bool BlocksPager => volumeOpen || volumeDrag;
+    public bool BlocksPager => volumeOpen || volumeDrag || markBusy;
 
     public static float Height(in AppletFrame frame) => frame.Units(90f);
 
@@ -36,8 +40,11 @@ internal sealed class StudioMusicDock
     {
         if (row.Width < 8f || row.Height < 8f)
         {
+            markBusy = false;
             return;
         }
+
+        markBusy = false;
 
         var genres = radio.Genres;
         var genre = ResolveGenre(genres);
@@ -76,8 +83,25 @@ internal sealed class StudioMusicDock
         var next = Rect.FromSize(new Vector2(prev.Max.X + gap, transport.Min.Y), new Vector2(small, transport.Height));
         var shuffle = Rect.FromSize(new Vector2(next.Max.X + gap, transport.Min.Y),
             new Vector2(small, transport.Height));
-        var wave = new Rect(new Vector2(pane.Min.X, titles.Max.Y + frame.Units(4f)),
-            new Vector2(pane.Max.X, transport.Min.Y - frame.Units(3f)));
+        var liveFollow = marks.CanFollow(now);
+        var follow = liveFollow
+            ? Rect.FromSize(new Vector2(pane.Max.X - small, transport.Min.Y), new Vector2(small, transport.Height))
+            : Rect.Empty;
+        var save = Rect.FromSize(
+            new Vector2((liveFollow ? follow.Min.X : pane.Max.X) - (liveFollow ? gap + small : small),
+                transport.Min.Y), new Vector2(small, transport.Height));
+        var like = Rect.FromSize(new Vector2(save.Min.X - gap - small, transport.Min.Y),
+            new Vector2(small, transport.Height));
+        var markBand = new Rect(like.Min, liveFollow ? follow.Max : save.Max);
+        var markLane = new Rect(new Vector2(like.Min.X - gap, speaker.Max.Y + frame.Units(2f)),
+            new Vector2(pane.Max.X, pane.Max.Y));
+        if (markLane.Width < markBand.Width || markLane.Height < markBand.Height)
+        {
+            markLane = Pad(frame, markBand);
+        }
+
+        var wave = new Rect(new Vector2(art.Max.X, titles.Max.Y + frame.Units(4f)),
+            new Vector2(row.Max.X, transport.Min.Y - frame.Units(3f)));
         var sliderH = frame.Units(28f);
         var slider = volumeOpen
             ? new Rect(new Vector2(pane.Min.X, pane.Center.Y - sliderH * 0.5f),
@@ -110,9 +134,59 @@ internal sealed class StudioMusicDock
             DrawGhost(frame, prev, StudioMark.Prev, muted);
             DrawGhost(frame, next, StudioMark.Next, muted);
             DrawGhost(frame, shuffle, StudioMark.Shuffle, muted);
+            var liked = tuned && marks.Liked(id);
+            var saved = tuned && marks.Saved(id);
+            var followed = tuned && marks.Followed(id);
+            var likes = tuned ? marks.LikeCount(now) : 0;
+            DrawMark(frame, like, "♥", null, liked ? new Vector4(1f, 0.36f, 0.56f, 1f) : muted, liked);
+            if (likes > 0)
+            {
+                frame.Text.DrawIn(like.Inset(new Edges(0f, like.Height * 0.52f, 0f, 0f)), likes.ToString(),
+                    new TextStyle(FontRole.Caption, liked ? new Vector4(1f, 0.36f, 0.56f, 1f) : muted,
+                        TextAlign.Center, scale: 0.72f));
+            }
+            DrawMark(frame, save, "★", "music-save.png", saved ? new Vector4(1f, 0.84f, 0.18f, 1f) : muted, saved);
+            if (liveFollow)
+            {
+                DrawMark(frame, follow, "+", "music-follow.png",
+                    followed ? new Vector4(0.28f, 0.82f, 0.42f, 1f) : muted, followed);
+            }
         }
 
         DrawGhost(frame, speaker, StudioMark.Speaker, volumeOpen ? accent : muted);
+
+        var onMarks = !volumeOpen && markLane.Width > 4f &&
+                      (frame.Input.IsHovering(markLane) || markLane.Contains(frame.Input.Pointer));
+        markBusy = onMarks || volumeDrag;
+        if (onMarks)
+        {
+            if (id.Length > 0 && TapMark(frame, like, markLane))
+            {
+                marks.ToggleLike(now);
+                frame.Input.Claim(markLane);
+                return;
+            }
+
+            if (id.Length > 0 && TapMark(frame, save, markLane))
+            {
+                marks.ToggleSave(now);
+                frame.Input.Claim(markLane);
+                return;
+            }
+
+            if (liveFollow && id.Length > 0 && TapMark(frame, follow, markLane))
+            {
+                marks.ToggleFollow(now);
+                frame.Input.Claim(markLane);
+                return;
+            }
+
+            frame.Input.Claim(markLane);
+            if (frame.Input.WasClicked(markLane))
+            {
+                return;
+            }
+        }
 
         if (Hit(frame, speaker))
         {
@@ -155,9 +229,14 @@ internal sealed class StudioMusicDock
             return;
         }
 
+        if (onMarks)
+        {
+            return;
+        }
+
         if (Hit(frame, art) || Hit(frame, titles))
         {
-            openStations(row, NowPlayingPlace(genre, id));
+            openStations(row, now.Live ? "player" : RadioPlace(genre, id));
             return;
         }
 
@@ -170,23 +249,35 @@ internal sealed class StudioMusicDock
         {
             volumeOpen = false;
             volumeDrag = false;
-            return;
-        }
-
-        if (frame.Input.ConsumeClick(row))
-        {
-            openStations(row, "radio");
         }
     }
 
-    private static string NowPlayingPlace(string genre, string stationId)
+    private string RadioPlace(string genre, string stationId)
     {
         if (stationId.Length == 0)
         {
             return genre.Length == 0 ? "radio" : "search:" + genre;
         }
 
-        return "search:" + genre + "|" + stationId;
+        var found = FindPublic(stationId);
+        var named = found is { Genre.Length: > 0 } ? found.Value.Genre : genre;
+        return "search:" + named + "|" + stationId;
+    }
+
+    private PublicStation? FindPublic(string stationId)
+    {
+        var genres = radio.Genres;
+        for (var genre = 0; genre < genres.Count; genre++)
+        {
+            var stations = radio.Stations(genres[genre]);
+            var index = IndexOf(stations, stationId);
+            if (index >= 0)
+            {
+                return stations[index];
+            }
+        }
+
+        return null;
     }
 
     private void Toggle(IReadOnlyList<PublicStation> stations)
@@ -319,7 +410,7 @@ internal sealed class StudioMusicDock
             return;
         }
 
-        var count = Math.Clamp((int)(area.Width / frame.Units(3.2f)), 18, 56);
+        var count = Math.Clamp((int)(area.Width / frame.Units(3.2f)), 18, 120);
         var pitch = area.Width / count;
         var barW = MathF.Max(1.2f, pitch * 0.52f);
         var mid = area.Center.Y;
@@ -493,6 +584,18 @@ internal sealed class StudioMusicDock
             Rect.FromSize(cell.Center - new Vector2(side * 0.36f), new Vector2(side * 0.72f)), mark, ink);
     }
 
+    private static bool TapMark(in AppletFrame frame, Rect cell, Rect lane)
+    {
+        if (cell.Width < 4f || cell.Height < 4f || lane.Height < 4f)
+        {
+            return false;
+        }
+
+        var column = new Rect(new Vector2(cell.Min.X - frame.Units(3f), lane.Min.Y),
+            new Vector2(cell.Max.X + frame.Units(3f), lane.Max.Y));
+        return frame.Input.WasClicked(column);
+    }
+
     private static bool Hit(in AppletFrame frame, Rect cell)
     {
         if (cell.Width < 4f || cell.Height < 4f)
@@ -501,6 +604,53 @@ internal sealed class StudioMusicDock
         }
 
         return frame.Input.ConsumeClick(cell);
+    }
+
+    private static Rect Pad(in AppletFrame frame, Rect cell)
+    {
+        if (cell.Width < 4f || cell.Height < 4f)
+        {
+            return cell;
+        }
+
+        var grow = frame.Units(4f);
+        return new Rect(cell.Min - new Vector2(grow), cell.Max + new Vector2(grow));
+    }
+
+    private static void DrawMark(in AppletFrame frame, Rect cell, string fallback, string? glyph, Vector4 ink,
+        bool on)
+    {
+        if (cell.Width < 4f || cell.Height < 4f)
+        {
+            return;
+        }
+
+        var hover = frame.Input.IsHovering(Pad(frame, cell));
+        var side = MathF.Min(cell.Width, cell.Height);
+        if (hover || on)
+        {
+            frame.Paint.FillCircle(cell.Center, side * 0.54f, new Vector4(1f, 1f, 1f, on ? 0.16f : 0.10f));
+        }
+
+        if (glyph is { Length: > 0 } &&
+            TryGlyph(frame, cell.Inset(cell.Width * 0.12f), glyph, ink))
+        {
+            return;
+        }
+
+        frame.Text.DrawIn(cell, fallback, new TextStyle(FontRole.BodyStrong, ink, TextAlign.Center));
+    }
+
+    private static bool TryGlyph(in AppletFrame frame, Rect area, string file, Vector4 ink)
+    {
+        var texture = frame.Textures.FromFile(AppIconCatalog.Glyph(frame.Paths, file));
+        if (texture is not { IsReady: true } || texture.Handle == 0)
+        {
+            return false;
+        }
+
+        frame.Paint.Image(texture, area, ink);
+        return true;
     }
 
     private static int IndexOf(IReadOnlyList<PublicStation> stations, string id)

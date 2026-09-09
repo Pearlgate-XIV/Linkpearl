@@ -4,6 +4,24 @@ using Linkpearl.Modules;
 
 namespace Linkpearl.Preferences;
 
+public readonly struct StillCrop
+{
+    public readonly string Path;
+    public readonly float Zoom;
+    public readonly float FocusX;
+    public readonly float FocusY;
+
+    public StillCrop(string path, float zoom, float focusX, float focusY)
+    {
+        Path = path ?? string.Empty;
+        Zoom = zoom;
+        FocusX = focusX;
+        FocusY = focusY;
+    }
+
+    public static StillCrop Cover(string path) => new(path, 1f, 0.5f, 0.5f);
+}
+
 public static class HandsetLook
 {
     public static string Name(DisplayPreferences display, string linked, bool patron)
@@ -23,6 +41,25 @@ public static class HandsetLook
 
     public static string BannerFile(HostPaths paths, DisplayPreferences display) =>
         display.UsingBanner ? BannerFiles.Absolute(paths, display.CustomBannerFile) : string.Empty;
+
+    public static StillCrop CopyPortrait(HostPaths paths, string previous, BadgeBook book, string stem)
+    {
+        var dest = ReplaceStill(paths, previous, PortraitFile(paths, book), stem);
+        if (dest.Length == 0)
+        {
+            return StillCrop.Cover("");
+        }
+
+        return new StillCrop(dest, book.PortraitZoom, book.PortraitFocus.X, book.PortraitFocus.Y);
+    }
+
+    public static StillCrop CopyBanner(HostPaths paths, string previous, DisplayPreferences display, string stem)
+    {
+        var dest = ReplaceStill(paths, previous, BannerFile(paths, display), stem);
+        return dest.Length == 0
+            ? StillCrop.Cover("")
+            : new StillCrop(dest, display.BannerZoom, display.BannerFocus.X, display.BannerFocus.Y);
+    }
 
     public static string ReplaceStill(HostPaths paths, string previous, string source, string stem)
     {

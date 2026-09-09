@@ -62,6 +62,68 @@ internal static class MusicChrome
         frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, GroundHi, TextAlign.Center));
     }
 
+    public static bool FollowAction(in AppletFrame frame, Rect area, bool on)
+    {
+        if (on)
+        {
+            Plate(frame, area, frame.Units(12f));
+            frame.Text.DrawIn(area, "Following", new TextStyle(FontRole.BodyStrong, Ink, TextAlign.Center));
+        }
+        else
+        {
+            Primary(frame, area, "Follow");
+        }
+
+        return frame.Input.ConsumeClick(area);
+    }
+
+    public static bool FollowChip(in AppletFrame frame, Rect area, bool on)
+    {
+        frame.Paint.Fill(area, on ? CardHi : Purple, frame.Units(10f));
+        frame.Text.DrawIn(area, on ? "Following" : "Follow",
+            new TextStyle(FontRole.CaptionStrong, on ? Ink : GroundHi, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
+    }
+
+    public static void ListenerCount(in AppletFrame frame, Rect area, int count, bool compact = false)
+    {
+        if (area.Width < 8f || area.Height < 8f)
+        {
+            return;
+        }
+
+        var n = Math.Max(0, count);
+        var label = compact ? CompactCount(n) : n == 1 ? "1 listening" : n + " listening";
+        frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
+        var icon = area.LeftSlice(MathF.Min(area.Height, frame.Units(22f)));
+        DrawEars(frame.Paint, icon, Ink);
+        frame.Text.DrawIn(area.Inset(new Edges(icon.Width, 0f, frame.Units(6f), 0f)), label,
+            new TextStyle(compact ? FontRole.CaptionStrong : FontRole.Caption, Ink, TextAlign.Center));
+    }
+
+    public static float ListenerWidth(in AppletFrame frame, int count, bool compact)
+    {
+        var n = Math.Max(0, count);
+        var text = compact ? CompactCount(n) : n == 1 ? "1 listening" : n + " listening";
+        return frame.Units(compact ? 36f : 28f) + text.Length * frame.Units(6.2f);
+    }
+
+    private static string CompactCount(int count) =>
+        count >= 1000000 ? (count / 1000000f).ToString("0.#") + "M" :
+        count >= 1000 ? (count / 1000f).ToString("0.#") + "k" : count.ToString();
+
+    private static void DrawEars(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var c = area.Center;
+        var s = MathF.Min(area.Width, area.Height) * 0.28f;
+        var stroke = MathF.Max(1.2f, s * 0.28f);
+        paint.StrokeCircle(c + new Vector2(0f, s * 0.12f), s * 0.72f, ink, stroke);
+        paint.Fill(Rect.FromSize(c + new Vector2(-s * 1.05f, -s * 0.18f), new Vector2(s * 0.42f, s * 0.72f)), ink,
+            s * 0.18f);
+        paint.Fill(Rect.FromSize(c + new Vector2(s * 0.63f, -s * 0.18f), new Vector2(s * 0.42f, s * 0.72f)), ink,
+            s * 0.18f);
+    }
+
     public static void LiveMark(in AppletFrame frame, Rect area)
     {
         frame.Paint.Fill(area, Live with { W = 0.22f }, frame.Units(8f));
@@ -145,6 +207,22 @@ internal static class MusicChrome
         var see = area.RightSlice(frame.Units(58f));
         Kicker(frame, area.Inset(new Edges(0f, 0f, see.Width + frame.Units(8f), 0f)), title);
         return SeeAll(frame, see);
+    }
+
+    public static bool ToggleRow(in AppletFrame frame, Rect area, string title, string detail, bool on)
+    {
+        Plate(frame, area, frame.Units(12f));
+        var inset = area.Inset(frame.Units(10f));
+        var knob = inset.RightSlice(frame.Units(52f)).Inset(new Edges(0f, frame.Units(6f)));
+        var copy = inset.Inset(new Edges(0f, 0f, knob.Width + frame.Units(8f), 0f));
+        frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(16f)), title,
+            new TextStyle(FontRole.CaptionStrong, Ink));
+        frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(14f)), detail,
+            new TextStyle(FontRole.Caption, Mute));
+        frame.Paint.Fill(knob, on ? Purple : CardHi, knob.Height * 0.5f);
+        frame.Text.DrawIn(knob, on ? "On" : "Off",
+            new TextStyle(FontRole.CaptionStrong, on ? GroundHi : Mute, TextAlign.Center));
+        return frame.Input.ConsumeClick(area);
     }
 
     public static bool SoftPill(in AppletFrame frame, Rect area, string label, bool on)
@@ -269,23 +347,9 @@ internal static class MusicChrome
     public static void Wheel(in AppletFrame frame, Rect area, MusicState state, float content)
     {
         var max = MathF.Max(0f, content - area.Height);
-        if (!frame.Input.IsHovering(area) && !(frame.Input.IsHeld() && area.Contains(frame.Input.Pointer)))
-        {
-            state.Scroll = Math.Clamp(state.Scroll, 0f, max);
-            return;
-        }
-
-        if (frame.Input.ScrollDelta != 0f)
-        {
-            state.Scroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        if (frame.Input.IsHeld() && MathF.Abs(frame.Input.PointerDelta.Y) > frame.Units(22f))
-        {
-            state.Scroll -= frame.Input.PointerDelta.Y;
-        }
-
-        state.Scroll = Math.Clamp(state.Scroll, 0f, max);
+        var next = state.Scroll;
+        ScrollSlider.Steer(frame, area, ref next, max);
+        state.Scroll = Math.Clamp(next, 0f, max);
     }
 
     public static void Wave(in AppletFrame frame, Rect area, float pulse, Vector4 ink)
@@ -486,17 +550,42 @@ internal static class MusicChrome
 
     public static void Rail(in AppletFrame frame, Rect track, float offset, float content, float view)
     {
+        var dragging = false;
+        DragRail(frame, track, ref offset, content, view, ref dragging);
+    }
+
+    public static void DragRail(in AppletFrame frame, Rect track, ref float offset, float content, float view,
+        ref bool dragging)
+    {
         if (content <= view + 1f || track.Height < 8f)
         {
+            dragging = false;
             return;
         }
 
-        frame.Paint.Fill(track, Faint, frame.Units(3f));
-        var thumbH = MathF.Max(frame.Units(18f), track.Height * (view / content));
+        var max = MathF.Max(0f, content - view);
+        var thumbH = MathF.Max(frame.Units(22f), track.Height * (view / content));
         var travel = MathF.Max(0f, track.Height - thumbH);
-        var y = track.Min.Y + travel * (offset / MathF.Max(content - view, 1f));
-        frame.Paint.Fill(Rect.FromSize(new Vector2(track.Min.X, y), new Vector2(track.Width, thumbH)), Purple,
-            frame.Units(3f));
+        var y = track.Min.Y + travel * (offset / MathF.Max(max, 1f));
+        var thumb = Rect.FromSize(new Vector2(track.Min.X, y), new Vector2(track.Width, thumbH));
+        var radius = MathF.Min(track.Width, frame.Units(6f)) * 0.5f;
+        frame.Paint.Fill(track, Faint, radius);
+        frame.Paint.Fill(thumb, Purple, radius);
+        var input = frame.Input;
+        if (input.WasPressed(track) || (dragging && input.IsHeld()))
+        {
+            dragging = true;
+            var t = travel <= 0f ? 0f : (input.Pointer.Y - track.Min.Y - thumbH * 0.5f) / travel;
+            offset = Math.Clamp(t, 0f, 1f) * max;
+            input.Claim(track);
+            input.ConsumeClick(track);
+            return;
+        }
+
+        if (!input.IsHeld())
+        {
+            dragging = false;
+        }
     }
 
     public static bool MixFader(in AppletFrame frame, Rect area, string label, float value, ref bool dragging,

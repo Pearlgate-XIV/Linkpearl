@@ -6,6 +6,7 @@ using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
+using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Vybe;
 
@@ -35,7 +36,7 @@ public sealed partial class VybeApplet
         DrawDiscoverPanes(frame, stack.Take(frame.Units(34f)), night);
         if (night)
         {
-            var next = DrawPlusSplit(frame, stack.Take(frame.Units(32f)), "People", state.PeoplePlus, night);
+            var next = DrawPlusSplit(frame, stack.Take(frame.Units(56f)), "People", state.PeoplePlus, night);
             if (next != state.PeoplePlus)
             {
                 state.PeoplePlus = next;
@@ -287,7 +288,8 @@ public sealed partial class VybeApplet
         var stack = new Stack(body, StackAxis.Vertical, frame.Units(3f));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(20f)), card.Name,
             new TextStyle(FontRole.Title, FindInk));
-        var sub = card.World + " • " + card.DataCenter;
+        var zone = card.TimeZoneId.Length > 0 ? card.TimeZoneId : WorldZones.PickFor(card.GateId);
+        var sub = card.World + " • " + card.DataCenter + " • " + ZoneClock.Line(zone, display.Use24HourClock);
         if (card.Age > 0 && card.DatingOn && state.DatingDiscovery)
         {
             sub = card.Age.ToString(CultureInfo.InvariantCulture) + " • " + sub;
@@ -381,7 +383,7 @@ public sealed partial class VybeApplet
     {
         var person = new ScenePerson(card.Id, card.GateId, card.Name, card.Handle, card.World, card.Bio, card.Online,
             4, card.PlusOnly, new Vector4(0f, 0f, 0f, 0.42f), card.LookingFor, card.Interests, card.Avatar,
-            PlusMember: card.PlusMember);
+            PlusMember: card.PlusMember, TimeZoneId: card.TimeZoneId);
         DrawPersonCover(frame, area, person, night);
         frame.Paint.FillGradient(area, new Vector4(0f, 0f, 0f, 0.04f), new Vector4(0f, 0f, 0f, 0.55f),
             GradientAxis.Vertical);
@@ -588,7 +590,8 @@ public sealed partial class VybeApplet
         {
             state.Roster.Add(new ScenePerson(card.Id, card.GateId, card.Name, card.Handle, card.World, card.Bio,
                 card.Online, 4, false, new Vector4(0.20f, 0.22f, 0.28f, 1f), card.LookingFor, card.Interests,
-                card.Avatar, card.Gender, card.Sexuality, card.Relationship, card.DmsOpen));
+                card.Avatar, card.Gender, card.Sexuality, card.Relationship, card.DmsOpen,
+                TimeZoneId: card.TimeZoneId));
         }
 
         state.PersonKey = card.GateId;

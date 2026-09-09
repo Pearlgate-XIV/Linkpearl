@@ -46,6 +46,10 @@ public static class CoverFit
         return new CoverUv(new Vector2(0f, padY), new Vector2(1f, 1f - padY));
     }
 
+    public const float PlaceZoomMin = 0.28f;
+
+    public const float PlaceZoomMax = 4.5f;
+
     // zoom 1 is cover-fit. focus is the image-space center of the window, 0–1.
     public static CoverUv Framed(Vector2 sourceSize, Vector2 targetSize, float zoom, Vector2 focus)
     {
@@ -59,6 +63,31 @@ public static class CoverFit
         var cy = Math.Clamp(focus.Y, height * 0.5f, 1f - height * 0.5f);
         return new CoverUv(new Vector2(cx - width * 0.5f, cy - height * 0.5f),
             new Vector2(cx + width * 0.5f, cy + height * 0.5f));
+    }
+
+    // zoom below 1 letterboxes toward contain-fit; zoom at or above 1 is a framed cover crop.
+    public static void Placed(Vector2 sourceSize, Rect dest, float zoom, Vector2 focus, out Rect draw,
+        out CoverUv uv)
+    {
+        if (sourceSize.X <= 0f || sourceSize.Y <= 0f || dest.IsEmpty)
+        {
+            draw = dest;
+            uv = CoverUv.Full;
+            return;
+        }
+
+        if (zoom >= 1f)
+        {
+            draw = dest;
+            uv = Framed(sourceSize, dest.Size, zoom, focus);
+            return;
+        }
+
+        var cover = Uv(sourceSize, dest.Size);
+        var fit = Contained(sourceSize, dest);
+        var t = Math.Clamp((zoom - PlaceZoomMin) / (1f - PlaceZoomMin), 0f, 1f);
+        draw = new Rect(Vector2.Lerp(fit.Min, dest.Min, t), Vector2.Lerp(fit.Max, dest.Max, t));
+        uv = new CoverUv(Vector2.Lerp(Vector2.Zero, cover.Min, t), Vector2.Lerp(Vector2.One, cover.Max, t));
     }
 
     public static Rect InscribedSquare(Rect area)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
+using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Vybe;
 
@@ -292,7 +293,8 @@ internal readonly record struct PeopleCard(
     string Sexuality = "",
     bool DmsOpen = true,
     bool PlusOnly = false,
-    bool PlusMember = false);
+    bool PlusMember = false,
+    string TimeZoneId = "");
 
 internal static class PeopleFindBook
 {
@@ -832,7 +834,8 @@ internal static class PeopleFindBook
         return new PeopleCard(VybeState.StableId(gate), gate, name, handle, world, DataCenterOf(world), job,
             [job], role, race, looking, interests, bio, rp, rpTypes, walk, activity, online, play, comm, social,
             dating, status, age, datingOn, nearby, VybeDemo.FaceOf(paths, face.Length > 0 ? face : key),
-            facts.Gender, facts.Sexuality, facts.DmsOpen, plusOnly, plusOnly || PlusFaces(key));
+            facts.Gender, facts.Sexuality, facts.DmsOpen, plusOnly, plusOnly || PlusFaces(key),
+            WorldZones.PickFor(key));
     }
 
     private static bool PlusFaces(string key) =>

@@ -94,6 +94,26 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
+    public void RevealTopic(string title)
+    {
+        if (title.Length == 0 || string.Equals(title, "Settings", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (string.Equals(title, "Credits", StringComparison.OrdinalIgnoreCase))
+        {
+            creditsOpen = true;
+            return;
+        }
+
+        creditsOpen = false;
+        unfolded.Clear();
+        unfolded.Add(title);
+        searchPinned = title;
+        hasFocusY = false;
+    }
+
     public bool CanGoBack => profile.OverlayOpen || creditsOpen || part != Part.None || flipped;
 
     public bool Back()
@@ -392,7 +412,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var gold = frame.Theme.Palette.WarmAccent;
         frame.Paint.Fill(field, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, field.Height * 0.5f);
         frame.Paint.Stroke(field, gold with { W = 0.40f }, frame.Theme.Metrics.Hairline, field.Height * 0.5f);
-        var type = field.Inset(new Edges(frame.Units(28f), 0f, frame.Units(8f), 0f));
+        var type = field.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(8f), frame.Units(4f)));
         listQuery = frame.TextField.Draw("settings-list-search", type, listQuery, "Search settings");
         SearchMark.Draw(frame.Paint, field.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)), gold);
     }
@@ -704,7 +724,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             frame.Units(8f) + OptionHeight(frame) + frame.Units(8f) + OptionHeight(frame);
         if (display.UsingBanner)
         {
-            extra += frame.Units(8f) + OptionHeight(frame);
+            extra += frame.Units(8f) + frame.Units(72f) + frame.Units(8f) + OptionHeight(frame) +
+                frame.Units(8f) + OptionHeight(frame);
         }
 
         if (bannerError.Length > 0)
@@ -902,7 +923,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         DrawLetteringRow(frame, stack.Take(frame.Units(36f)));
         frame.Text.DrawWrapped(stack.Take(frame.Units(40f)),
-            "Name, honorific, photo, banner, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and VYBE.",
+            "Name, honorific, photo, banner, time zone, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and VYBE.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
@@ -1024,8 +1045,17 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         ActionRow(frame, ref stack, "Set banner", "Use the picture path above.", TryBringBanner);
         if (display.UsingBanner)
         {
+            DrawBannerPreview(frame, stack.Take(frame.Units(72f)));
+            ActionRow(frame, ref stack, "Place banner", "Drag and zoom what Home shows.", profile.OpenBanner);
             ActionRow(frame, ref stack, "Remove banner", "Clear the Home banner picture.", () =>
             {
+                var previous = display.CustomBannerFile;
+                if (previous.Length > 0)
+                {
+                    textures.ForgetFile(BannerFiles.Absolute(paths, previous));
+                }
+
+                display.ResetBannerCrop();
                 display.CustomBannerFile = string.Empty;
                 BannerFiles.Clear(paths);
                 bannerError = string.Empty;
@@ -1055,12 +1085,45 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
+    private void DrawBannerPreview(in AppletFrame frame, Rect area)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        CardChrome.DrawGold(frame, area);
+        var inner = area.Inset(frame.Units(2f));
+        frame.Paint.Fill(inner, frame.Theme.Palette.SurfaceRaised, frame.Units(8f));
+        var texture = textures.FromFile(BannerFiles.Absolute(paths, display.CustomBannerFile));
+        if (texture is { IsReady: true })
+        {
+            CoverFit.Placed(texture.Size, inner, display.BannerZoom, display.BannerFocus, out var dest, out var uv);
+            frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, frame.Units(8f));
+        }
+
+        frame.Paint.Stroke(inner, gold with { W = 0.42f }, frame.Theme.Metrics.Hairline, frame.Units(8f));
+        if (frame.Input.ConsumeClick(inner))
+        {
+            profile.OpenBanner();
+        }
+    }
+
     private void TryBringBanner()
     {
         if (BannerFiles.TryImport(paths, display.BannerDraft, out var fileName))
         {
+            var previous = display.CustomBannerFile;
+            if (previous.Length > 0)
+            {
+                textures.ForgetFile(BannerFiles.Absolute(paths, previous));
+                if (!string.Equals(previous, fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    BannerFiles.Delete(paths, previous);
+                }
+            }
+
+            display.ResetBannerCrop();
             display.CustomBannerFile = fileName;
+            textures.ForgetFile(BannerFiles.Absolute(paths, fileName));
             bannerError = string.Empty;
+            profile.OpenBanner();
             return;
         }
 

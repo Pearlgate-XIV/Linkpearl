@@ -1,5 +1,6 @@
 using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Music;
+using Linkpearl.Audio;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,5 +14,6 @@ public sealed class MusicModule : ILinkpearlModule
     {
         services.AddSingleton<MusicApplet>();
         services.AddSingleton<IApplet>(provider => provider.GetRequiredService<MusicApplet>());
+        services.AddSingleton<IStationMarks>(provider => provider.GetRequiredService<MusicApplet>());
     }
 }

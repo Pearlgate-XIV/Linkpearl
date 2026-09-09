@@ -7,6 +7,7 @@ using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
+using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Music;
 
@@ -294,6 +295,9 @@ public sealed partial class MusicApplet
             case MusicPage.Settings:
                 DrawSettings(frame, area);
                 break;
+            case MusicPage.FollowList:
+                DrawFollowList(frame, area);
+                break;
             default:
                 DrawUnified(frame, area);
                 break;
@@ -330,17 +334,20 @@ public sealed partial class MusicApplet
             new Vector2(area.Max.X, area.Max.Y - floorPad));
         var stage = new Rect(new Vector2(area.Min.X, top.Max.Y + gap),
             new Vector2(area.Max.X, actions.Min.Y - even));
-        var title = stage.TopSlice(frame.Units(24f));
+        var title = stage.TopSlice(live ? frame.Units(32f) : frame.Units(24f));
         var detail = new Rect(new Vector2(stage.Min.X, title.Max.Y + frame.Units(2f)),
             new Vector2(stage.Max.X, title.Max.Y + frame.Units(18f)));
         var heading = title;
+        var face = Rect.Empty;
         if (live)
         {
             var flagSide = frame.Units(28f) * 1.15f;
             var flag = Rect.FromSize(
                 new Vector2(title.Max.X - flagSide, title.Center.Y - flagSide * 0.5f),
                 new Vector2(flagSide));
-            heading = title.Inset(new Edges(0f, 0f, flag.Width + frame.Units(6f), 0f));
+            face = CoverFit.InscribedSquare(title.LeftSlice(title.Height));
+            heading = title.Inset(new Edges(face.Width + frame.Units(8f), 0f, flag.Width + frame.Units(6f), 0f));
+            DrawDjFace(frame, face, liveStation);
             MusicChrome.ReportFlag(frame, flag);
             if (MusicChrome.LiveMarkHit(frame, flag))
             {
@@ -358,7 +365,8 @@ public sealed partial class MusicApplet
             DrawLiveLike(frame, like, id);
         }
 
-        MusicChrome.Title(frame, heading, name.Length > 0 ? name : "Nothing playing");
+        var shown = live && liveStation.Host.Length > 0 ? liveStation.Host : name;
+        MusicChrome.Title(frame, heading, shown.Length > 0 ? shown : "Nothing playing");
         var tags = live ? ShownStationGenre(liveStation) : string.Empty;
         if (tags.Length == 0 && live && OwnStation(liveStation))
         {
@@ -369,13 +377,33 @@ public sealed partial class MusicApplet
         var caption = failed
             ? audio.Notice
             : live && liveStation.Host.Length > 0
-                ? liveStation.Host
+                ? name
                 : blurb.Length > 0 ? blurb : "Pick a station";
         frame.Text.DrawEllipsized(detail, caption, new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        if (live && !face.IsEmpty && frame.Input.ConsumeClick(face))
+        {
+            OpenLiveProfile(liveStation);
+            return;
+        }
+
+        var listeners = NowListenerCount(live, liveStation);
+        var listen = Rect.FromSize(new Vector2(detail.Min.X, detail.Max.Y + frame.Units(4f)),
+            new Vector2(MathF.Min(detail.Width, MusicChrome.ListenerWidth(frame, listeners, false)),
+                frame.Units(20f)));
+        if (!failed && id.Length > 0)
+        {
+            MusicChrome.ListenerCount(frame, listen, listeners);
+        }
+        else
+        {
+            listen = Rect.Empty;
+        }
+
         var tagBand = Rect.Empty;
+        var tagTop = listen.Height > 0 ? listen.Max.Y + frame.Units(2f) : detail.Max.Y + frame.Units(2f);
         if (!failed && tags.Length > 0)
         {
-            tagBand = Rect.FromSize(new Vector2(detail.Min.X, detail.Max.Y + frame.Units(2f)),
+            tagBand = Rect.FromSize(new Vector2(detail.Min.X, tagTop),
                 new Vector2(detail.Width, frame.Units(16f)));
             frame.Text.DrawEllipsized(tagBand, tags,
                 new TextStyle(FontRole.CaptionStrong, MusicChrome.Purple));
@@ -400,6 +428,11 @@ public sealed partial class MusicApplet
             if (live)
             {
                 DrawLiveStationMarks(frame, art, liveStation, id);
+            }
+            else if (id.Length > 0 && frame.Input.ConsumeClick(art))
+            {
+                ShowNowPlayingInGenre();
+                return;
             }
         }
 
@@ -428,14 +461,13 @@ public sealed partial class MusicApplet
         DrawLiveLike(frame, heart, tuneId.Length > 0 ? tuneId : station.Id);
         var saveId = !string.IsNullOrEmpty(tuneId) ? tuneId : station.Id;
         var saved = saveId.Length > 0 &&
-                    (state.Favorites.Contains(saveId) || state.Favorites.Contains(station.Id));
+                    (state.IsFavorite(saveId) || state.IsFavorite(station.Id));
         var following = state.FollowsStationId(station.Id);
         MusicChrome.SaveStar(frame, save, saved);
         MusicChrome.FollowPerson(frame, follow, following);
         if (MusicChrome.LiveMarkHit(frame, save) && saveId.Length > 0)
         {
-            state.ToggleFavorite(saveId);
-            state.Save(paths);
+            ToggleSave(audio.Now);
         }
 
         if (MusicChrome.LiveMarkHit(frame, follow) && !string.IsNullOrEmpty(station.Id))
@@ -461,6 +493,64 @@ public sealed partial class MusicApplet
             new TextStyle(FontRole.Caption, color, TextAlign.Center));
         TapStationLike(frame, area, id);
     }
+
+    private void DrawDjFace(in AppletFrame frame, Rect area, CommunityStation station)
+    {
+        if (OwnStation(station))
+        {
+            DrawProfileFace(frame, area, SharedName());
+            return;
+        }
+
+        var box = CoverFit.InscribedSquare(area);
+        var radius = MathF.Min(box.Width, box.Height) * 0.5f;
+        var texture = StationTexture(frame, station.ArtPath);
+        if (texture is { IsReady: true })
+        {
+            frame.Paint.ImageRounded(texture, box, Vector2.Zero, Vector2.One, Vector4.One, radius);
+        }
+        else
+        {
+            var name = station.Host.Length > 0 ? station.Host : station.Name;
+            frame.Paint.FillCircle(box.Center, radius, MusicChrome.Purple);
+            frame.Text.DrawIn(box, name.Length > 0 ? name[..1].ToUpperInvariant() : "♪",
+                new TextStyle(FontRole.CaptionStrong, MusicChrome.GroundHi, TextAlign.Center));
+        }
+
+        frame.Paint.StrokeCircle(box.Center, radius, MusicChrome.Ink, MathF.Max(0.8f, frame.Units(1.05f)));
+    }
+
+    private void OpenLiveProfile(CommunityStation station)
+    {
+        if (OwnStation(station))
+        {
+            OpenTab(MusicTab.Profile);
+            return;
+        }
+
+        var id = MusicState.BareStationId(station.Id);
+        ShowProfile(id.Length > 0 ? "live:" + id : station.Id);
+    }
+
+    private int NowListenerCount(bool live, CommunityStation liveStation)
+    {
+        var tuned = audio.Phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering
+            or HandsetAudioPhase.Paused;
+        if (live)
+        {
+            return ShownListeners(liveStation.Listeners, tuned);
+        }
+
+        if (LocatePublic(audio.Now.Id, audio.Now.Title, audio.Now.StreamUrl, out _, out var station))
+        {
+            return ShownListeners(station.Listeners, tuned);
+        }
+
+        return ShownListeners(0, tuned);
+    }
+
+    private static int ShownListeners(int reported, bool tuned) =>
+        Math.Max(0, reported) + (tuned ? 1 : 0);
 
     private void DrawReportSheet(in AppletFrame frame, Rect area)
     {
@@ -492,9 +582,13 @@ public sealed partial class MusicApplet
         var ready = state.ReportReason > 0 && !desk.Busy;
         MusicChrome.Primary(frame, send, desk.Busy ? "Sending…" : "Submit");
         // The player already claimed the screen so this sheet can sit on top. ConsumeClick
-        // would fail; a raw click on Cancel (or the dimmer) drops the report.
-        if (frame.Input.WasClicked(cancel) ||
-            (!card.Contains(frame.Input.Pointer) && frame.Input.WasClicked(area)))
+        // would fail; a raw click on Cancel (or the dimmer) drops the report. Skip the
+        // same release that opened the sheet so it does not blink shut.
+        var dismiss = !state.ReportFresh &&
+            (frame.Input.WasClicked(cancel) ||
+             (!card.Contains(frame.Input.Pointer) && frame.Input.WasClicked(area)));
+        state.ReportFresh = false;
+        if (dismiss)
         {
             frame.TextField.Release();
             CloseReport();
@@ -531,11 +625,10 @@ public sealed partial class MusicApplet
                 now.ArtPath));
         }
 
-        MusicChrome.Primary(frame, save, state.Favorites.Contains(now.Id) ? "Saved" : "Save station");
+        MusicChrome.Primary(frame, save, state.IsFavorite(now.Id) ? "Saved" : "Save station");
         if (Tap(frame, save))
         {
-            state.ToggleFavorite(now.Id);
-            state.Save(paths);
+            ToggleSave(now);
         }
     }
 
@@ -629,64 +722,105 @@ public sealed partial class MusicApplet
 
     private void DrawGenreList(in AppletFrame frame, Rect area)
     {
+        if ((state.RevealStationId.Length > 0 || state.RevealStationTitle.Length > 0) &&
+            LocatePublic(state.RevealStationId, state.RevealStationTitle, audio.Now.StreamUrl, out var found, out _))
+        {
+            state.GenreIndex = found;
+        }
+
         publicRadio.Ensure(state.Genre);
         var stations = publicRadio.Stations(state.Genre);
-        RevealGenreStation(frame, stations);
-        var stack = MusicChrome.BeginSheet(frame, area, state, frame.Units(10f));
+        var gap = frame.Units(10f);
+        var stack = new Stack(area, StackAxis.Vertical, gap);
+        if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), state.Genre))
+        {
+            state.Back();
+            return;
+        }
+
+        WarmStationArt(stations);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)),
+            publicRadio.Busy && stations.Count == 0
+                ? "Finding stations…"
+                : stations.Count + " stations",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+
+        var actions = stack.Take(frame.Units(40f));
+        var play = actions.LeftSlice(actions.Width * 0.5f).Inset(new Edges(0f, 0f, frame.Units(4f), 0f));
+        var save = actions.RightSlice(actions.Width * 0.5f).Inset(new Edges(frame.Units(4f), 0f, 0f, 0f));
+        MusicChrome.Primary(frame, play, "Play all");
+        MusicChrome.Plate(frame, save, frame.Units(12f));
+        frame.Text.DrawIn(save, "Save playlist",
+            new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink, TextAlign.Center));
+        if (Tap(frame, play) && stations.Count > 0)
+        {
+            PlayMarks(stations.Select(MusicStationMark.From).ToArray(), 0);
+            return;
+        }
+
+        if (Tap(frame, save) && stations.Count > 0)
+        {
+            var list = state.CreatePlaylist(state.Genre);
+            foreach (var station in stations)
+            {
+                list.Put(MusicStationMark.From(station));
+            }
+
+            state.Save(paths);
+            OpenPlaylist(list.Id);
+            return;
+        }
+
+        var pane = stack.Remaining;
+        DrawGenreStationPane(frame, pane, stations);
+    }
+
+    private void DrawGenreStationPane(in AppletFrame frame, Rect area, IReadOnlyList<PublicStation> stations)
+    {
+        if (area.Height < frame.Units(32f))
+        {
+            return;
+        }
+
+        if (stations.Count == 0)
+        {
+            var empty = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+            DrawHint(frame, ref empty,
+                publicRadio.Busy ? "Loading this genre…" : "No stations in " + state.Genre + " yet.");
+            return;
+        }
+
+        var rowH = frame.Units(52f);
+        var gap = frame.Units(10f);
+        var stride = rowH + gap;
+        var list = area;
+        var content = stations.Count * stride;
+        var pinning = RevealGenreStation(frame, stations, list.Height);
+        var scroll = state.Scroll;
+        if (!pinning)
+        {
+            MusicChrome.Wheel(frame, list, state, content);
+            scroll = state.Scroll;
+        }
+
+        state.ScrollRailHeld = false;
+        state.Scroll = Math.Clamp(scroll, 0f, MathF.Max(0f, content - list.Height));
+        var dragging = frame.Input.IsHeld() && MathF.Abs(frame.Input.PointerDelta.Y) > 4f;
+        var first = (int)(state.Scroll / stride);
+        var last = Math.Min(stations.Count - 1, first + (int)(list.Height / stride) + 1);
+        frame.Paint.PushClip(list);
         try
         {
-            if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), state.Genre))
+            for (var index = Math.Max(0, first); index <= last; index++)
             {
-                state.Back();
-                return;
-            }
-
-            WarmStationArt(stations);
-            frame.Text.DrawIn(stack.Take(frame.Units(16f)),
-                publicRadio.Busy && stations.Count == 0
-                    ? "Finding stations…"
-                    : stations.Count + " stations",
-                new TextStyle(FontRole.Caption, MusicChrome.Mute));
-
-            var actions = stack.Take(frame.Units(40f));
-            var play = actions.LeftSlice(actions.Width * 0.5f).Inset(new Edges(0f, 0f, frame.Units(4f), 0f));
-            var save = actions.RightSlice(actions.Width * 0.5f).Inset(new Edges(frame.Units(4f), 0f, 0f, 0f));
-            MusicChrome.Primary(frame, play, "Play all");
-            MusicChrome.Plate(frame, save, frame.Units(12f));
-            frame.Text.DrawIn(save, "Save playlist",
-                new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink, TextAlign.Center));
-            if (Tap(frame, play) && stations.Count > 0)
-            {
-                PlayMarks(stations.Select(MusicStationMark.From).ToArray(), 0);
-                return;
-            }
-
-            if (Tap(frame, save) && stations.Count > 0)
-            {
-                var list = state.CreatePlaylist(state.Genre);
-                foreach (var station in stations)
-                {
-                    list.Put(MusicStationMark.From(station));
-                }
-
-                state.Save(paths);
-                OpenPlaylist(list.Id);
-                return;
-            }
-
-            if (stations.Count == 0)
-            {
-                DrawHint(frame, ref stack,
-                    publicRadio.Busy ? "Loading this genre…" : "No stations in " + state.Genre + " yet.");
-            }
-            else
-            {
-                DrawPublicRows(frame, ref stack, stations, stations.Count);
+                var y = list.Min.Y - state.Scroll + index * stride;
+                var row = Rect.FromSize(new Vector2(list.Min.X, y), new Vector2(list.Width, rowH));
+                DrawPublicRow(frame, row, stations[index], !dragging);
             }
         }
         finally
         {
-            MusicChrome.EndSheet(frame, area, state, ref stack);
+            frame.Paint.PopClip();
         }
     }
 
@@ -1162,7 +1296,8 @@ public sealed partial class MusicApplet
     {
         var people = Roster();
         var person = MusicRoster.Find(people, state.ViewingId) ??
-                     MusicRoster.Self(state, pearl.Current, community.Broadcasting, MarkedName());
+                     MusicRoster.Self(state, pearl.Current, community.Broadcasting, MarkedName(),
+                         display.OwnTimeZoneId);
         var mine = person.Mine ||
                    string.Equals(person.Id, MusicRoster.SelfId(pearl.Current), StringComparison.OrdinalIgnoreCase);
         var stack = MusicChrome.BeginSheet(frame, area, state, frame.Units(10f));
@@ -1196,9 +1331,17 @@ public sealed partial class MusicApplet
             {
                 MusicChrome.Title(frame, copy.TopSlice(frame.Units(26f)), person.Name);
             }
+            var zone = mine ? display.OwnTimeZoneId : WorldZones.ForPerson(person.TimeZoneId, person.Id);
+            var time = ZoneClock.Line(zone, display.Use24HourClock);
+            var handleLine = person.Handle + " · " + person.Role;
+            if (time.Length > 0)
+            {
+                handleLine += " · " + time;
+            }
+
             frame.Text.DrawEllipsized(copy.Inset(new Edges(0f, honor.Length > 0 ? frame.Units(42f) : frame.Units(26f),
                     0f, frame.Units(28f))),
-                person.Handle + " · " + person.Role,
+                handleLine,
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             if (person.Live)
             {
@@ -1206,12 +1349,26 @@ public sealed partial class MusicApplet
             }
 
             var stats = stack.Take(frame.Units(44f));
-            DrawStat(frame, stats.LeftSlice(stats.Width / 3f), state.FollowingCount().ToString(), "Following");
-            DrawStat(frame, stats.Inset(new Edges(stats.Width / 3f, 0f, stats.Width / 3f, 0f)),
-                Math.Max(pearl.Current.Followers, 0).ToString(), "Followers");
+            var followingN = ShownFollowing(person, mine);
+            var followersN = ShownFollowers(person, mine);
+            var followingHit = stats.LeftSlice(stats.Width / 3f);
+            var followersHit = stats.Inset(new Edges(stats.Width / 3f, 0f, stats.Width / 3f, 0f));
+            DrawStat(frame, followingHit, followingN.ToString(), "Following");
+            DrawStat(frame, followersHit, followersN.ToString(), "Followers");
             DrawStat(frame, stats.RightSlice(stats.Width / 3f),
                 mine ? state.Favorites.Count.ToString() : person.Listeners.ToString(),
                 mine ? "Saved" : "Listeners");
+            if (Tap(frame, followingHit))
+            {
+                OpenFollowList(followers: false);
+                return;
+            }
+
+            if (Tap(frame, followersHit))
+            {
+                OpenFollowList(followers: true);
+                return;
+            }
 
             var bio = person.Bio.Length > 0 ? person.Bio : mine
                 ? "Add a short bio so listeners know your sound."
@@ -1257,11 +1414,7 @@ public sealed partial class MusicApplet
             }
 
             var follow = stack.Take(frame.Units(40f));
-            var on = person.Id.StartsWith("live:", StringComparison.Ordinal)
-                ? state.FollowsStationId(person.Id)
-                : state.Following.Contains(person.Id);
-            MusicChrome.Primary(frame, follow, on ? "Following" : "Follow");
-            if (Tap(frame, follow))
+            if (MusicChrome.FollowAction(frame, follow, FollowsProfile(person)))
             {
                 FollowPerson(person);
             }
@@ -1366,12 +1519,25 @@ public sealed partial class MusicApplet
             frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Handle",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             state.Handle = frame.TextField.Draw("music-edit-handle", stack.Take(frame.Units(34f)), state.Handle, "@handle");
+            frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Time zone",
+                new TextStyle(FontRole.Caption, MusicChrome.Mute));
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(22f)),
+                ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock) + "  ·  Settings profile",
+                new TextStyle(FontRole.Caption, MusicChrome.Mute));
             frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Bio",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             state.Bio = frame.TextField.Draw("music-edit-bio", stack.Take(frame.Units(48f)), state.Bio,
                 "A line about your taste");
             MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "GENRES");
             DrawHashtagEditor(frame, stack.Take(frame.Units(118f)));
+            MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "NOTIFICATIONS");
+            if (MusicChrome.ToggleRow(frame, stack.Take(frame.Units(52f)), "Follower notifications",
+                    "When someone you follow goes live", state.FollowNotifications))
+            {
+                state.FollowNotifications = !state.FollowNotifications;
+                state.Save(paths);
+            }
+
             var save = stack.Take(frame.Units(42f));
             MusicChrome.Primary(frame, save, "Save profile");
             if (Tap(frame, save))
@@ -1393,7 +1559,8 @@ public sealed partial class MusicApplet
 
     private void DrawProfileTab(in AppletFrame frame, Rect area)
     {
-        var person = MusicRoster.Self(state, pearl.Current, community.Broadcasting, MarkedName());
+        var person = MusicRoster.Self(state, pearl.Current, community.Broadcasting, MarkedName(),
+            display.OwnTimeZoneId);
         var stack = MusicChrome.BeginSheet(frame, area, state, frame.Units(10f));
         try
         {
@@ -1447,6 +1614,28 @@ public sealed partial class MusicApplet
                 frame.Text.DrawEllipsized(band.BottomSlice(honorH), honor,
                     new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink));
             }
+
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)),
+                ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock),
+                new TextStyle(FontRole.Caption, MusicChrome.Mute));
+
+            var stats = stack.Take(frame.Units(44f));
+            var followingHit = stats.LeftSlice(stats.Width * 0.5f);
+            var followersHit = stats.RightSlice(stats.Width * 0.5f);
+            DrawStat(frame, followingHit, state.FollowingCount().ToString(), "Following");
+            DrawStat(frame, followersHit, Math.Max(pearl.Current.Followers, 0).ToString(), "Followers");
+            if (Tap(frame, followingHit))
+            {
+                OpenFollowList(followers: false);
+                return;
+            }
+
+            if (Tap(frame, followersHit))
+            {
+                OpenFollowList(followers: true);
+                return;
+            }
+
             if (state.Interests.Count > 0)
             {
                 MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "GENRES");
@@ -2006,36 +2195,17 @@ public sealed partial class MusicApplet
             {
                 frame.Paint.Fill(area, MusicChrome.Ground);
             }
-
-            var cover = CoverFit.Uv(texture.Size, area.Size);
-            var fit = CoverFit.Contained(texture.Size, area);
-            var t = (zoom - 0.28f) / (1f - 0.28f);
-            t = Math.Clamp(t, 0f, 1f);
-            var dest = new Rect(Vector2.Lerp(fit.Min, area.Min, t), Vector2.Lerp(fit.Max, area.Max, t));
-            var uvMin = Vector2.Lerp(Vector2.Zero, cover.Min, t);
-            var uvMax = Vector2.Lerp(Vector2.One, cover.Max, t);
-            if (circle)
-            {
-                frame.Paint.ImageRounded(texture, dest, uvMin, uvMax, Vector4.One,
-                    MathF.Min(dest.Width, dest.Height) * 0.5f);
-            }
-            else
-            {
-                frame.Paint.Image(texture, dest, uvMin, uvMax, Vector4.One);
-            }
-
-            return true;
         }
 
-        var crop = CoverFit.Framed(texture.Size, area.Size, zoom, focus);
+        CoverFit.Placed(texture.Size, area, zoom, focus, out var dest, out var crop);
         if (circle)
         {
-            frame.Paint.ImageRounded(texture, area, crop.Min, crop.Max, Vector4.One,
-                MathF.Min(area.Width, area.Height) * 0.5f);
+            frame.Paint.ImageRounded(texture, dest, crop.Min, crop.Max, Vector4.One,
+                MathF.Min(dest.Width, dest.Height) * 0.5f);
             return true;
         }
 
-        frame.Paint.Image(texture, area, crop.Min, crop.Max, Vector4.One);
+        frame.Paint.Image(texture, dest, crop.Min, crop.Max, Vector4.One);
         return true;
     }
 

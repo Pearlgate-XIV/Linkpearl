@@ -32,4 +32,10 @@ internal sealed class SilentInput : IInputProbe
     }
 
     public bool IsClaimed(Rect area) => false;
+
+    public bool PointerClaimed() => false;
+
+    public bool EscapePressed() => false;
+
+    public bool PointerReleased(PointerButton button = PointerButton.Primary) => false;
 }

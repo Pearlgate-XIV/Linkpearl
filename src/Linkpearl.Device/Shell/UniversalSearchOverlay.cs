@@ -41,6 +41,14 @@ public sealed class UniversalSearchOverlay
             return;
         }
 
+        if (input.EscapePressed() ||
+            (input.PointerReleased() && !screen.Contains(input.Pointer)))
+        {
+            Close();
+            textField.Release();
+            return;
+        }
+
         paint.Fill(screen, theme.Palette.SurfaceSunken with { W = 0.92f });
 
         var panel = screen.Inset(scale * 14f).TopSlice(screen.Height - scale * 28f);

@@ -50,6 +50,7 @@ public sealed class DestinationHub
     private string pendingTalk = string.Empty;
     private string pendingProfile = string.Empty;
     private string pendingNotice = string.Empty;
+    private string pendingLabel = string.Empty;
     private string pendingApplet = string.Empty;
     private string pendingAppletHint = string.Empty;
     private bool pending;
@@ -57,13 +58,14 @@ public sealed class DestinationHub
     private bool searchPending;
     private bool menuPending;
 
-    public void Open(DestinationTab tab, int section = 0)
+    public void Open(DestinationTab tab, int section = 0, string label = "")
     {
         pendingTab = tab;
         pendingSection = section;
         pendingTalk = string.Empty;
         pendingProfile = string.Empty;
         pendingNotice = string.Empty;
+        pendingLabel = label ?? string.Empty;
         pending = true;
     }
 
@@ -74,6 +76,7 @@ public sealed class DestinationHub
         pendingTalk = string.Empty;
         pendingProfile = string.Empty;
         pendingNotice = announcementId ?? string.Empty;
+        pendingLabel = string.Empty;
         pending = true;
     }
 
@@ -84,6 +87,7 @@ public sealed class DestinationHub
         pendingTalk = threadId;
         pendingProfile = string.Empty;
         pendingNotice = string.Empty;
+        pendingLabel = string.Empty;
         pending = true;
     }
 
@@ -94,6 +98,7 @@ public sealed class DestinationHub
         pendingTalk = string.Empty;
         pendingProfile = peerId;
         pendingNotice = string.Empty;
+        pendingLabel = string.Empty;
         pending = true;
     }
 
@@ -126,6 +131,13 @@ public sealed class DestinationHub
         pendingProfile = string.Empty;
         pendingNotice = string.Empty;
         return true;
+    }
+
+    public string TakeLabel()
+    {
+        var label = pendingLabel;
+        pendingLabel = string.Empty;
+        return label;
     }
 
     public bool TryTakeApplet(out string appletId, out string routeHint)

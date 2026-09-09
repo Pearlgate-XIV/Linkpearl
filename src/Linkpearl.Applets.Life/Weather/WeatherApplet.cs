@@ -1,6 +1,7 @@
 using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
+using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Time;
@@ -61,12 +62,7 @@ public sealed class WeatherApplet : IApplet
         var content = WeatherChrome.App(frame, page, place, condition, current.IconId, bells, hours, runs,
             NextSky(hours));
         frame.Paint.PopClip();
-        if (frame.Input.IsHovering(inner) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            scroll -= frame.Input.ScrollDelta * frame.Units(28f);
-        }
-
-        scroll = Math.Clamp(scroll, 0f, MathF.Max(0f, content - inner.Height));
+        ScrollSlider.Apply(frame, inner, ref scroll, content);
     }
 
     private string NextSky(IReadOnlyList<WeatherWindow> hours)

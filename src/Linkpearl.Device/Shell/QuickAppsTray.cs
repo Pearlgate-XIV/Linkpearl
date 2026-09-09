@@ -1,8 +1,10 @@
 using Linkpearl.Applets;
+using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
 using Linkpearl.Shell;
+using Linkpearl.Talk;
 
 namespace Linkpearl.Device.Shell;
 
@@ -20,7 +22,7 @@ public sealed class QuickAppsTray
     public void Toggle() => open = !open;
 
     public void Draw(in AppletFrame frame, Rect screen, DisplayPreferences display, bool reduceMotion,
-        Action<string> launch, Action customize)
+        Action<string> launch, Action customize, NoticeLedger notices, ITalk talk, bool hush)
     {
         var speed = reduceMotion ? 14f : 9f;
         var target = open ? 1f : 0f;
@@ -83,6 +85,10 @@ public sealed class QuickAppsTray
             if (id.Length > 0)
             {
                 AppMarks.DrawFace(frame, square.Inset(frame.Units(6f)), id, frame.Input.IsHovering(square));
+                if (!hush)
+                {
+                    AppMarks.DrawCount(frame, square, notices.AppBadge(id, talk));
+                }
                 var spec = AppShelf.Find(id);
                 frame.Text.DrawEllipsized(cell.BottomSlice(label), spec?.Name ?? id,
                     new TextStyle(FontRole.Caption, ink, TextAlign.Center));

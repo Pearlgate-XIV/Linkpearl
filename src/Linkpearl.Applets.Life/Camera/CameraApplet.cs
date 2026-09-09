@@ -1,8 +1,5 @@
-using System.Globalization;
 using Linkpearl.Applets;
-using Linkpearl.Cards;
 using Linkpearl.Geometry;
-using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
@@ -36,7 +33,6 @@ public sealed partial class CameraApplet : IApplet
     private Mode mode = Mode.Page;
     private float scroll;
     private string viewingId = string.Empty;
-    private string lastStill = string.Empty;
     private string place = string.Empty;
     private string folderDraft = string.Empty;
     private string cropSource = string.Empty;
@@ -250,38 +246,54 @@ public sealed partial class CameraApplet : IApplet
 
     private void DrawCamera(in AppletFrame frame)
     {
-        var stack = new Stack(frame.Content.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(10f));
-        frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Camera",
-            new TextStyle(FontRole.Title, PhotosChrome.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Hold the pearl up. The still is a note, not a screenshot.",
-            new TextStyle(FontRole.Caption, PhotosChrome.Mute));
-
-        var finder = stack.Take(frame.Units(160f));
-        CardChrome.DrawGold(frame, finder);
-        var inset = finder.Inset(frame.Units(14f));
-        var zone = game.IsLoggedIn && game.ZoneName.Length > 0 ? game.ZoneName : "No view";
-        var job = game.JobName.Length > 0 ? game.JobName : "—";
-        frame.Text.DrawIn(inset.TopSlice(frame.Units(22f)), zone,
-            new TextStyle(FontRole.Title, PhotosChrome.Ink, TextAlign.Center));
-        frame.Text.DrawIn(inset.Inset(new Edges(0f, frame.Units(28f), 0f, frame.Units(36f))), job,
-            new TextStyle(FontRole.Body, PhotosChrome.Mute, TextAlign.Center));
-        frame.Paint.StrokeCircle(finder.Center + new Vector2(0f, frame.Units(18f)), frame.Units(28f),
-            frame.Theme.Palette.WarmAccent with { W = 0.55f }, frame.Units(2f));
-
-        var shutter = stack.Take(frame.Units(48f));
-        frame.Paint.Fill(shutter, frame.Theme.Palette.Accent, shutter.Height * 0.5f);
-        frame.Text.DrawIn(shutter, "Shutter",
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.AccentInk, TextAlign.Center));
-        if (frame.Input.ConsumeClick(shutter))
+        var body = frame.Content.Inset(frame.Units(18f));
+        if (body.IsEmpty)
         {
-            lastStill = zone + " · " + job + " · " + clock.Now.ToString("HH:mm", CultureInfo.CurrentCulture);
+            return;
         }
 
-        var still = stack.Take(frame.Units(56f));
-        CardChrome.Draw(frame, still);
-        frame.Text.DrawWrapped(still.Inset(frame.Units(12f)),
-            lastStill.Length > 0 ? lastStill : "No still yet.",
-            new TextStyle(FontRole.Caption, PhotosChrome.Mute));
+        var live = game.IsInGpose;
+        var gold = frame.Theme.Palette.WarmAccent;
+        var span = MathF.Min(body.Width, body.Height);
+        var diameter = Math.Clamp(span * 0.58f, frame.Units(132f), frame.Units(188f));
+        var pulse = live
+            ? 0.5f + 0.5f * MathF.Sin(clock.UtcNow.ToUnixTimeMilliseconds() * 0.0024f)
+            : 0f;
+        var grow = live ? 1f + pulse * 0.03f : 1f;
+        var center = new Vector2(body.Center.X, body.Min.Y + body.Height * 0.42f);
+        var radius = diameter * 0.5f * grow;
+
+        var halo = live ? gold with { W = 0.18f + pulse * 0.16f } : PhotosChrome.Tile with { W = 0.92f };
+        frame.Paint.FillCircle(center, radius + frame.Units(14f), halo);
+        frame.Paint.FillCircle(center, radius, new Vector4(0.10f, 0.10f, 0.11f, 1f));
+        frame.Paint.StrokeCircle(center, radius, gold with { W = live ? 0.95f : 0.78f }, frame.Units(3.2f));
+        frame.Paint.StrokeCircle(center, radius * 0.78f, gold with { W = 0.35f }, frame.Units(1.4f));
+        var well = live ? gold with { W = 0.22f + pulse * 0.12f } : new Vector4(0.07f, 0.07f, 0.08f, 1f);
+        frame.Paint.FillCircle(center, radius * 0.58f, well);
+        frame.Paint.StrokeCircle(center, radius * 0.58f, PhotosChrome.Ink with { W = 0.22f }, frame.Units(1.2f));
+        frame.Paint.FillCircle(center, radius * 0.16f, live ? gold : PhotosChrome.Accent);
+        frame.Paint.StrokeCircle(center, radius * 0.16f, PhotosChrome.AccentInk with { W = 0.55f },
+            frame.Units(1.1f));
+
+        var label = Rect.FromSize(
+            new Vector2(body.Min.X, center.Y + radius + frame.Units(18f)),
+            new Vector2(body.Width, frame.Units(28f)));
+        frame.Text.DrawIn(label, live ? "In GPose" : "Open GPose",
+            new TextStyle(FontRole.Title, live ? gold : PhotosChrome.Ink, TextAlign.Center));
+
+        var hit = new Rect(
+            new Vector2(center.X - radius, center.Y - radius),
+            new Vector2(center.X + radius, label.Max.Y));
+        if (frame.Input.IsHovering(hit) && !live)
+        {
+            frame.Paint.StrokeCircle(center, radius + frame.Units(4f), gold with { W = 0.45f }, frame.Units(1.6f));
+        }
+
+        if (frame.Input.ConsumeClick(hit) && !live)
+        {
+            game.OpenGroupPose();
+            game.CuePocket();
+        }
     }
 
     private enum Pane : byte

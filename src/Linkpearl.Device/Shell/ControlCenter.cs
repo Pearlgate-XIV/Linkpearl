@@ -8,7 +8,6 @@ using Linkpearl.Geometry;
 using Linkpearl.Modules;
 using Linkpearl.Input;
 using Linkpearl.Layout;
-using Linkpearl.Media;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
@@ -50,6 +49,10 @@ public sealed class ControlCenter
     private float grabY;
     private float grabReveal;
     private float reveal;
+    private string noticeHoldId = string.Empty;
+    private float noticeGrabY;
+    private float noticeLift;
+    private bool noticeDrag;
 
     public ControlCenter(NoticeLedger ledger)
     {
@@ -78,10 +81,12 @@ public sealed class ControlCenter
         draggingVolume = false;
         sheetTrack = false;
         sheetDrag = false;
+        DropNoticeHold();
     }
 
     public ControlCenterResult Draw(in AppletFrame frame, Rect screen, DisplayPreferences display,
-        PearlSnapshot snapshot, ITalk talk, IClock clock, IWifeSync wife, bool allowStrip = true)
+        PearlSnapshot snapshot, ITalk talk, IClock clock, IWifeSync wife, IGameSession game,
+        bool allowStrip = true)
     {
         var scale = frame.Scale;
         var input = frame.Input;
@@ -132,7 +137,7 @@ public sealed class ControlCenter
             DrawClockRow(frame, live, stack.Take(scale * 36f), scale, clock, pending);
             DrawHeroPair(paint, text, live, stack.Take(scale * 56f), scale, snapshot, wife, pending,
                 ShadeGlyph(frame, "wifi.png"));
-            DrawRoundPanel(paint, text, live, stack.Take(scale * 152f), scale, display, pending);
+            DrawRoundPanel(frame, live, stack.Take(scale * 152f), scale, display, game, pending);
             ShadeSlider.Draw(paint, live, theme, stack.Take(scale * 46f), display.Brightness, ref draggingLight,
                 value => display.Brightness = value, sun: true, ShadeGlyph(frame, "bright-low.png"),
                 ShadeGlyph(frame, "bright-high.png"));
@@ -206,43 +211,39 @@ public sealed class ControlCenter
             }, wifiIcon);
     }
 
-    private static void DrawRoundPanel(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area,
-        float scale, DisplayPreferences display, Pending pending)
+    private static void DrawRoundPanel(in AppletFrame frame, IInputProbe input, Rect area,
+        float scale, DisplayPreferences display, IGameSession game, Pending pending)
     {
-        paint.Fill(area, Glass, scale * 28f);
+        frame.Paint.Fill(area, Glass, scale * 28f);
         var inner = area.Inset(new Edges(scale * 8f, scale * 10f, scale * 8f, scale * 16f));
         var cellW = inner.Width / 4f;
         var cellH = inner.Height / 2f;
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 0, 0), scale, Glyph.Bell, "Notices",
-            display.ShowMarks, () => display.ShowMarks = !display.ShowMarks);
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 1, 0), scale, Glyph.Moon, "Quiet",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 0), scale, Glyph.Moon, "Quiet",
             display.Quiet, () => display.Quiet = !display.Quiet);
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 2, 0), scale, Glyph.Mini, "Mini",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 0), scale, Glyph.Bell, "Duties",
+            display.QuietWhenBusy, () => display.QuietWhenBusy = !display.QuietWhenBusy);
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 0), scale, Glyph.Mini, "Mini",
             false, () => pending.Result = pending.Result with { Pocket = true });
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 3, 0), scale, Glyph.Camera, "Camera",
-            false, () => pending.Result = pending.Result with { AppletId = "camera" });
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 0, 1), scale, Glyph.Music, "Music",
-            false, () => pending.Result = pending.Result with { AppletId = "music" });
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 1, 1), scale, Glyph.After, "Afterdark",
-            display.Appearance == AppearanceMode.Night, () =>
-                display.Appearance = display.Appearance switch
-                {
-                    AppearanceMode.Day => AppearanceMode.Night,
-                    AppearanceMode.Night => AppearanceMode.FollowClock,
-                    _ => AppearanceMode.Day,
-                });
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 2, 1), scale, Glyph.Glow, "Honorific",
-            display.ShowWorld, () => display.ShowWorld = !display.ShowWorld);
-        DrawRound(paint, text, input, CellBox(inner, cellW, cellH, 3, 1), scale, Glyph.Rotate, "Rotate",
-            display.AutoRotate, () =>
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 0), scale, Glyph.Camera, "GPose",
+            game.IsInGpose, () =>
             {
-                display.AutoRotate = !display.AutoRotate;
-                if (!display.AutoRotate)
+                if (!game.IsInGpose)
                 {
-                    display.Landscape = false;
+                    game.OpenGroupPose();
                 }
+
+                game.CuePocket();
+                pending.Result = pending.Result with { Pocket = true };
             });
-        DrawGrip(paint, area.BottomSlice(scale * 12f), Muted);
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 1), scale, Glyph.Glow, "Icons",
+            display.ShowMarks, () => display.ShowMarks = !display.ShowMarks);
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 1), scale, Glyph.Globe, "World",
+            display.ShowWorld, () => display.ShowWorld = !display.ShowWorld);
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 1), scale, Glyph.Friend, "Portraits",
+            display.StayInPortraits, () => display.StayInPortraits = !display.StayInPortraits);
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 1), scale, Glyph.Film, "Scenes",
+            display.TuckForCutscenes, () => display.TuckForCutscenes = !display.TuckForCutscenes);
+        DrawGrip(frame.Paint, area.BottomSlice(scale * 12f), Muted);
     }
 
     private static void DrawHero(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area, float scale,
@@ -319,31 +320,10 @@ public sealed class ControlCenter
                 break;
             }
 
-            DrawNotice(frame, row, scale, NoticeMarks.For(item.Kind), item.Title, item.Detail, item.When);
-            if (input.ConsumeClick(row))
-            {
-                ledger.Dismiss(item.Id);
-                if (item.Kind == NoticeKind.Calendar)
-                {
-                    pending.Result = pending.Result with
-                    {
-                        AppletId = "calendar",
-                        RouteHint = item.TargetId,
-                    };
-                }
-                else
-                {
-                    pending.Result = pending.Result with
-                    {
-                        Tab = item.Tab,
-                        Section = item.Section,
-                        TalkId = item.Kind == NoticeKind.Chat ? item.TargetId : string.Empty,
-                        ProfileId = item.Kind == NoticeKind.People ? item.TargetId : string.Empty,
-                        NoticeId = item.Kind == NoticeKind.Announcement ? item.TargetId : string.Empty,
-                    };
-                }
-            }
-
+            var lift = string.Equals(noticeHoldId, item.Id, StringComparison.Ordinal) ? noticeLift : 0f;
+            var card = row.Translate(new Vector2(0f, -lift));
+            DrawNotice(frame, card, scale, NoticeMarks.For(item.Kind), item.Title, item.Detail, item.When);
+            SteerNotice(input, row, item, scale, pending);
             drawn++;
         }
 
@@ -352,6 +332,60 @@ public sealed class ControlCenter
             frame.Text.DrawIn(list.TopSlice(scale * 20f), "Nothing waiting.",
                 new TextStyle(FontRole.Caption, Muted));
         }
+    }
+
+    private void SteerNotice(IInputProbe input, Rect row, in GlassNotice item, float scale, Pending pending)
+    {
+        if (row.Contains(input.Pointer))
+        {
+            input.Claim(row);
+        }
+
+        if (noticeHoldId.Length == 0 && input.WasPressed(row))
+        {
+            noticeHoldId = item.Id;
+            noticeGrabY = input.Pointer.Y;
+            noticeLift = 0f;
+            noticeDrag = false;
+            input.Claim(row);
+            return;
+        }
+
+        if (!string.Equals(noticeHoldId, item.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (input.IsHeld())
+        {
+            noticeLift = MathF.Max(0f, noticeGrabY - input.Pointer.Y);
+            noticeDrag = noticeDrag || noticeLift > MathF.Max(10f, 12f * scale);
+            input.Claim(row.Translate(new Vector2(0f, -noticeLift)).Expand(scale * 8f));
+            return;
+        }
+
+        var toss = noticeDrag && noticeLift >= MathF.Max(18f, 22f * scale);
+        var tap = !noticeDrag;
+        DropNoticeHold();
+        if (toss)
+        {
+            ledger.Dismiss(item.Id);
+            return;
+        }
+
+        if (tap)
+        {
+            ledger.Dismiss(item.Id);
+            pending.Result = NoticeLaunch.ToResult(item);
+        }
+    }
+
+    private void DropNoticeHold()
+    {
+        noticeHoldId = string.Empty;
+        noticeGrabY = 0f;
+        noticeLift = 0f;
+        noticeDrag = false;
     }
 
     private static void DrawNotice(in AppletFrame frame, Rect row, float scale,
@@ -452,7 +486,7 @@ public sealed class ControlCenter
 
     private void DragSheet(IInputProbe input, Rect sheet, float fullHeight, float scale)
     {
-        if (draggingLight || draggingVolume)
+        if (draggingLight || draggingVolume || noticeHoldId.Length > 0)
         {
             sheetTrack = false;
             sheetDrag = false;
@@ -461,7 +495,7 @@ public sealed class ControlCenter
 
         // Press in the lower part of the sheet, then drag up. No extra chrome.
         var grab = sheet.BottomSlice(MathF.Max(sheet.Height * 0.38f, scale * 120f));
-        if (!sheetTrack && open && reveal > 0.35f && input.WasPressed(grab))
+        if (!sheetTrack && open && reveal > 0.35f && !input.PointerClaimed() && input.WasPressed(grab))
         {
             sheetTrack = true;
             sheetDrag = false;
@@ -508,15 +542,15 @@ public sealed class ControlCenter
         paint.Fill(bar, ink with { W = 0.55f }, bar.Height * 0.5f);
     }
 
-    private static void DrawRound(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area, float scale,
+    private static void DrawRound(in AppletFrame frame, IInputProbe input, Rect area, float scale,
         Glyph glyph, string title, bool on, Action tap)
     {
         var side = MathF.Min(area.Width, area.Height - scale * 14f) * 0.72f;
         var circle = Rect.FromSize(new Vector2(area.Center.X - side * 0.5f, area.Min.Y + scale * 2f),
             new Vector2(side, side));
-        paint.FillCircle(circle.Center, side * 0.5f, on ? Active : CircleOff);
-        DrawGlyph(paint, circle.Inset(side * 0.22f), glyph, on ? InkOn : InkOff);
-        text.DrawEllipsized(area.BottomSlice(scale * 14f), title,
+        frame.Paint.FillCircle(circle.Center, side * 0.5f, on ? Active : CircleOff);
+        DrawGlyph(frame.Paint, circle.Inset(side * 0.22f), glyph, on ? InkOn : InkOff);
+        frame.Text.DrawEllipsized(area.BottomSlice(scale * 14f), title,
             new TextStyle(FontRole.Caption, on ? InkOff : Muted, TextAlign.Center));
         if (input.ConsumeClick(area))
         {
@@ -554,6 +588,8 @@ public sealed class ControlCenter
         Wife,
         Burst,
         Friend,
+        Globe,
+        Film,
     }
 
     private static void DrawGlyph(IPaintSurface paint, Rect area, Glyph glyph, Vector4 ink)
@@ -596,10 +632,46 @@ public sealed class ControlCenter
             case Glyph.Burst:
                 DrawBurst(paint, area, ink);
                 break;
+            case Glyph.Globe:
+                DrawGlobe(paint, area, ink);
+                break;
+            case Glyph.Film:
+                DrawFilm(paint, area, ink);
+                break;
             default:
                 DrawFriend(paint, area, ink);
                 break;
         }
+    }
+
+    private static void DrawGlobe(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var c = area.Center;
+        var s = MathF.Min(area.Width, area.Height) * 0.36f;
+        var stroke = MathF.Max(1.2f, s * 0.16f);
+        paint.StrokeCircle(c, s, ink, stroke);
+        paint.Line(c + new Vector2(0f, -s), c + new Vector2(0f, s), ink, stroke);
+        paint.Line(c + new Vector2(-s * 0.72f, -s * 0.38f), c + new Vector2(s * 0.72f, -s * 0.38f), ink, stroke);
+        paint.Line(c + new Vector2(-s * 0.72f, s * 0.38f), c + new Vector2(s * 0.72f, s * 0.38f), ink, stroke);
+    }
+
+    private static void DrawFilm(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var body = area.Inset(new Edges(area.Width * 0.18f, area.Height * 0.22f));
+        var stroke = MathF.Max(1.2f, area.Width * 0.06f);
+        paint.Stroke(body, ink, stroke, body.Height * 0.12f);
+        var hole = MathF.Max(1.1f, body.Width * 0.07f);
+        paint.FillCircle(new Vector2(body.Min.X + body.Width * 0.18f, body.Min.Y + body.Height * 0.22f), hole, ink);
+        paint.FillCircle(new Vector2(body.Min.X + body.Width * 0.18f, body.Max.Y - body.Height * 0.22f), hole, ink);
+        paint.FillCircle(new Vector2(body.Max.X - body.Width * 0.18f, body.Min.Y + body.Height * 0.22f), hole, ink);
+        paint.FillCircle(new Vector2(body.Max.X - body.Width * 0.18f, body.Max.Y - body.Height * 0.22f), hole, ink);
+        var play = new[]
+        {
+            body.Center + new Vector2(-body.Width * 0.08f, -body.Height * 0.18f),
+            body.Center + new Vector2(body.Width * 0.18f, 0f),
+            body.Center + new Vector2(-body.Width * 0.08f, body.Height * 0.18f),
+        };
+        paint.Polyline(play, ink, stroke, true);
     }
 
     private static void DrawWifi(IPaintSurface paint, Rect area, Vector4 ink)

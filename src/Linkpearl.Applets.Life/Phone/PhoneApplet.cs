@@ -989,12 +989,7 @@ public sealed class PhoneApplet : IApplet
 
     private static void Wheel(in AppletFrame frame, Rect area, ref float offset, float content)
     {
-        if (frame.Input.IsHovering(area) && MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
-        {
-            offset -= frame.Input.ScrollDelta * frame.Units(24f);
-        }
-
-        offset = Math.Clamp(offset, 0f, MathF.Max(0f, content - area.Height));
+        ScrollSlider.Apply(frame, area, ref offset, content);
     }
 
     private static bool DarkChip(in AppletFrame frame, Rect area, string label)
