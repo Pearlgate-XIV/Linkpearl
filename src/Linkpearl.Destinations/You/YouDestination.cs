@@ -59,7 +59,8 @@ public sealed class YouDestination : IDestinationScreen
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
 
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
-        var name = GlassName.ProfileName(display, linked);
+        var name = GlassName.ProfileName(display, linked,
+            GlassName.IsPatron(badges, snapshot, display, development));
         if (name.Length == 0)
         {
             name = "Not logged in";

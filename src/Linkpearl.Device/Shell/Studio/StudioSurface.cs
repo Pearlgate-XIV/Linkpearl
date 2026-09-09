@@ -855,7 +855,7 @@ internal sealed class StudioSurface
         var snapshot = pearl.Current;
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
         var patron = GlassName.IsPatron(badges, snapshot, display, development);
-        var name = GlassName.ProfileName(display, linked);
+        var name = GlassName.ProfileName(display, linked, patron);
         if (name.Length == 0)
         {
             name = "Linkpearl";

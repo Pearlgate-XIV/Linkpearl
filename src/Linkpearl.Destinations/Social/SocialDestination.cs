@@ -1,6 +1,7 @@
 using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
+using Linkpearl.Chat;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
@@ -38,14 +39,14 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private FriendMenu? menu;
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
-        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files)
+        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs)
     {
         this.pearl = pearl;
         this.talk = talk;
         this.chat = chat;
         friendsBook = new FriendBook(paths);
-        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files);
-        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople);
+        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs);
+        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs);
     }
 
     public DestinationTab Tab => DestinationTab.Social;
@@ -526,13 +527,14 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private void DrawFriendCard(in AppletFrame frame, ref Stack stack, GameFriend friend)
     {
-        var row = stack.Take(frame.Units(56f));
+        var gate = FindGatePerson(friend.Name);
+        var row = stack.Take(frame.Units(gate is null ? 56f : 72f));
         CardChrome.DrawGold(frame, row);
         var star = row.RightSlice(frame.Units(40f)).Inset(new Edges(0f, frame.Units(10f), frame.Units(8f),
             frame.Units(10f)));
         var copy = row.Inset(new Edges(frame.Units(12f), frame.Units(8f), star.Width + frame.Units(8f),
             frame.Units(8f)));
-        DrawGameFriend(frame, copy, friend);
+        DrawGameFriend(frame, copy, friend, gate);
         DrawFriendStar(frame, star, friendsBook.IsStarred(friend));
         if (frame.Input.ConsumeClick(star))
         {
@@ -585,7 +587,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
                     new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
             }
 
-            var row = stack.Take(frame.Units(56f));
+            var row = stack.Take(frame.Units(HasGateLine(peer.Handle, peer.Number) ? 72f : 56f));
             CardChrome.DrawGold(frame, row);
             DrawPeer(frame, row.Inset(frame.Units(12f)), peer);
             HandleFriendRow(frame, row, peer.Name, peer.World, () => messages.OpenProfile(peer.Id));
@@ -802,7 +804,41 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private readonly record struct FriendMenu(string Name, string World, string ContactId, Vector2 At);
 
-    private static void DrawGameFriend(in AppletFrame frame, Rect inset, GameFriend friend)
+    private PearlPerson? FindGatePerson(string name)
+    {
+        if (name.Length == 0 || !pearl.Current.SignedIn)
+        {
+            return null;
+        }
+
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            if (people[index].DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return people[index];
+            }
+        }
+
+        return null;
+    }
+
+    private static bool HasGateLine(string handle, string number) =>
+        handle.Length > 0 || number.Length > 0;
+
+    private static string GateLine(string handle, string number)
+    {
+        var tag = handle.Length > 0 ? "@" + handle : string.Empty;
+        var phone = number.Length > 0 ? LineNumbers.Show(number) : string.Empty;
+        if (tag.Length > 0 && phone.Length > 0)
+        {
+            return tag + " · " + phone;
+        }
+
+        return tag.Length > 0 ? tag : phone;
+    }
+
+    private static void DrawGameFriend(in AppletFrame frame, Rect inset, GameFriend friend, PearlPerson? gate)
     {
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), friend.Name,
@@ -813,6 +849,11 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), detail,
             new TextStyle(FontRole.Caption,
                 friend.Online ? frame.Theme.Palette.WarmAccent : frame.Theme.Palette.InkMuted));
+        if (gate is { } person && HasGateLine(person.Handle, person.PhoneNumber))
+        {
+            frame.Text.DrawIn(stack.Take(frame.Units(16f)), GateLine(person.Handle, person.PhoneNumber),
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.WarmAccent));
+        }
     }
 
     private static bool AlreadyGameFriend(IReadOnlyList<GameFriend> friends, string name)
@@ -837,6 +878,11 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var detail = peer.World.Length > 0 ? gate + " · " + peer.World : gate;
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        if (HasGateLine(peer.Handle, peer.Number))
+        {
+            frame.Text.DrawIn(stack.Take(frame.Units(16f)), GateLine(peer.Handle, peer.Number),
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.WarmAccent));
+        }
     }
 
     private static bool AlreadyPeer(IReadOnlyList<TalkPeer> peers, string name)
@@ -867,10 +913,10 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), person.DisplayName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        var handle = person.Handle.Length > 0 ? "@" + person.Handle : person.PhoneNumber;
-        var detail = handle.Length > 0 ? handle + " · Tell" : "Tell";
+        var gate = GateLine(person.Handle, person.PhoneNumber);
+        var detail = gate.Length > 0 ? gate : "Pearlgate";
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), detail,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.WarmAccent));
     }
 
     private static void DrawEmpty(in AppletFrame frame, Rect area, string text)

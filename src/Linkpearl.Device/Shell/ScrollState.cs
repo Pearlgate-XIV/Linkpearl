@@ -25,6 +25,8 @@ public sealed class ScrollState
 
     public void Reset() => offset = 0f;
 
+    public void Jump(float y) => offset = MathF.Max(0f, y);
+
     public static void DrawIndicator(IPaintSurface paint, ITheme theme, Rect viewport, float contentHeight,
         float offset, float scale)
     {

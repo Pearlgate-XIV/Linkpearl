@@ -6,11 +6,14 @@ namespace Linkpearl.Preferences;
 
 public static class HandsetLook
 {
-    public static string Name(DisplayPreferences display, string linked)
+    public static string Name(DisplayPreferences display, string linked, bool patron)
     {
-        var name = GlassName.ProfileName(display, linked);
+        var name = GlassName.ProfileName(display, linked, patron);
         return name;
     }
+
+    public static string Name(DisplayPreferences display, string linked) =>
+        Name(display, linked, false);
 
     public static string Honorific(DisplayPreferences display) =>
         GlassName.Honorific(display);

@@ -44,12 +44,6 @@ public sealed class UniversalSearchOverlay
         paint.Fill(screen, theme.Palette.SurfaceSunken with { W = 0.92f });
 
         var panel = screen.Inset(scale * 14f).TopSlice(screen.Height - scale * 28f);
-        if (input.WasClicked(screen) && !panel.Contains(input.Pointer))
-        {
-            Close();
-            return;
-        }
-
         paint.Fill(panel, theme.Palette.SurfaceOverlay, scale * 16f);
         paint.Stroke(panel, theme.Palette.Separator, theme.Metrics.Hairline, scale * 16f);
 
@@ -82,6 +76,13 @@ public sealed class UniversalSearchOverlay
                 hub.OpenProfile(picked.ProfileId);
             }
 
+            Close();
+        }
+
+        // Rows already claimed their taps. Eat leftover overlay clicks so the same press
+        // cannot land on home tiles, the dock, or Control Center under the dimmer.
+        if (input.ConsumeClick(screen) && !panel.Contains(input.Pointer))
+        {
             Close();
         }
     }

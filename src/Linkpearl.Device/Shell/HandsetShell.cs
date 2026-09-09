@@ -5,6 +5,7 @@ using Linkpearl.Badges;
 using Linkpearl.Destinations;
 using Linkpearl.Destinations.Home;
 using Linkpearl.Destinations.Profile;
+using Linkpearl.Destinations.Settings;
 using Linkpearl.Destinations.Social;
 using Linkpearl.Device.Shell.Studio;
 using Linkpearl.Device.Time;
@@ -453,6 +454,11 @@ public sealed class HandsetShell
             : outerFrame.WithContent(scrolled);
 
         var contentHeight = current.Compose(composeFrame);
+        if (current is SettingsDestination settings && settings.TryTakeScrollIntoView(out var focusY))
+        {
+            scroll.Jump(focusY);
+        }
+
         ScrollState.DrawIndicator(outerFrame.Paint, outerFrame.Theme, destArea, contentHeight, scroll.Offset, scale);
 
         var wheelDelta = !overlayOpen && outerFrame.Input.IsHovering(clip) ? outerFrame.Input.ScrollDelta : 0f;

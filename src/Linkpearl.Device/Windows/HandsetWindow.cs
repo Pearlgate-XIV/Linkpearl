@@ -57,7 +57,7 @@ public sealed class HandsetWindow : Window
     private Rect lastOuter;
     private Rect lastShell;
     private float lastOuterRadius;
-    private float lastOuterScale = 1f;
+    private float lastGripScale = 1f;
 
     public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
         HandsetShapePreference shapePreference, ScreenField screenField, ITextField textField,
@@ -179,8 +179,8 @@ public sealed class HandsetWindow : Window
         {
             var size = FullSize();
             ImGui.SetNextWindowPos(
-                HandsetPlacement.Clamp(ResizeGrip.PosFromAnchor(resizeGrip.ActiveCorner, resizeGrip.Anchor, size),
-                    size), ImGuiCond.Always);
+                ResizeGrip.PosFromAnchor(resizeGrip.ActiveCorner, resizeGrip.Anchor, size),
+                ImGuiCond.Always);
         }
         else
         {
@@ -188,7 +188,7 @@ public sealed class HandsetWindow : Window
         }
         var roundCorners = shapePreference.Case == HandsetCase.Android;
         var overCorner = lastShell.Width > 16f &&
-            ResizeGrip.Hits(lastShell, lastOuterScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
+            ResizeGrip.Hits(lastShell, lastGripScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
         Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
             (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner ||
                 shell.HoldsWindow
@@ -250,9 +250,7 @@ public sealed class HandsetWindow : Window
         RememberLivePlacement();
         var deltaSeconds = ImGui.GetIO().DeltaTime;
         var asleep = fold > 0.02f;
-        var scale = asleep
-            ? ImGuiHelpers.GlobalScale
-            : ImGuiHelpers.GlobalScale * shapePreference.ScaleStep * display.LetteringScale;
+        var gripScale = MathF.Max(0.75f, ImGuiHelpers.GlobalScale);
         var windowRect = new Rect(ImGui.GetWindowPos(), ImGui.GetWindowPos() + ImGui.GetWindowSize());
         if (windowRect.Width < 16f || windowRect.Height < 16f)
         {
@@ -274,7 +272,6 @@ public sealed class HandsetWindow : Window
         }
 
         lastOuterRadius = plate.CornerOn(windowRect);
-        lastOuterScale = scale;
         var skin = textures.FromFile(paths.Asset(Path.Combine(ChassisCatalog.Folder, plate.FileName)));
         var usingSkin = skin is { IsReady: true } && !(display.Landscape && !asleep);
         Rect screen;
@@ -338,6 +335,10 @@ public sealed class HandsetWindow : Window
 
         lastShell = body.IsEmpty ? windowRect : body;
         lastOuterRadius = plate.CornerOn(windowRect);
+        lastGripScale = gripScale;
+        var scale = asleep
+            ? gripScale
+            : MathF.Max(0.25f, screen.Height / 800f) * display.LetteringScale;
         paint.FillSquircle(screen, new Vector4(0f, 0f, 0f, 1f), screenRadius);
         if (presenceVanish || screen.IsEmpty)
         {
@@ -492,11 +493,13 @@ public sealed class HandsetWindow : Window
             var caseRadius = lastOuterRadius;
             var step = shapePreference.ScaleStep;
             var roundCorners = shapePreference.Case == HandsetCase.Android;
-            var hoveredCorner = resizeGrip.Update(windowRect, lastShell, input, scale, caseRadius, roundCorners,
-                HandsetSizeCatalog.MinScale, HandsetSizeCatalog.FreeCeiling, ref step);
-            var boundCorner = resizeGrip.IsDragging ? resizeGrip.ActiveCorner : hoveredCorner;
-            step = HandsetSizeCatalog.ClampFree(step, MaxScaleOnScreen(boundCorner));
-            shapePreference.ScaleStep = step;
+            var hoveredCorner = resizeGrip.Update(windowRect, lastShell, input, gripScale, caseRadius, roundCorners,
+                HandsetSizeCatalog.FloorScale, HandsetSizeCatalog.FreeCeiling, ref step);
+            if (resizeGrip.IsDragging)
+            {
+                step = HandsetSizeCatalog.ClampFree(step, MaxScaleOnScreen(resizeGrip.ActiveCorner));
+                shapePreference.ScaleStep = step;
+            }
 
             if (resizeGrip.JustReleased)
             {
@@ -505,7 +508,7 @@ public sealed class HandsetWindow : Window
                 savePlacement = true;
             }
 
-            DrawResizeSliders(paint, lastShell, hoveredCorner, scale, caseRadius, roundCorners);
+            DrawResizeSliders(paint, lastShell, hoveredCorner, gripScale, caseRadius, roundCorners);
             if (hoveredCorner != ResizeCorner.None)
             {
                 ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hoveredCorner)
@@ -669,7 +672,7 @@ public sealed class HandsetWindow : Window
         else
         {
             var pos = ImGui.GetWindowPos();
-            var size = FullSize();
+            var size = ImGui.GetWindowSize();
             room = corner switch
             {
                 ResizeCorner.TopLeft => pos + size - workMin,
@@ -681,9 +684,15 @@ public sealed class HandsetWindow : Window
 
         room = new Vector2(MathF.Max(1f, MathF.Min(room.X, viewport.WorkSize.X)),
             MathF.Max(1f, MathF.Min(room.Y, viewport.WorkSize.Y)));
-        return HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, room,
+        var roomFit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, room,
             ImGuiHelpers.GlobalScale, display.Landscape);
+        var viewFit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case,
+            viewport.WorkSize * HandsetSizeCatalog.ViewFill,
+            ImGuiHelpers.GlobalScale, display.Landscape);
+        return MathF.Min(roomFit, viewFit);
     }
+
+    private Vector2 lastWorkSize;
 
     private void ApplyWindowSize()
     {
@@ -691,11 +700,20 @@ public sealed class HandsetWindow : Window
         if (!resizeGrip.IsDragging && fold <= 0.02f)
         {
             var viewport = ImGui.GetMainViewport();
-            var fit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, viewport.WorkSize,
-                ImGuiHelpers.GlobalScale, display.Landscape);
-            if (shapePreference.ScaleStep > fit)
+            var work = viewport.WorkSize;
+            var jumped = lastWorkSize == Vector2.Zero
+                || MathF.Abs(work.X - lastWorkSize.X) > 12f
+                || MathF.Abs(work.Y - lastWorkSize.Y) > 12f;
+            if (jumped)
             {
-                shapePreference.ScaleStep = fit;
+                lastWorkSize = work;
+                var fit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case,
+                    work * HandsetSizeCatalog.ViewFill,
+                    ImGuiHelpers.GlobalScale, display.Landscape);
+                if (shapePreference.ScaleStep > fit + 0.002f)
+                {
+                    shapePreference.ScaleStep = fit;
+                }
             }
         }
 

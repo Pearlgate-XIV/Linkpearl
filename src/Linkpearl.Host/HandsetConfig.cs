@@ -27,6 +27,8 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string IcecastSourcePassword { get; set; } = string.Empty;
 
+    public string GiphyApiKey { get; set; } = string.Empty;
+
     public bool HandsetOpen { get; set; }
 
     public bool HandsetMinimized { get; set; }
@@ -71,7 +73,7 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public int NameStyle { get; set; }
 
-    public bool TestingAccount { get; set; } = true;
+    public bool TestingAccount { get; set; }
 
     public string OwnName { get; set; } = string.Empty;
 
@@ -218,6 +220,7 @@ public sealed class HandsetConfig : IPluginConfiguration
         IcecastListenBase = IcecastListenBase?.Trim() ?? string.Empty;
         IcecastSourceUser = string.IsNullOrWhiteSpace(IcecastSourceUser) ? "source" : IcecastSourceUser.Trim();
         IcecastSourcePassword = IcecastSourcePassword ?? string.Empty;
+        GiphyApiKey = GiphyApiKey?.Trim() ?? string.Empty;
         WallpaperId = string.IsNullOrWhiteSpace(WallpaperId) ? WallpaperCatalog.DefaultId : WallpaperId.Trim();
         CustomPlateFile = Path.GetFileName(CustomPlateFile ?? string.Empty);
         var plates = CustomPlateFiles ?? [];

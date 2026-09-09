@@ -50,6 +50,7 @@ public sealed class DalamudTextureSource : ITextureSource
     private readonly HashSet<string> mipFailed = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CoverUv> opaque = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IDalamudTextureWrap> rawWraps = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, GifReel> reels = new(StringComparer.Ordinal);
 
     public DalamudTextureSource(ITextureProvider provider)
     {
@@ -114,22 +115,21 @@ public sealed class DalamudTextureSource : ITextureSource
 
     public ITextureHandle? FromBytes(ReadOnlySpan<byte> data, string cacheKey)
     {
-        if (data.Length == 0 || string.IsNullOrWhiteSpace(cacheKey) || failed.Contains(cacheKey))
+        if (string.IsNullOrWhiteSpace(cacheKey) || failed.Contains(cacheKey))
         {
             return null;
         }
 
         if (!rawWraps.TryGetValue(cacheKey, out var wrap))
         {
+            if (data.Length == 0)
+            {
+                return null;
+            }
+
             try
             {
-                using var stream = new MemoryStream(data.ToArray(), false);
-                using var loaded = (Bitmap)Image.FromStream(stream);
-                using var canvas = loaded.Clone(new Rectangle(0, 0, loaded.Width, loaded.Height),
-                    PixelFormat.Format32bppArgb);
-                var packed = PackBitmap(canvas);
-                var spec = RawImageSpecification.Bgra32(canvas.Width, canvas.Height);
-                wrap = provider.CreateFromRaw(spec, packed, "linkpearl-bytes:" + cacheKey);
+                wrap = UploadBytes(data, cacheKey);
                 if (wrap is null)
                 {
                     failed.Add(cacheKey);
@@ -144,6 +144,11 @@ public sealed class DalamudTextureSource : ITextureSource
                 return null;
             }
             catch (IOException)
+            {
+                failed.Add(cacheKey);
+                return null;
+            }
+            catch (OutOfMemoryException)
             {
                 failed.Add(cacheKey);
                 return null;
@@ -163,6 +168,122 @@ public sealed class DalamudTextureSource : ITextureSource
 
         frame.Bind(wrap);
         return frame.IsReady ? frame : null;
+    }
+
+    public ITextureHandle? FromGif(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        if (!reels.TryGetValue(path, out var reel))
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                if (!GifStill.TryUnpackReel(bytes, out var width, out var height, out var cels) || cels.Length == 0)
+                {
+                    return FromBytes(bytes, path);
+                }
+
+                reel = UploadReel(path, width, height, cels);
+                if (reel is null)
+                {
+                    return FromBytes(bytes, path);
+                }
+
+                reels[path] = reel;
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
+            catch (OutOfMemoryException)
+            {
+                failed.Add(path);
+                return null;
+            }
+        }
+
+        var wrap = reel.WrapAt(Environment.TickCount64);
+        if (!frames.TryGetValue(path, out var frame))
+        {
+            frame = new FrameTexture();
+            frames[path] = frame;
+        }
+
+        frame.Bind(wrap);
+        return frame.IsReady ? frame : null;
+    }
+
+    private GifReel? UploadReel(string path, int width, int height, GifCel[] cels)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        var wraps = new List<IDalamudTextureWrap>(cels.Length);
+        var delays = new int[cels.Length];
+        var total = 0;
+        var written = 0;
+        for (var index = 0; index < cels.Length; index++)
+        {
+            var cel = cels[index];
+            if (cel.Bgra.Length < width * height * 4)
+            {
+                continue;
+            }
+
+            var wrap = provider.CreateFromRaw(RawImageSpecification.Bgra32(width, height), cel.Bgra,
+                "linkpearl-gif:" + Path.GetFileName(path) + ":" +
+                index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (wrap is null)
+            {
+                continue;
+            }
+
+            wraps.Add(wrap);
+            var delay = Math.Max(20, cel.DelayMs);
+            delays[written] = delay;
+            total += delay;
+            written++;
+        }
+
+        if (wraps.Count == 0)
+        {
+            return null;
+        }
+
+        Array.Resize(ref delays, wraps.Count);
+        return new GifReel(wraps.ToArray(), delays, Math.Max(20, total));
+    }
+
+    private IDalamudTextureWrap? UploadBytes(ReadOnlySpan<byte> data, string cacheKey)
+    {
+        if (GifStill.TryUnpack(data, out var gifW, out var gifH, out var gifPixels))
+        {
+            return provider.CreateFromRaw(RawImageSpecification.Bgra32(gifW, gifH), gifPixels,
+                "linkpearl-bytes:" + cacheKey);
+        }
+
+        using var stream = new MemoryStream(data.ToArray(), false);
+        using var loaded = (Bitmap)Image.FromStream(stream);
+        using var canvas = loaded.Clone(new Rectangle(0, 0, loaded.Width, loaded.Height),
+            PixelFormat.Format32bppArgb);
+        var packed = PackBitmap(canvas);
+        return provider.CreateFromRaw(RawImageSpecification.Bgra32(canvas.Width, canvas.Height), packed,
+            "linkpearl-bytes:" + cacheKey);
     }
 
     private static byte[] PackBitmap(Bitmap bitmap)
@@ -199,6 +320,10 @@ public sealed class DalamudTextureSource : ITextureSource
         missing.Remove(path);
         opaque.Remove(path);
         mipFailed.Remove(path);
+        if (reels.Remove(path, out var reel))
+        {
+            reel.Dispose();
+        }
         if (mips.Remove(path, out var chain))
         {
             for (var index = 0; index < chain.Levels.Count; index++)
@@ -617,5 +742,45 @@ public sealed class DalamudTextureSource : ITextureSource
         public int Width { get; }
 
         public int Height { get; }
+    }
+
+    private sealed class GifReel
+    {
+        public GifReel(IDalamudTextureWrap[] wraps, int[] delays, int totalMs)
+        {
+            Wraps = wraps;
+            Delays = delays;
+            TotalMs = totalMs;
+        }
+
+        public IDalamudTextureWrap[] Wraps { get; }
+
+        public int[] Delays { get; }
+
+        public int TotalMs { get; }
+
+        public IDalamudTextureWrap WrapAt(long ticks)
+        {
+            var t = (int)(ticks % TotalMs);
+            var acc = 0;
+            for (var index = 0; index < Wraps.Length; index++)
+            {
+                acc += Delays[index];
+                if (t < acc)
+                {
+                    return Wraps[index];
+                }
+            }
+
+            return Wraps[^1];
+        }
+
+        public void Dispose()
+        {
+            for (var index = 0; index < Wraps.Length; index++)
+            {
+                Wraps[index].Dispose();
+            }
+        }
     }
 }

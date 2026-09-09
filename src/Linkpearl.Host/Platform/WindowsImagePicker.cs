@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using Linkpearl.Host.Windows;
 using Linkpearl.Platform;
 
 namespace Linkpearl.Host.Platform;
@@ -11,6 +12,7 @@ public sealed class WindowsImagePicker : IFilePicker
     private string? folder;
     private string startDirectory = string.Empty;
     private PickKind kind;
+    private FilePickWindow? glass;
 
     public bool Picking
     {
@@ -23,9 +25,13 @@ public sealed class WindowsImagePicker : IFilePicker
         }
     }
 
+    internal void Bind(FilePickWindow window) => glass = window;
+
     public void BeginImagePick() => Begin(PickKind.Images, string.Empty);
 
     public void BeginImagePickFrom(string directory) => Begin(PickKind.Images, directory);
+
+    public void BeginAttachPick() => Begin(PickKind.Attach, string.Empty);
 
     public void BeginFolderPick() => Begin(PickKind.Folder, string.Empty);
 
@@ -63,6 +69,23 @@ public sealed class WindowsImagePicker : IFilePicker
         }
     }
 
+    internal void AcceptGlass(IReadOnlyList<string> files, string pickedFolder)
+    {
+        lock (gate)
+        {
+            if (kind == PickKind.Folder)
+            {
+                folder = pickedFolder;
+            }
+            else
+            {
+                taken = files;
+            }
+
+            picking = false;
+        }
+    }
+
     private void Begin(PickKind next, string directory)
     {
         lock (gate)
@@ -77,6 +100,17 @@ public sealed class WindowsImagePicker : IFilePicker
             folder = null;
             kind = next;
             startDirectory = directory.Trim();
+        }
+
+        if (HostUnixFilePick.OnUnixHost && glass is not null)
+        {
+            var mode = next == PickKind.Folder
+                ? FilePickMode.Folder
+                : next == PickKind.Attach
+                    ? FilePickMode.Attach
+                    : FilePickMode.Images;
+            glass.Open(mode, ExistingStart());
+            return;
         }
 
         var worker = new Thread(Run)
@@ -112,15 +146,18 @@ public sealed class WindowsImagePicker : IFilePicker
             }
             else
             {
+                var attach = pick == PickKind.Attach;
                 using var dialog = new OpenFileDialog
                 {
-                    Title = "Upload pictures",
-                    Filter = "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|All files|*.*",
+                    Title = attach ? "Attach files" : "Upload pictures",
+                    Filter = attach
+                        ? "Crash, pictures, documents, and packs|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.txt;*.log;*.dmp;*.pdf;*.doc;*.docx;*.tspack|All files|*.*"
+                        : "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|All files|*.*",
                     FilterIndex = 1,
                     Multiselect = true,
                     CheckFileExists = true,
                     CheckPathExists = true,
-                    RestoreDirectory = false,
+                    RestoreDirectory = true,
                     AutoUpgradeEnabled = true,
                     InitialDirectory = start,
                 };
@@ -155,9 +192,25 @@ public sealed class WindowsImagePicker : IFilePicker
             return startDirectory;
         }
 
-        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-        return pictures.Length > 0 && Directory.Exists(pictures)
-            ? pictures
+        if (Directory.Exists(@"Z:\home"))
+        {
+            try
+            {
+                var homes = Directory.GetDirectories(@"Z:\home");
+                if (homes.Length > 0)
+                {
+                    var pictures = Path.Combine(homes[0], "Pictures");
+                    return Directory.Exists(pictures) ? pictures : homes[0];
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        var picturesWin = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        return picturesWin.Length > 0 && Directory.Exists(picturesWin)
+            ? picturesWin
             : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     }
 
@@ -165,5 +218,6 @@ public sealed class WindowsImagePicker : IFilePicker
     {
         Images = 0,
         Folder = 1,
+        Attach = 2,
     }
 }

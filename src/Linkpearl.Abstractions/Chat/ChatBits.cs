@@ -62,7 +62,7 @@ public static class ChatBits
 
         if (body.StartsWith(GifMark, StringComparison.Ordinal))
         {
-            return new ChatBit(ChatBitKind.Gif, body[GifMark.Length..], string.Empty);
+            return new ChatBit(ChatBitKind.Gif, body[GifMark.Length..].Trim(), string.Empty);
         }
 
         if (body.StartsWith(LocMark, StringComparison.Ordinal))
@@ -110,7 +110,9 @@ public static class ChatBits
         return bit.Kind switch
         {
             ChatBitKind.Pic => StillBox(frame, width * 0.78f, bit.Path).Y,
-            ChatBitKind.Gif => frame.Units(118f),
+            ChatBitKind.Gif => GifCache.IsUrl(bit.Body)
+                ? StillBox(frame, width * 0.78f, GifCache.PathFor(frame.Paths, bit.Body)).Y
+                : frame.Units(118f),
             ChatBitKind.Sticker => frame.Units(88f),
             ChatBitKind.Place => frame.Units(74f),
             _ => EmojiText.MeasureHeight(frame, bit.Body,
@@ -132,7 +134,7 @@ public static class ChatBits
         var minH = frame.Units(88f);
         if (path.Length > 0 && File.Exists(path))
         {
-            var texture = frame.Textures.FromFile(path);
+            var texture = LoadMotion(frame, path);
             if (texture is { IsReady: true } && texture.Size.X > 1f)
             {
                 var h = innerW * (texture.Size.Y / texture.Size.X);
@@ -155,7 +157,7 @@ public static class ChatBits
     }
 
     public static void Draw(in AppletFrame frame, Rect area, string body, Vector4 ink, Vector4 mute,
-        ILifestream? stream = null)
+        ILifestream? stream = null, IGifDesk? gifs = null)
     {
         var bit = Read(body);
         switch (bit.Kind)
@@ -167,6 +169,14 @@ public static class ChatBits
                 DrawStill(frame, area, bit.Path, "Photo", ink, mute);
                 return;
             case ChatBitKind.Gif:
+                if (GifCache.IsUrl(bit.Body))
+                {
+                    gifs?.Ensure(bit.Body);
+                    DrawMotion(frame, area, gifs?.PathFor(bit.Body) ?? GifCache.PathFor(frame.Paths, bit.Body),
+                        "GIF", ink, mute);
+                    return;
+                }
+
                 DrawPack(frame, area, ChatPack.Gif(bit.Body), "GIF", ink, mute);
                 return;
             case ChatBitKind.Sticker:
@@ -253,12 +263,29 @@ public static class ChatBits
         return true;
     }
 
+    private static void DrawMotion(in AppletFrame frame, Rect area, string path, string fallback, Vector4 ink,
+        Vector4 mute)
+    {
+        if (path.Length > 0 && File.Exists(path))
+        {
+            var texture = LoadMotion(frame, path);
+            if (texture is { IsReady: true })
+            {
+                var dest = CoverFit.Contained(texture.Size, area);
+                frame.Paint.ImageRounded(texture, dest, Vector2.Zero, Vector2.One, Vector4.One, frame.Units(10f));
+                return;
+            }
+        }
+
+        DrawStill(frame, area, path, fallback, ink, mute);
+    }
+
     private static void DrawStill(in AppletFrame frame, Rect area, string path, string fallback, Vector4 ink,
         Vector4 mute)
     {
         if (path.Length > 0 && File.Exists(path))
         {
-            var texture = frame.Textures.FromFile(path);
+            var texture = LoadStill(frame, path);
             if (texture is { IsReady: true })
             {
                 var dest = CoverFit.Contained(texture.Size, area);
@@ -268,6 +295,59 @@ public static class ChatBits
         }
 
         frame.Text.DrawIn(area, fallback, new TextStyle(FontRole.Body, ink));
+    }
+
+    public static ITextureHandle? LoadStill(in AppletFrame frame, string path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        var cached = frame.Textures.FromBytes(ReadOnlySpan<byte>.Empty, path);
+        if (cached is { IsReady: true })
+        {
+            return cached;
+        }
+
+        if (!File.Exists(path))
+        {
+            return frame.Textures.FromFile(path);
+        }
+
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            var handle = frame.Textures.FromBytes(bytes, path);
+            if (handle is { IsReady: true })
+            {
+                return handle;
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return frame.Textures.FromFile(path);
+    }
+
+    public static ITextureHandle? LoadMotion(in AppletFrame frame, string path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        var gif = frame.Textures.FromGif(path);
+        if (gif is { IsReady: true })
+        {
+            return gif;
+        }
+
+        return LoadStill(frame, path);
     }
 
     private static void DrawPack(in AppletFrame frame, Rect area, ChatFace face, string kind, Vector4 ink, Vector4 mute)

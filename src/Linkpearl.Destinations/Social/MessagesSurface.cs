@@ -26,6 +26,7 @@ internal sealed class MessagesSurface
     private readonly IPearlHub pearl;
     private readonly ITalkPopouts popouts;
     private readonly IFilePicker files;
+    private readonly IGifDesk gifs;
     private readonly ChatTray tray = new();
     private string openId = string.Empty;
     private string profileId = string.Empty;
@@ -44,7 +45,7 @@ internal sealed class MessagesSurface
     private InboxMenu? inboxMenu;
 
     public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display, IPearlHub pearl,
-        ITalkPopouts popouts, IFilePicker files)
+        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs)
     {
         this.talk = talk;
         this.clock = clock;
@@ -53,6 +54,7 @@ internal sealed class MessagesSurface
         this.pearl = pearl;
         this.popouts = popouts;
         this.files = files;
+        this.gifs = gifs;
     }
 
     public bool ThreadOpen => openId.Length > 0 && profileId.Length == 0;
@@ -418,11 +420,7 @@ internal sealed class MessagesSurface
             DrawReplies(frame, replyRow, thread);
         }
 
-        if (tray.Pane == ChatTrayPane.Attach)
-        {
-            tray.Close();
-        }
-
+        tray.TickFiles(files, SendBit);
         DrawComposer(frame, bar, thread);
         var fields = frame.TextField;
         tray.DrawSheet(frame, sheet, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
@@ -431,7 +429,7 @@ internal sealed class MessagesSurface
             {
                 draft = fields.Insert("messages-draft", draft, glyph);
                 fields.Focus("messages-draft");
-            }, SendBit);
+            }, SendBit, null, gifs);
 
         return frame.Content.Height;
     }
@@ -806,7 +804,20 @@ internal sealed class MessagesSurface
         var text = inset.Inset(new Edges(frame.Units(64f), 0f, 0f, 0f));
         frame.Text.DrawEllipsized(text.TopSlice(frame.Units(24f)), person.Name,
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-        var detail = person.World.Length > 0 ? person.World : "Tell";
+        var world = person.World.Length > 0 ? person.World : (person.OnPearlgate ? "Pearlgate" : "Tell");
+        var gate = string.Empty;
+        if (person.Handle.Length > 0)
+        {
+            gate = "@" + person.Handle;
+        }
+
+        if (person.Number.Length > 0)
+        {
+            var phone = LineNumbers.Show(person.Number);
+            gate = gate.Length > 0 ? gate + " · " + phone : phone;
+        }
+
+        var detail = gate.Length > 0 ? world + " · " + gate : world;
         frame.Text.DrawEllipsized(text.Inset(new Edges(0f, frame.Units(26f), 0f, 0f)), detail,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
@@ -848,6 +859,11 @@ internal sealed class MessagesSurface
 
         var name = friend?.DisplayName ?? hit.Title;
         var detail = friend is { Handle.Length: > 0 } ? "@" + friend.Value.Handle : hit.Subtitle;
+        if (friend is { PhoneNumber.Length: > 0 } personPhone)
+        {
+            var phone = LineNumbers.Show(personPhone.PhoneNumber);
+            detail = detail.Length > 0 ? detail + " · " + phone : phone;
+        }
         var hero = stack.Take(frame.Units(88f));
         CardChrome.DrawGold(frame, hero);
         var inset = hero.Inset(frame.Units(12f));
@@ -916,10 +932,12 @@ internal sealed class MessagesSurface
             live ? frame.Units(1.4f) : frame.Theme.Metrics.Hairline, frame.Units(12f));
         var inner = composer.Inset(frame.Units(6f));
         var pop = inner.LeftSlice(frame.Units(26f));
+        var plus = Rect.FromSize(new Vector2(pop.Max.X, inner.Min.Y), new Vector2(frame.Units(26f), inner.Height));
         var send = inner.RightSlice(frame.Units(52f));
         var faces = inner.RightSlice(frame.Units(82f)).LeftSlice(frame.Units(26f));
-        var field = new Rect(new Vector2(pop.Max.X + frame.Units(4f), inner.Min.Y),
-            new Vector2(faces.Min.X - frame.Units(4f), inner.Max.Y));
+        var gif = inner.RightSlice(frame.Units(112f)).LeftSlice(frame.Units(26f));
+        var field = new Rect(new Vector2(plus.Max.X + frame.Units(4f), inner.Min.Y),
+            new Vector2(gif.Min.X - frame.Units(4f), inner.Max.Y));
         var armed = popouts.IsArmed(openId);
         DrawPopoutToggle(frame, pop, armed);
         if (frame.Input.ConsumeClick(pop) && openId.Length > 0)
@@ -936,6 +954,8 @@ internal sealed class MessagesSurface
             return;
         }
 
+        tray.DrawPlus(frame, plus, Vector4.One);
+        tray.DrawGif(frame, gif, Vector4.One);
         tray.DrawFaces(frame, faces, Vector4.One);
         draft = frame.TextField.Draw("messages-draft", field, draft, hint, 400, out var submitted, true);
         var sendInk = draft.Trim().Length > 0 ? frame.Theme.Palette.Accent : frame.Theme.Palette.InkFaint;
@@ -1102,7 +1122,7 @@ internal sealed class MessagesSurface
     private static float MeasureLine(in AppletFrame frame, float width, TalkLine line) =>
         ChatBits.NamedRowHeight(frame, width, line.Body);
 
-    private static void DrawLine(in AppletFrame frame, Rect row, TalkLine line, string peerName)
+    private void DrawLine(in AppletFrame frame, Rect row, TalkLine line, string peerName)
     {
         var bubbleWidth = row.Width * 0.78f;
         var bubble = line.Mine ? row.RightSlice(bubbleWidth) : row.LeftSlice(bubbleWidth);
@@ -1122,7 +1142,7 @@ internal sealed class MessagesSurface
             frame.Theme.Metrics.Hairline, radius);
         var copy = top.Inset(frame.Units(8f));
         frame.Paint.PushClip(copy);
-        ChatBits.Draw(frame, copy, line.Body, ink, frame.Theme.Palette.InkMuted);
+        ChatBits.Draw(frame, copy, line.Body, ink, frame.Theme.Palette.InkMuted, null, gifs);
         frame.Paint.PopClip();
     }
 
