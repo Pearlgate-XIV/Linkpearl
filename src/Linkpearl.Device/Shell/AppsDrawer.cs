@@ -675,8 +675,6 @@ public sealed class AppsDrawer
         }
 
         display.PlaceAppAt(moving, screen, slot);
-        display.RemoveStudioWidget(moving);
-        display.RemoveStudioApp(moving);
     }
 
     private int FirstOpenSlot()
@@ -930,7 +928,7 @@ public sealed class AppsDrawer
             return;
         }
 
-        if (AppShelf.Find(id) is not AppSpec spec)
+        if (AppShelf.Find(id) is not AppSpec spec || spec.Hidden)
         {
             return;
         }
@@ -958,7 +956,10 @@ public sealed class AppsDrawer
         var shelf = display.AppsOnScreen(screen);
         for (var index = 0; index < shelf.Count; index++)
         {
-            visible.Add(shelf[index]);
+            if (!AppShelf.IsHidden(shelf[index]))
+            {
+                visible.Add(shelf[index]);
+            }
         }
     }
 
@@ -968,8 +969,8 @@ public sealed class AppsDrawer
         var needle = query.Trim();
         foreach (var id in display.OwnedApps)
         {
-            if (id.StartsWith("folder:", StringComparison.Ordinal) || !Matches(id, needle) ||
-                visible.Contains(id))
+            if (id.StartsWith("folder:", StringComparison.Ordinal) || AppShelf.IsHidden(id) ||
+                !Matches(id, needle) || visible.Contains(id))
             {
                 continue;
             }
@@ -1027,18 +1028,18 @@ public sealed class AppsDrawer
 
         if (AppShelf.Find(id) is AppSpec spec)
         {
-            return spec.Name;
+            return PhoneLanguages.App(id, spec.Name);
         }
 
         for (var index = 0; index < applets.Count; index++)
         {
             if (string.Equals(applets[index].Manifest.Id, id, StringComparison.Ordinal))
             {
-                return applets[index].Manifest.DisplayNameKey;
+                return PhoneLanguages.App(id, applets[index].Manifest.DisplayNameKey);
             }
         }
 
-        return id;
+        return PhoneLanguages.App(id, id);
     }
 
     private int IndexOf(string id)

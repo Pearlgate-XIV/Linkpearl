@@ -59,7 +59,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     public string Glyph => "⌂";
 
-    public string Label => "Home";
+    public string Label => PhoneLanguages.T("nav.home");
 
     public int CurrentSection => profile.OverlayOpen
         ? HomePane.Profile

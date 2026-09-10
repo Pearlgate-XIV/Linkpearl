@@ -132,32 +132,32 @@ public static class CoreId
             }
         }
 
-        return Blue;
+        return White;
     }
 
     public static string Label(string id) => Sanitize(id) switch
     {
-        White => "White",
         Black => "Black",
         Red => "Red",
+        Blue => "Blue",
         Green => "Green",
         Pink => "Pink",
         Orange => "Orange",
         Purple => "Purple",
         Yellow => "Yellow",
-        _ => "Blue",
+        _ => "White",
     };
 
     public static Vector4 Swatch(string id) => Sanitize(id) switch
     {
-        White => new Vector4(0.96f, 0.96f, 0.98f, 1f),
         Black => new Vector4(0.10f, 0.10f, 0.12f, 1f),
         Red => new Vector4(0.92f, 0.28f, 0.32f, 1f),
+        Blue => new Vector4(0.32f, 0.55f, 0.96f, 1f),
         Green => new Vector4(0.28f, 0.78f, 0.48f, 1f),
         Pink => new Vector4(0.96f, 0.42f, 0.68f, 1f),
         Orange => new Vector4(0.98f, 0.55f, 0.22f, 1f),
         Purple => new Vector4(0.68f, 0.42f, 0.92f, 1f),
         Yellow => new Vector4(0.96f, 0.84f, 0.28f, 1f),
-        _ => new Vector4(0.32f, 0.55f, 0.96f, 1f),
+        _ => new Vector4(0.96f, 0.96f, 0.98f, 1f),
     };
 }

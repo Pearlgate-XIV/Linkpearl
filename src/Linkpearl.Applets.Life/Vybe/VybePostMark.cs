@@ -8,6 +8,7 @@ internal enum ComposeSheet : byte
     SwitchVybe = 1,
     ConfirmVybe = 2,
     ConfirmPlus = 3,
+    ConfirmStory = 4,
 }
 
 internal enum ContentRating : byte

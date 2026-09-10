@@ -37,6 +37,9 @@ internal enum MusicPage : byte
     Settings = 16,
     PickPhoto = 17,
     FollowList = 18,
+    Auth = 19,
+    AuthLogin = 20,
+    AuthCreate = 21,
 }
 
 internal enum MusicPhotoKind : byte
@@ -55,6 +58,46 @@ internal enum MusicFeedPane : byte
 internal sealed class MusicState
 {
     public bool Onboarded { get; set; }
+
+    public string AccountId { get; set; } = string.Empty;
+
+    public bool HasAccount => AccountId.Length > 0;
+
+    public bool OnAuthSheet =>
+        Page is MusicPage.Auth or MusicPage.AuthLogin or MusicPage.AuthCreate;
+
+    [JsonIgnore]
+    public MusicBook? Ledger { get; set; }
+
+    [JsonIgnore]
+    public string EnterHandle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string EnterSecret { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinName { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinTitle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinHandle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinSecret { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinAgain { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string AuthNote { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool DropConfirm { get; set; }
+
+    [JsonIgnore]
+    public string DropSeatId { get; set; } = string.Empty;
 
     public bool Listener { get; set; } = true;
 
@@ -428,6 +471,7 @@ internal sealed class MusicState
                 if (dto is not null)
                 {
                     state.Onboarded = dto.Onboarded;
+                    state.AccountId = dto.AccountId ?? string.Empty;
                     state.Listener = dto.Listener;
                     state.Dj = dto.Dj;
                     state.Venue = dto.Venue;
@@ -554,20 +598,28 @@ internal sealed class MusicState
             }
         }
 
-        if (state.DisplayName.Length == 0)
+        if (state.HasAccount)
         {
-            state.DisplayName = fallbackName.Length > 0 ? fallbackName : "Listener";
-        }
+            if (state.DisplayName.Length == 0)
+            {
+                state.DisplayName = fallbackName.Length > 0 ? fallbackName : "Listener";
+            }
 
-        if (state.Handle.Length == 0)
-        {
-            state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+            if (state.Handle.Length == 0)
+            {
+                state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal)
+                    .ToLowerInvariant();
+            }
         }
 
         NormalizeTagList(state.Interests);
         NormalizeTagList(state.StationTags);
 
-        state.Page = state.Onboarded ? MusicPage.Tabs : MusicPage.Onboard;
+        state.Page = !state.HasAccount
+            ? MusicPage.Auth
+            : state.Onboarded
+                ? MusicPage.Tabs
+                : MusicPage.Onboard;
         return state;
     }
 
@@ -580,6 +632,7 @@ internal sealed class MusicState
             File.WriteAllText(path, JsonSerializer.Serialize(new MusicSave
             {
                 Onboarded = Onboarded,
+                AccountId = AccountId,
                 Listener = Listener,
                 Dj = Dj,
                 Venue = Venue,
@@ -629,6 +682,96 @@ internal sealed class MusicState
         catch (IOException)
         {
         }
+
+        if (Ledger is not null && HasAccount)
+        {
+            Ledger.Keep(this);
+            Ledger.Save(paths);
+        }
+    }
+
+    public void Sit(MusicBook book)
+    {
+        Ledger = book;
+        if (HasAccount && !book.Holds(AccountId))
+        {
+            AccountId = string.Empty;
+        }
+
+        if (!HasAccount)
+        {
+            Page = MusicPage.Auth;
+        }
+    }
+
+    public void EnterSeat(MusicSeat seat)
+    {
+        AccountId = seat.Id;
+        seat.Face.Apply(this);
+        if (DisplayName.Length == 0)
+        {
+            DisplayName = seat.DisplayName;
+        }
+
+        if (Handle.Length == 0)
+        {
+            Handle = seat.Handle;
+        }
+
+        ClearAuthDrafts();
+        Page = Onboarded ? MusicPage.Tabs : MusicPage.Onboard;
+        Scroll = 0f;
+    }
+
+    public void ClearSession()
+    {
+        AccountId = string.Empty;
+        Onboarded = false;
+        Listener = true;
+        Dj = false;
+        Venue = false;
+        DisplayName = string.Empty;
+        Honorific = string.Empty;
+        Handle = string.Empty;
+        Bio = string.Empty;
+        DjName = string.Empty;
+        StationName = string.Empty;
+        StationId = string.Empty;
+        StationBio = string.Empty;
+        StationArtPath = string.Empty;
+        ProfileFacePath = string.Empty;
+        ProfileBannerPath = string.Empty;
+        FaceZoom = 1f;
+        FaceFocusX = 0.5f;
+        FaceFocusY = 0.5f;
+        BannerZoom = 1f;
+        BannerFocusX = 0.5f;
+        BannerFocusY = 0.5f;
+        UsesHandsetProfile = true;
+        UsesHandsetIdentity = true;
+        VenueName = string.Empty;
+        VenuePlace = string.Empty;
+        Interests.Clear();
+        StationTags.Clear();
+        DropConfirm = false;
+        DropSeatId = string.Empty;
+        ClearAuthDrafts();
+        Page = MusicPage.Auth;
+        ReturnTo = MusicPage.Auth;
+        Tab = MusicTab.Home;
+        Scroll = 0f;
+    }
+
+    public void ClearAuthDrafts()
+    {
+        EnterHandle = string.Empty;
+        EnterSecret = string.Empty;
+        JoinName = string.Empty;
+        JoinTitle = string.Empty;
+        JoinHandle = string.Empty;
+        JoinSecret = string.Empty;
+        JoinAgain = string.Empty;
+        AuthNote = string.Empty;
     }
 
     public void AdjustPlacing(float zoom, float focusX, float focusY)
@@ -945,6 +1088,8 @@ internal sealed class MusicState
     private sealed class MusicSave
     {
         public bool Onboarded { get; set; }
+
+        public string? AccountId { get; set; }
 
         public bool Listener { get; set; }
 

@@ -136,7 +136,7 @@ public sealed class AppStoreApplet : IApplet
         var action = row.RightSlice(frame.Units(78f)).Inset(new Edges(0f, frame.Units(16f), frame.Units(10f),
             frame.Units(16f)));
         var text = row.Inset(new Edges(frame.Units(56f), frame.Units(12f), frame.Units(86f), frame.Units(10f)));
-        frame.Text.DrawEllipsized(text.TopSlice(frame.Units(20f)), spec.Name,
+        frame.Text.DrawEllipsized(text.TopSlice(frame.Units(20f)), PhoneLanguages.App(spec.Id, spec.Name),
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(16f)), spec.Caption,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
@@ -178,7 +178,7 @@ public sealed class AppStoreApplet : IApplet
         for (var index = 0; index < AppShelf.Catalog.Length; index++)
         {
             var spec = AppShelf.Catalog[index];
-            if (string.Equals(spec.Id, "appstore", StringComparison.Ordinal) || !Matches(spec, needle))
+            if (spec.Hidden || string.Equals(spec.Id, "appstore", StringComparison.Ordinal) || !Matches(spec, needle))
             {
                 continue;
             }

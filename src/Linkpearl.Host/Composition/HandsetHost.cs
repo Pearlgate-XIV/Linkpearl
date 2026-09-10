@@ -112,6 +112,7 @@ public sealed class HandsetHost : IDisposable
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
+        ApplyFreshBoot(paths);
 
         pearl = new PearlHub(string.Empty, config.SessionToken, session, clock, log,
             token => clock.Post(() => RememberToken(token)), paths.State("media-cache"));
@@ -172,7 +173,7 @@ public sealed class HandsetHost : IDisposable
         var fileGlass = new FilePickWindow(files.AcceptGlass);
         files.Bind(fileGlass);
         services.AddSingleton<IFilePicker>(files);
-        services.AddSingleton<IGifDesk>(new GiphyGifDesk(paths, ReadGiphyKey(paths, config)));
+        services.AddSingleton<IGifDesk>(new GiphyGifDesk(paths, pearl.FetchGifsAsync));
 
         var hub = new DestinationHub();
         services.AddSingleton(hub);
@@ -390,6 +391,7 @@ public sealed class HandsetHost : IDisposable
     private void LoadDisplay(DisplayPreferences preferences)
     {
         preferences.Use24HourClock = config.Use24HourClock;
+        preferences.LanguageId = config.LanguageId;
         preferences.Appearance = (AppearanceMode)config.Appearance;
         preferences.WallpaperId = config.WallpaperId;
         preferences.ReplaceCustomPlates(config.CustomPlateFiles);
@@ -473,6 +475,7 @@ public sealed class HandsetHost : IDisposable
     private void RememberDisplay()
     {
         config.Use24HourClock = display.Use24HourClock;
+        config.LanguageId = display.LanguageId;
         config.Appearance = (int)display.Appearance;
         config.WallpaperId = display.WallpaperId;
         config.CustomPlateFile = display.CustomPlateFile;
@@ -607,29 +610,117 @@ public sealed class HandsetHost : IDisposable
         pluginInterface.SavePluginConfig(config);
     }
 
-    private static string ReadGiphyKey(HostPaths paths, HandsetConfig cfg)
+    private void ApplyFreshBoot(HostPaths paths)
     {
-        var env = Environment.GetEnvironmentVariable("LINKPEARL_GIPHY_KEY");
-        if (!string.IsNullOrWhiteSpace(env))
+        if (config.FreshBoot >= HandsetConfig.FreshBootMark)
         {
-            return env.Trim();
+            return;
         }
 
-        if (cfg.GiphyApiKey.Length > 0)
-        {
-            return cfg.GiphyApiKey;
-        }
-
-        var file = paths.State("giphy.key");
-        if (File.Exists(file))
-        {
-            var fromFile = File.ReadAllText(file).Trim();
-            if (fromFile.Length > 0)
-            {
-                return fromFile;
-            }
-        }
-
-        return string.Empty;
+        var stock = new HandsetConfig();
+        config.SessionToken = stock.SessionToken;
+        config.Use24HourClock = stock.Use24HourClock;
+        config.LanguageId = stock.LanguageId;
+        config.Appearance = stock.Appearance;
+        config.WallpaperId = stock.WallpaperId;
+        config.CustomPlateFile = stock.CustomPlateFile;
+        config.CustomPlateFiles = [];
+        config.CustomBannerFile = stock.CustomBannerFile;
+        config.BannerZoom = stock.BannerZoom;
+        config.BannerFocusX = stock.BannerFocusX;
+        config.BannerFocusY = stock.BannerFocusY;
+        config.Colorway = stock.Colorway;
+        config.Core = stock.Core;
+        config.Shade = stock.Shade;
+        config.ClockFace = stock.ClockFace;
+        config.Lettering = stock.Lettering;
+        config.NameStyle = stock.NameStyle;
+        config.TestingAccount = stock.TestingAccount;
+        config.OwnName = stock.OwnName;
+        config.OwnTitle = stock.OwnTitle;
+        config.OwnTimeZoneId = stock.OwnTimeZoneId;
+        config.TitleMotion = stock.TitleMotion;
+        config.TitleGlow = stock.TitleGlow;
+        config.TitleGlowWeight = stock.TitleGlowWeight;
+        config.TitleInkR = stock.TitleInkR;
+        config.TitleInkG = stock.TitleInkG;
+        config.TitleInkB = stock.TitleInkB;
+        config.TitleGlowR = stock.TitleGlowR;
+        config.TitleGlowG = stock.TitleGlowG;
+        config.TitleGlowB = stock.TitleGlowB;
+        config.NameMotion = stock.NameMotion;
+        config.NameGlow = stock.NameGlow;
+        config.NameGlowR = stock.NameGlowR;
+        config.NameGlowG = stock.NameGlowG;
+        config.NameGlowB = stock.NameGlowB;
+        config.NameGlowWeight = stock.NameGlowWeight;
+        config.NameInkCustom = stock.NameInkCustom;
+        config.NameInkR = stock.NameInkR;
+        config.NameInkG = stock.NameInkG;
+        config.NameInkB = stock.NameInkB;
+        config.DisplayFace = stock.DisplayFace;
+        config.FounderFacesGranted = stock.FounderFacesGranted;
+        config.ShowWorld = stock.ShowWorld;
+        config.ShowMarks = stock.ShowMarks;
+        config.FeedShowSay = stock.FeedShowSay;
+        config.FeedShowShout = stock.FeedShowShout;
+        config.FeedShowYell = stock.FeedShowYell;
+        config.FeedShowParty = stock.FeedShowParty;
+        config.ExtraHomeScreens = stock.ExtraHomeScreens;
+        config.ReduceMotion = stock.ReduceMotion;
+        config.Quiet = stock.Quiet;
+        config.QuietWhenBusy = stock.QuietWhenBusy;
+        config.WakeInPocket = stock.WakeInPocket;
+        config.StayInPortraits = stock.StayInPortraits;
+        config.TuckForCutscenes = stock.TuckForCutscenes;
+        config.Fight = stock.Fight;
+        config.TuneLayout = stock.TuneLayout;
+        config.Brightness = stock.Brightness;
+        config.Volume = stock.Volume;
+        config.MusicVolume = stock.MusicVolume;
+        config.MicVolume = stock.MicVolume;
+        config.SpeakerDeviceId = stock.SpeakerDeviceId;
+        config.MicrophoneDeviceId = stock.MicrophoneDeviceId;
+        config.CallSpeakerDeviceId = stock.CallSpeakerDeviceId;
+        config.CallMicrophoneDeviceId = stock.CallMicrophoneDeviceId;
+        config.AutoRotate = stock.AutoRotate;
+        config.Replies = [];
+        config.InstalledApps = null;
+        config.AppScreens = null;
+        config.OwnedApps = [];
+        config.FavoriteApps = [];
+        config.AppFolders = [];
+        config.QuickApps = [];
+        config.StudioWidgets = string.Empty;
+        config.StudioApps = string.Empty;
+        config.RecentAppIds = [];
+        config.RecentAppPlaces = [];
+        config.SeenShelfApps = [];
+        config.PopoutTalkIds = [];
+        config.PopoutTalkPlaces = [];
+        config.FreshBoot = HandsetConfig.FreshBootMark;
+        WipeTree(paths.StateDirectory);
+        WipeTree(paths.CacheDirectory);
+        pluginInterface.SavePluginConfig(config);
     }
+
+    private static void WipeTree(string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(root, true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
 }

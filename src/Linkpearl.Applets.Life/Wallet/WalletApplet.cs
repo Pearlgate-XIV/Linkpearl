@@ -96,8 +96,9 @@ public sealed class WalletApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
+        WalletChrome.PaintGround(frame, frame.Content);
         var nav = frame.Units(52f);
-        var body = frame.Content.Inset(new Edges(frame.Units(12f), frame.Units(8f), frame.Units(12f),
+        var body = frame.Content.Inset(new Edges(frame.Units(14f), frame.Units(8f), frame.Units(14f),
             nav + frame.Units(6f)));
         frame.Paint.PushClip(body);
         var shifted = body.Translate(new Vector2(0f, -scroll));
@@ -129,54 +130,64 @@ public sealed class WalletApplet : IApplet
     private float DrawHome(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "YOUR BALANCE",
-            new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        var hero = stack.Take(frame.Units(56f));
-        WalletChrome.Pearl(frame, hero.LeftSlice(frame.Units(52f)));
-        WalletChrome.Amount(frame, hero.Inset(new Edges(frame.Units(56f), 0f, 0f, 0f)), pearls.Balance);
-        frame.Text.DrawIn(stack.Take(frame.Units(14f)),
-            pearls.LifetimeEarned.ToString("N0", CultureInfo.CurrentCulture) + " earned for life",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
+        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        WalletChrome.Hero(frame, stack.Take(frame.Units(112f)), pearls.Balance, pearls.LifetimeEarned,
+            pearls.LifetimeSpent);
 
-        var check = stack.Take(frame.Units(92f));
-        CardChrome.DrawGold(frame, check);
-        var inset = check.Inset(frame.Units(10f));
-        var head = inset.TopSlice(frame.Units(16f));
-        frame.Text.DrawIn(head.LeftSlice(head.Width * 0.62f), "DAILY CHECK-IN",
+        var today = stack.Take(frame.Units(58f));
+        CardChrome.DrawGold(frame, today);
+        var todayIn = today.Inset(new Edges(frame.Units(12f), frame.Units(8f)));
+        frame.Text.DrawIn(todayIn.TopSlice(frame.Units(14f)), "TODAY",
             new TextStyle(FontRole.CaptionStrong, gold));
-        frame.Text.DrawIn(head.RightSlice(head.Width * 0.38f),
+        frame.Text.DrawIn(todayIn.Inset(new Edges(0f, frame.Units(16f), todayIn.Width * 0.42f, 0f)),
+            "+" + pearls.EarnedToday.ToString("N0", CultureInfo.CurrentCulture) + " earned",
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(todayIn.RightSlice(todayIn.Width * 0.42f).Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
+            pearls.SpinRemaining().ToString(CultureInfo.InvariantCulture) + " spin  ·  " +
+            pearls.ShellsRemaining().ToString(CultureInfo.InvariantCulture) + " shells",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Right));
+
+        var check = stack.Take(frame.Units(108f));
+        CardChrome.DrawGold(frame, check);
+        var inset = check.Inset(frame.Units(12f));
+        var head = inset.TopSlice(frame.Units(16f));
+        frame.Text.DrawIn(head.LeftSlice(head.Width * 0.58f), "DAILY CHECK-IN",
+            new TextStyle(FontRole.CaptionStrong, gold));
+        frame.Text.DrawIn(head.RightSlice(head.Width * 0.42f),
             pearls.Streak.ToString(CultureInfo.InvariantCulture) + " day streak",
             new TextStyle(FontRole.Caption, gold, TextAlign.Right));
-        DrawStreak(frame, inset.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(34f))), pearls.Streak);
-        var claim = inset.BottomSlice(frame.Units(28f));
+        DrawStreak(frame, inset.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(36f))), pearls.Streak);
+        var claim = inset.BottomSlice(frame.Units(32f));
         if (pearls.CanCheckIn())
         {
             if (WalletChrome.GoldButton(frame, claim,
-                    "CLAIM " + pearls.NextCheckReward().ToString(CultureInfo.InvariantCulture)))
+                    "Check in  ·  +" + pearls.NextCheckReward().ToString(CultureInfo.InvariantCulture)))
             {
                 pearls.TryCheckIn(out _);
             }
         }
         else
         {
-            WalletChrome.GhostButton(frame, claim, "Claimed · next at midnight");
+            WalletChrome.GhostButton(frame, claim, "Checked in  ·  back at midnight");
+            if (frame.Input.ConsumeClick(check))
+            {
+                Open(Page.Daily);
+            }
         }
 
-        if (frame.Input.ConsumeClick(check) && !pearls.CanCheckIn())
-        {
-            Open(Page.Daily);
-        }
-
-        var grid = stack.Take(frame.Units(88f));
-        DrawHomeGrid(frame, grid);
+        var lane = stack.Take(frame.Units(64f));
+        var gap = frame.Units(8f);
+        var half = (lane.Width - gap) * 0.5f;
+        DrawLane(frame, Rect.FromSize(lane.Min, new Vector2(half, lane.Height)), "EARN", "How Pearls arrive",
+            Page.Earn);
+        DrawLane(frame, Rect.FromSize(new Vector2(lane.Min.X + half + gap, lane.Min.Y), new Vector2(half, lane.Height)),
+            "PLAY", "Spin and shells", Page.Spin);
 
         var recent = stack.Take(frame.Units(18f));
-        frame.Text.DrawIn(recent.LeftSlice(recent.Width * 0.6f), "RECENT ACTIVITY",
-            new TextStyle(FontRole.CaptionStrong, gold));
-        frame.Text.DrawIn(recent.RightSlice(recent.Width * 0.4f), "VIEW ALL",
-            new TextStyle(FontRole.Caption, gold, TextAlign.Right));
-        if (frame.Input.ConsumeClick(recent.RightSlice(recent.Width * 0.4f)))
+        WalletChrome.Kicker(frame, recent.LeftSlice(recent.Width * 0.62f), "RECENT");
+        frame.Text.DrawIn(recent.RightSlice(recent.Width * 0.38f), "See all",
+            new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Right));
+        if (frame.Input.ConsumeClick(recent.RightSlice(recent.Width * 0.38f)))
         {
             Open(Page.History);
         }
@@ -189,40 +200,30 @@ public sealed class WalletApplet : IApplet
                 break;
             }
 
-            DrawTx(frame, stack.Take(frame.Units(40f)), row);
+            DrawTx(frame, stack.Take(frame.Units(48f)), row);
             shown++;
         }
 
         if (shown == 0)
         {
-            frame.Text.DrawIn(stack.Take(frame.Units(20f)), "No movement yet.",
+            frame.Text.DrawIn(stack.Take(frame.Units(22f)), "Use Linkpearl. Pearls follow.",
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
+            "Play money only. Pearls cannot be bought with gil or real money, and they do not move between people.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
 
         return area.Height - stack.Remaining.Height;
     }
 
-    private void DrawHomeGrid(in AppletFrame frame, Rect grid)
-    {
-        var gap = frame.Units(6f);
-        var cellW = (grid.Width - gap * 2f) / 3f;
-        var cellH = (grid.Height - gap) / 2f;
-        DrawCell(frame, Rect.FromSize(grid.Min, new Vector2(cellW, cellH)), "Earn", Page.Earn);
-        DrawCell(frame, Rect.FromSize(new Vector2(grid.Min.X + cellW + gap, grid.Min.Y), new Vector2(cellW, cellH)),
-            "Shop", Page.Shop);
-        DrawCell(frame, Rect.FromSize(new Vector2(grid.Min.X + (cellW + gap) * 2f, grid.Min.Y),
-            new Vector2(cellW, cellH)), "Spin", Page.Spin);
-        DrawCell(frame, Rect.FromSize(new Vector2(grid.Min.X, grid.Min.Y + cellH + gap),
-            new Vector2(cellW * 1.5f + gap * 0.5f, cellH)), "History", Page.History);
-        DrawCell(frame, Rect.FromSize(new Vector2(grid.Min.X + cellW * 1.5f + gap * 1.5f, grid.Min.Y + cellH + gap),
-            new Vector2(grid.Width - (cellW * 1.5f + gap * 1.5f), cellH)), "Rewards", Page.Rewards);
-    }
-
-    private void DrawCell(in AppletFrame frame, Rect cell, string label, Page next)
+    private void DrawLane(in AppletFrame frame, Rect cell, string kicker, string title, Page next)
     {
         CardChrome.DrawGold(frame, cell);
-        frame.Text.DrawIn(cell, label,
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        var inset = cell.Inset(new Edges(frame.Units(12f), frame.Units(10f)));
+        WalletChrome.Kicker(frame, inset.TopSlice(frame.Units(14f)), kicker);
+        frame.Text.DrawEllipsized(inset.BottomSlice(frame.Units(20f)), title,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         if (frame.Input.ConsumeClick(cell))
         {
             Open(next);
@@ -233,8 +234,8 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "Earn Pearls", Page.Home);
-        DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
+        DrawBack(frame, stack.Take(frame.Units(26f)), "Earn", Page.Home);
+        DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         var tabs = stack.Take(frame.Units(28f));
         DrawTabs(frame, tabs, ["Daily", "Achievements", "Apps"], ref earnTab);
 
@@ -290,7 +291,7 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "Daily Check-In", Page.Earn);
+        DrawBack(frame, stack.Take(frame.Units(26f)), "Check-in", Page.Earn);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)),
             pearls.Streak.ToString(CultureInfo.InvariantCulture) + " DAY STREAK",
             new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
@@ -321,10 +322,10 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "Pearl Shop", Page.Home);
-        DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
+        WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "Shop");
+        DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         pearls.TryClaim(25, "Shop window", "You opened the Pearl Shop.", "app-shop");
-        DrawTabs(frame, stack.Take(frame.Units(28f)), ["Featured", "Badges", "Owned"], ref shopTab);
+        DrawTabs(frame, stack.Take(frame.Units(30f)), ["Featured", "Badges", "Owned"], ref shopTab);
 
         if (shopTab == 2)
         {
@@ -399,7 +400,7 @@ public sealed class WalletApplet : IApplet
 
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), spec.Name.ToUpperInvariant(), Page.Shop);
+        DrawBack(frame, stack.Take(frame.Units(26f)), spec.Name, Page.Shop);
         var face = stack.Take(frame.Units(120f));
         CardChrome.DrawGold(frame, face);
         WalletChrome.BadgeFace(frame, face.Inset(frame.Units(16f)), spec, paths);
@@ -415,7 +416,7 @@ public sealed class WalletApplet : IApplet
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), spec.Source,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint));
-        if (notice.Length > 0)
+        if (notice.Length > 0 && notice != "confirm-buy")
         {
             frame.Text.DrawIn(stack.Take(frame.Units(18f)), notice,
                 new TextStyle(FontRole.Caption, gold, TextAlign.Center));
@@ -429,10 +430,19 @@ public sealed class WalletApplet : IApplet
                 notice = "Featured on your profile.";
             }
         }
-        else if (spec.Purchasable && WalletChrome.GoldButton(frame, stack.Take(frame.Units(36f)),
-                     "Buy " + spec.Price.ToString("N0", CultureInfo.CurrentCulture)))
+        else if (spec.Purchasable && WalletChrome.GoldButton(frame, stack.Take(frame.Units(40f)),
+                     notice == "confirm-buy"
+                         ? "Confirm  ·  " + spec.Price.ToString("N0", CultureInfo.CurrentCulture)
+                         : "Buy  ·  " + spec.Price.ToString("N0", CultureInfo.CurrentCulture)))
         {
-            Buy(spec);
+            if (notice == "confirm-buy")
+            {
+                Buy(spec);
+            }
+            else
+            {
+                notice = "confirm-buy";
+            }
         }
 
         return area.Height - stack.Remaining.Height;
@@ -442,8 +452,8 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "My Rewards", Page.Home);
-        DrawTabs(frame, stack.Take(frame.Units(28f)), ["Earned", "Collection"], ref rewardTab);
+        WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "Items");
+        DrawTabs(frame, stack.Take(frame.Units(30f)), ["Earned", "Collection"], ref rewardTab);
         var earned = 0;
         var bought = 0;
         for (var index = 0; index < badges.Owned.Count; index++)
@@ -493,13 +503,16 @@ public sealed class WalletApplet : IApplet
                 new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
             frame.Text.DrawEllipsized(copy.Inset(new Edges(0f, frame.Units(16f), 0f, frame.Units(14f))), spec.Source,
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-            frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(14f)),
+            frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(14f)).Inset(new Edges(0f, 0f, frame.Units(52f), 0f)),
                 WalletChrome.When(own.EarnedAtUnix) + " · " + BadgeCatalog.CategoryName(spec.Category),
                 new TextStyle(FontRole.Caption, gold));
+            var wear = copy.RightSlice(frame.Units(52f)).BottomSlice(frame.Units(20f));
+            frame.Text.DrawIn(wear, string.Equals(badges.FeaturedId, spec.Id, StringComparison.Ordinal) ? "On" : "Wear",
+                new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Right));
             if (frame.Input.ConsumeClick(row))
             {
                 badges.SetFeatured(spec.Id);
-                notice = spec.Name + " is featured.";
+                notice = spec.Name + " is on your profile.";
             }
 
             any = true;
@@ -524,19 +537,27 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "History", Page.Home);
-        DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
-        DrawTabs(frame, stack.Take(frame.Units(28f)), ["All", "Earned", "Spent", "Gift"], ref historyTab);
+        WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "History");
+        DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
+        DrawTabs(frame, stack.Take(frame.Units(30f)), ["All", "Earned", "Spent", "Gifts"], ref historyTab);
         var any = false;
+        var lastDay = string.Empty;
         foreach (var row in pearls.Filtered(historyTab))
         {
-            DrawTx(frame, stack.Take(frame.Units(40f)), row);
+            var day = WalletChrome.DayLabel(row.AtUnix);
+            if (!string.Equals(day, lastDay, StringComparison.Ordinal))
+            {
+                WalletChrome.Kicker(frame, stack.Take(frame.Units(16f)), day);
+                lastDay = day;
+            }
+
+            DrawTx(frame, stack.Take(frame.Units(48f)), row);
             any = true;
         }
 
         if (!any)
         {
-            frame.Text.DrawIn(stack.Take(frame.Units(20f)), "No rows in this filter.",
+            frame.Text.DrawIn(stack.Take(frame.Units(22f)), "Nothing in this filter yet.",
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
 
@@ -547,8 +568,8 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "Pearl Spin", Page.Home);
-        DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
+        DrawBack(frame, stack.Take(frame.Units(26f)), "Pearl Spin", Page.Home);
+        DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)),
             "Today's wager " + (PearlLedger.SpinCap - pearls.SpinRemaining()).ToString(CultureInfo.InvariantCulture) +
             "/" + PearlLedger.SpinCap.ToString(CultureInfo.InvariantCulture),
@@ -606,7 +627,7 @@ public sealed class WalletApplet : IApplet
     {
         var gold = frame.Theme.Palette.WarmAccent;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawBack(frame, stack.Take(frame.Units(22f)), "Lucky Shell", Page.Spin);
+        DrawBack(frame, stack.Take(frame.Units(26f)), "Lucky Shell", Page.Spin);
         DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
         frame.Text.DrawIn(stack.Take(frame.Units(18f)),
             pearls.ShellsRemaining().ToString(CultureInfo.InvariantCulture) + " plays left today · " +
@@ -650,37 +671,33 @@ public sealed class WalletApplet : IApplet
         var cell = bar.Width / WalletChrome.Nav.Length;
         var active = page switch
         {
-            Page.Earn or Page.Daily => 1,
-            Page.Shop or Page.Item => 2,
-            Page.Rewards => 3,
-            Page.Spin or Page.Shells or Page.History => 4,
+            Page.Shop or Page.Item => 1,
+            Page.Rewards => 2,
+            Page.History => 3,
             _ => 0,
         };
-        if (page == Page.History)
-        {
-            active = 0;
-        }
 
         for (var index = 0; index < WalletChrome.Nav.Length; index++)
         {
             var item = Rect.FromSize(new Vector2(bar.Min.X + cell * index, bar.Min.Y), new Vector2(cell, bar.Height));
             var on = index == active;
-            frame.Text.DrawIn(item.BottomSlice(frame.Units(18f)), WalletChrome.Nav[index],
-                new TextStyle(FontRole.Caption, on ? gold : frame.Theme.Palette.InkMuted, TextAlign.Center));
+            frame.Text.DrawIn(item.Inset(new Edges(0f, frame.Units(14f), 0f, frame.Units(6f))), WalletChrome.Nav[index],
+                new TextStyle(on ? FontRole.CaptionStrong : FontRole.Caption,
+                    on ? gold : frame.Theme.Palette.InkMuted, TextAlign.Center));
             if (on)
             {
-                frame.Paint.FillCircle(new Vector2(item.Center.X, item.Min.Y + frame.Units(8f)), frame.Units(2.4f),
-                    gold);
+                var mark = item.BottomSlice(frame.Units(4f));
+                frame.Paint.Fill(Rect.FromSize(new Vector2(item.Center.X - frame.Units(10f), mark.Min.Y),
+                    new Vector2(frame.Units(20f), frame.Units(3f))), gold, frame.Units(2f));
             }
 
             if (frame.Input.ConsumeClick(item))
             {
                 Open(index switch
                 {
-                    1 => Page.Earn,
-                    2 => Page.Shop,
-                    3 => Page.Rewards,
-                    4 => Page.Spin,
+                    1 => Page.Shop,
+                    2 => Page.Rewards,
+                    3 => Page.History,
                     _ => Page.Home,
                 });
             }
@@ -705,9 +722,9 @@ public sealed class WalletApplet : IApplet
         CardChrome.Draw(frame, row);
         var inset = row.Inset(new Edges(frame.Units(10f), 0f));
         WalletChrome.Pearl(frame, inset.LeftSlice(frame.Units(28f)));
-        frame.Text.DrawIn(inset.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)),
+        frame.Text.DrawIn(inset.Inset(new Edges(frame.Units(34f), 0f, 0f, 0f)),
             pearls.Balance.ToString("N0", CultureInfo.CurrentCulture) + " Pearls",
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent));
     }
 
     private static void DrawTabs(in AppletFrame frame, Rect row, string[] labels, ref int selected)
@@ -837,7 +854,9 @@ public sealed class WalletApplet : IApplet
         var inset = row.Inset(new Edges(frame.Units(10f), frame.Units(4f)));
         frame.Text.DrawEllipsized(inset.TopSlice(frame.Units(16f)).Inset(new Edges(0f, 0f, frame.Units(64f), 0f)),
             tx.Title, new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawEllipsized(inset.BottomSlice(frame.Units(14f)), WalletChrome.When(tx.AtUnix),
+        var detail = tx.Detail.Length > 0 ? tx.Detail : WalletChrome.When(tx.AtUnix);
+        frame.Text.DrawEllipsized(inset.BottomSlice(frame.Units(16f)).Inset(new Edges(0f, 0f, frame.Units(64f), 0f)),
+            detail + "  ·  " + WalletChrome.When(tx.AtUnix),
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         WalletChrome.Signed(frame, inset.RightSlice(frame.Units(60f)), tx.Amount);
     }

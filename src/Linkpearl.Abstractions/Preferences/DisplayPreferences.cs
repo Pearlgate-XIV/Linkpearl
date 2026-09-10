@@ -9,6 +9,7 @@ namespace Linkpearl.Preferences;
 public sealed class DisplayPreferences
 {
     private bool use24HourClock;
+    private string languageId = PhoneLanguages.DefaultId;
     private AppearanceMode appearance = AppearanceMode.Night;
     private string wallpaperId = WallpaperCatalog.DefaultId;
     private string customPlateFile = string.Empty;
@@ -18,7 +19,7 @@ public sealed class DisplayPreferences
     private float bannerFocusX = 0.5f;
     private float bannerFocusY = 0.5f;
     private string colorway = ColorwayId.Night;
-    private string core = CoreId.Blue;
+    private string core = CoreId.White;
     private ShadeLevel shade = ShadeLevel.Even;
     private ClockFace clockFace;
     private LetteringSize lettering = LetteringSize.Medium;
@@ -96,7 +97,7 @@ public sealed class DisplayPreferences
         [false, true, true, false, false];
 
     public static readonly string[] DefaultStudioApps =
-        ["pearlchat", "party", "friends", "retainer", "market", "events"];
+        ["pearlchat", "party", "friends", "phone", "market", "notes"];
 
     public event Action? Changed;
 
@@ -104,6 +105,24 @@ public sealed class DisplayPreferences
     {
         get => use24HourClock;
         set => Set(ref use24HourClock, value);
+    }
+
+    public string LanguageId
+    {
+        get => languageId;
+        set
+        {
+            var next = PhoneLanguages.Sanitize(value);
+            if (string.Equals(languageId, next, StringComparison.Ordinal))
+            {
+                PhoneLanguages.Apply(next);
+                return;
+            }
+
+            languageId = next;
+            PhoneLanguages.Apply(next);
+            Changed?.Invoke();
+        }
     }
 
     public AppearanceMode Appearance
@@ -818,7 +837,8 @@ public sealed class DisplayPreferences
     }
 
     public bool CanPlaceHomeApp(string id) =>
-        CanBeHomeApp(id) && (string.Equals(id, "party", StringComparison.Ordinal) || IsOwned(id));
+        CanBeHomeApp(id) && !AppShelf.IsHidden(id) &&
+        (string.Equals(id, "party", StringComparison.Ordinal) || IsOwned(id));
 
     public void ReplaceStudioApp(string id, int slot)
     {
@@ -1087,6 +1107,7 @@ public sealed class DisplayPreferences
         appPages = LoadPages(installed, screens);
         installedApps = FlattenPages(appPages);
         ownedApps = SanitizeIds(owned ?? [], allowFolder: false);
+        StripHiddenApps();
         GraftNewDefaultApps();
         EnsureOwnedFromShelf();
         LoadQuickApps(quick is { Length: > 0 } ? quick : favoriteApps);
@@ -1170,6 +1191,18 @@ public sealed class DisplayPreferences
         if (changed)
         {
             ownedApps = next.ToArray();
+        }
+    }
+
+    private void StripHiddenApps()
+    {
+        for (var index = 0; index < AppShelf.Catalog.Length; index++)
+        {
+            var spec = AppShelf.Catalog[index];
+            if (spec.Hidden)
+            {
+                StripFromFolders(spec.Id);
+            }
         }
     }
 
@@ -1259,7 +1292,7 @@ public sealed class DisplayPreferences
 
     public void AcquireApp(string id)
     {
-        if (AppShelf.Find(id) is null || IsOwned(id))
+        if (AppShelf.Find(id) is null || AppShelf.IsHidden(id) || IsOwned(id))
         {
             return;
         }
@@ -1311,7 +1344,7 @@ public sealed class DisplayPreferences
 
     public void InstallApp(string id)
     {
-        if (id.Length == 0 || IsOnShelf(id))
+        if (id.Length == 0 || AppShelf.IsHidden(id) || IsOnShelf(id))
         {
             return;
         }
@@ -1826,7 +1859,8 @@ public sealed class DisplayPreferences
     public void NestInFolder(string folderId, string childId)
     {
         if (!TryFolder(folderId, out var name, out var children) || childId.Length == 0 ||
-            childId.StartsWith("folder:", StringComparison.Ordinal) || AppShelf.Find(childId) is null)
+            childId.StartsWith("folder:", StringComparison.Ordinal) || AppShelf.Find(childId) is null ||
+            AppShelf.IsHidden(childId))
         {
             return;
         }
@@ -2207,7 +2241,7 @@ public sealed class DisplayPreferences
                 continue;
             }
 
-            if (!folder && AppShelf.Find(id) is null)
+            if (!folder && (AppShelf.Find(id) is null || AppShelf.IsHidden(id)))
             {
                 continue;
             }
@@ -2591,7 +2625,7 @@ public sealed class DisplayPreferences
             }
 
             var folder = id.StartsWith("folder:", StringComparison.Ordinal);
-            if (!folder && AppShelf.Find(id) is null)
+            if (!folder && (AppShelf.Find(id) is null || AppShelf.IsHidden(id)))
             {
                 continue;
             }
@@ -2660,8 +2694,13 @@ public sealed class DisplayPreferences
 
     private string[] SanitizeHomeApps(string? packed)
     {
+        if (string.IsNullOrWhiteSpace(packed))
+        {
+            return HomeAppSlots(DefaultStudioApps);
+        }
+
         var kept = new List<string>(6);
-        var parts = (packed ?? string.Empty).Split(',', StringSplitOptions.TrimEntries);
+        var parts = packed.Split(',', StringSplitOptions.TrimEntries);
         for (var index = 0; index < parts.Length && kept.Count < 6; index++)
         {
             var id = parts[index];
@@ -2730,5 +2769,6 @@ public sealed class DisplayPreferences
     }
 
     private static bool CanBeHomeApp(string id) =>
-        id.Length > 0 && (string.Equals(id, "party", StringComparison.Ordinal) || AppShelf.Find(id) is not null);
+        id.Length > 0 && !AppShelf.IsHidden(id) &&
+        (string.Equals(id, "party", StringComparison.Ordinal) || AppShelf.Find(id) is not null);
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -64,6 +65,10 @@ internal enum NightPage : byte
     Inbox = 27,
     Alerts = 28,
     Saves = 29,
+    Auth = 31,
+    AuthLogin = 32,
+    AuthCreate = 33,
+    StoryComments = 34,
 }
 
 internal enum FilterPole : byte
@@ -86,6 +91,46 @@ internal sealed class VybeState
     public bool PlusBlocked { get; set; }
 
     public bool Onboarded { get; set; }
+
+    public string AccountId { get; set; } = string.Empty;
+
+    public bool HasAccount => AccountId.Length > 0;
+
+    public bool OnAuthSheet =>
+        Page is NightPage.Auth or NightPage.AuthLogin or NightPage.AuthCreate;
+
+    [JsonIgnore]
+    public VybeBook? Ledger { get; set; }
+
+    [JsonIgnore]
+    public string EnterHandle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string EnterSecret { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinName { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinTitle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinHandle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinSecret { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string JoinAgain { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string AuthNote { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool DropConfirm { get; set; }
+
+    [JsonIgnore]
+    public string DropSeatId { get; set; } = string.Empty;
 
     public bool Discoverable { get; set; } = true;
 
@@ -136,9 +181,24 @@ internal sealed class VybeState
 
     public string OwnStory { get; set; } = string.Empty;
 
+    public bool OwnStoryPermanent { get; set; }
+
+    public long OwnStoryAtUnix { get; set; }
+
+    public string OwnStoryPlace { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool DraftStoryPermanent { get; set; }
+
+    [JsonIgnore]
+    public bool StoryMoreOpen { get; set; }
+
     public bool AudienceEveryone { get; set; } = true;
 
     public bool DraftPlus { get; set; }
+
+    [JsonIgnore]
+    public bool DraftStory { get; set; }
 
     [JsonIgnore]
     public ContentRating DraftRating { get; set; } = ContentRating.Sfw;
@@ -322,6 +382,8 @@ internal sealed class VybeState
 
     public HashSet<int> Blocked { get; } = new();
 
+    public Dictionary<int, string> BlockedLabels { get; } = new();
+
     public HashSet<int> LikedPosts { get; } = new();
 
     public HashSet<int> LikedPeople { get; } = new();
@@ -389,6 +451,109 @@ internal sealed class VybeState
     [JsonIgnore]
     public HashSet<int> StoryHearts { get; } = new();
 
+    public List<PearlComment> OwnStoryComments { get; } = new();
+
+    public List<StoryThread> GuestStoryThreads { get; } = new();
+
+    public List<PearlPost> StoryReposts { get; } = new();
+
+    public List<PearlPost> StorySaves { get; } = new();
+
+    public bool HasOwnStory =>
+        (OwnStory.Length > 0 || StoryMedia.Length > 0) && !OwnStoryExpired;
+
+    public bool OwnStoryExpired =>
+        !OwnStoryPermanent && OwnStoryAtUnix > 0 &&
+        DateTimeOffset.UtcNow.ToUnixTimeSeconds() - OwnStoryAtUnix >= 24 * 60 * 60;
+
+    public List<PearlComment> StoryCommentsFor(int personId)
+    {
+        if (personId < 0)
+        {
+            return OwnStoryComments;
+        }
+
+        for (var index = 0; index < GuestStoryThreads.Count; index++)
+        {
+            if (GuestStoryThreads[index].PersonId == personId)
+            {
+                return GuestStoryThreads[index].Lines ??= new List<PearlComment>();
+            }
+        }
+
+        return new List<PearlComment>();
+    }
+
+    public void AddStoryComment(int personId, string author, string body)
+    {
+        var line = new PearlComment(author, body, "now", true);
+        if (personId < 0)
+        {
+            OwnStoryComments.Add(line);
+            return;
+        }
+
+        StoryThread? thread = null;
+        for (var index = 0; index < GuestStoryThreads.Count; index++)
+        {
+            if (GuestStoryThreads[index].PersonId == personId)
+            {
+                thread = GuestStoryThreads[index];
+                break;
+            }
+        }
+
+        if (thread is null)
+        {
+            thread = new StoryThread
+            {
+                PersonId = personId,
+                AtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            };
+            GuestStoryThreads.Add(thread);
+        }
+        else if (thread.AtUnix == 0)
+        {
+            thread.AtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
+        thread.Lines ??= new List<PearlComment>();
+        thread.Lines.Add(line);
+    }
+
+    public void DropExpiredStory()
+    {
+        DropExpiredGuestThreads();
+        if (!OwnStoryExpired)
+        {
+            return;
+        }
+
+        ClearOwnStory();
+    }
+
+    public void DropExpiredGuestThreads()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        GuestStoryThreads.RemoveAll(thread =>
+            thread.AtUnix > 0 && now - thread.AtUnix >= 24 * 60 * 60);
+    }
+
+    public void ClearOwnStory()
+    {
+        OwnStory = string.Empty;
+        StoryMedia = string.Empty;
+        OwnStoryPermanent = false;
+        OwnStoryAtUnix = 0;
+        OwnStoryPlace = string.Empty;
+        OwnStoryComments.Clear();
+        StoryHearts.Remove(-1);
+        if (StoryIndex < 0)
+        {
+            StoryIndex = -1;
+        }
+    }
+
     public List<ScenePost> Mine { get; } = new();
 
     public List<SceneNote> Notes { get; } = new();
@@ -444,6 +609,7 @@ internal sealed class VybeState
                     state.Mode = state.PlusAgreed && dto.Night ? SocialMode.AfterDark : SocialMode.Daylight;
                     state.PickedMode = dto.PickedMode;
                     state.Onboarded = dto.Onboarded;
+                    state.AccountId = dto.AccountId ?? string.Empty;
                     state.Discoverable = dto.Discoverable;
                     state.DisplayName = dto.DisplayName ?? string.Empty;
                     state.Honorific = dto.Honorific ?? string.Empty;
@@ -461,6 +627,36 @@ internal sealed class VybeState
                     state.Pronouns = dto.Pronouns ?? string.Empty;
                     state.About = dto.About ?? string.Empty;
                     state.OwnStory = dto.OwnStory ?? string.Empty;
+                    state.StoryMedia = dto.StoryMedia ?? state.StoryMedia;
+                    state.OwnStoryPermanent = dto.OwnStoryPermanent;
+                    state.OwnStoryAtUnix = dto.OwnStoryAtUnix;
+                    state.OwnStoryPlace = dto.OwnStoryPlace ?? string.Empty;
+                    if (dto.OwnStoryComments is { Length: > 0 })
+                    {
+                        state.OwnStoryComments.Clear();
+                        state.OwnStoryComments.AddRange(dto.OwnStoryComments);
+                    }
+
+                    if (dto.StoryReposts is { Length: > 0 })
+                    {
+                        state.StoryReposts.Clear();
+                        state.StoryReposts.AddRange(dto.StoryReposts);
+                    }
+
+                    if (dto.GuestStoryThreads is { Length: > 0 })
+                    {
+                        state.GuestStoryThreads.Clear();
+                        state.GuestStoryThreads.AddRange(dto.GuestStoryThreads);
+                    }
+
+                    if (dto.StorySaves is { Length: > 0 })
+                    {
+                        state.StorySaves.Clear();
+                        state.StorySaves.AddRange(dto.StorySaves);
+                    }
+
+                    AbsorbSet(state.StoryHearts, dto.StoryHearts);
+                    state.DropExpiredStory();
                     state.Relationship = dto.Relationship ?? "Rather not say";
                     state.DmsOpen = dto.DmsOpen ?? true;
                     Absorb(state.Genders, dto.Genders);
@@ -470,6 +666,7 @@ internal sealed class VybeState
                     state.Intents.RemoveAll(tag => string.Equals(tag, "Sharing", StringComparison.Ordinal));
                     Absorb(state.Tags, dto.Tags);
                     AbsorbSet(state.Blocked, dto.Blocked);
+                    AbsorbBlockedNames(state.BlockedLabels, dto.Blocked, dto.BlockedNames);
                     AbsorbSet(state.ViewedStories, dto.ViewedStories);
                     AbsorbSet(state.LikedPeople, dto.LikedPeople);
                     AbsorbKeys(state.StarredChats, dto.StarredChats);
@@ -509,6 +706,19 @@ internal sealed class VybeState
             }
         }
 
+        var signOut = paths.State("vybe.signout");
+        if (File.Exists(signOut))
+        {
+            state.AccountId = string.Empty;
+            try
+            {
+                File.Delete(signOut);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
         if (state.DisplayName.Length == 0)
         {
             state.DisplayName = fallbackName;
@@ -519,7 +729,11 @@ internal sealed class VybeState
             state.Handle = "@" + state.DisplayName.Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
         }
 
-        if (state.Night && !state.PlusAgreed)
+        if (!state.HasAccount)
+        {
+            state.Page = NightPage.Auth;
+        }
+        else if (state.Night && !state.PlusAgreed)
         {
             state.Mode = SocialMode.Daylight;
             state.Page = NightPage.Tabs;
@@ -554,6 +768,7 @@ internal sealed class VybeState
                 Consented = PlusAgreed,
                 PlusAgreed = PlusAgreed,
                 Onboarded = Onboarded,
+                AccountId = AccountId,
                 Discoverable = Discoverable,
                 DisplayName = DisplayName,
                 Honorific = Honorific,
@@ -571,6 +786,15 @@ internal sealed class VybeState
                 Pronouns = Pronouns,
                 About = About,
                 OwnStory = OwnStory,
+                StoryMedia = StoryMedia,
+                OwnStoryPermanent = OwnStoryPermanent,
+                OwnStoryAtUnix = OwnStoryAtUnix,
+                OwnStoryPlace = OwnStoryPlace,
+                OwnStoryComments = OwnStoryComments.ToArray(),
+                GuestStoryThreads = GuestStoryThreads.ToArray(),
+                StoryHearts = StoryHearts.ToArray(),
+                StoryReposts = StoryReposts.ToArray(),
+                StorySaves = StorySaves.ToArray(),
                 Sexuality = string.Join(", ", Sexualities),
                 Sexualities = Sexualities.ToArray(),
                 Relationship = Relationship,
@@ -579,6 +803,7 @@ internal sealed class VybeState
                 Intents = Intents.ToArray(),
                 Tags = Tags.ToArray(),
                 Blocked = Blocked.ToArray(),
+                BlockedNames = Blocked.Select(id => BlockedLabels.GetValueOrDefault(id, string.Empty)).ToArray(),
                 ViewedStories = ViewedStories.ToArray(),
                 LikedPeople = LikedPeople.ToArray(),
                 StarredChats = StarredChats.ToArray(),
@@ -596,10 +821,97 @@ internal sealed class VybeState
         catch (IOException)
         {
         }
+
+        if (Ledger is not null && HasAccount)
+        {
+            Ledger.Keep(this);
+            Ledger.Save(paths);
+        }
+    }
+
+    public void Sit(VybeBook book)
+    {
+        Ledger = book;
+        if (HasAccount && !book.Holds(AccountId))
+        {
+            AccountId = string.Empty;
+        }
+
+        if (!HasAccount)
+        {
+            Page = NightPage.Auth;
+        }
+    }
+
+    public void EnterSeat(VybeSeat seat)
+    {
+        AccountId = seat.Id;
+        seat.Face.Apply(this);
+        if (DisplayName.Length == 0)
+        {
+            DisplayName = seat.DisplayName;
+        }
+
+        if (Handle.Length == 0)
+        {
+            Handle = seat.Handle;
+        }
+
+        ClearAuthDrafts();
+        Page = Onboarded ? NightPage.Tabs : NightPage.OnboardIdentity;
+        Scroll = 0f;
+    }
+
+    public void ClearSession()
+    {
+        AccountId = string.Empty;
+        Onboarded = false;
+        DisplayName = string.Empty;
+        Honorific = string.Empty;
+        Handle = string.Empty;
+        Pronouns = string.Empty;
+        About = string.Empty;
+        ProfileFacePath = string.Empty;
+        ProfileBannerPath = string.Empty;
+        FaceZoom = 1f;
+        FaceFocusX = 0.5f;
+        FaceFocusY = 0.5f;
+        BannerZoom = 1f;
+        BannerFocusX = 0.5f;
+        BannerFocusY = 0.5f;
+        UsesHandsetProfile = true;
+        UsesHandsetIdentity = true;
+        Discoverable = true;
+        Relationship = "Rather not say";
+        DmsOpen = true;
+        Genders.Clear();
+        Sexualities.Clear();
+        Intents.Clear();
+        Tags.Clear();
+        DropConfirm = false;
+        DropSeatId = string.Empty;
+        ClearAuthDrafts();
+        Page = NightPage.Auth;
+        ReturnTo = NightPage.Auth;
+        Tab = NightTab.Home;
+        Scroll = 0f;
+    }
+
+    public void ClearAuthDrafts()
+    {
+        EnterHandle = string.Empty;
+        EnterSecret = string.Empty;
+        JoinName = string.Empty;
+        JoinTitle = string.Empty;
+        JoinHandle = string.Empty;
+        JoinSecret = string.Empty;
+        JoinAgain = string.Empty;
+        AuthNote = string.Empty;
     }
 
     public void Open(NightPage page)
     {
+        StoryMoreOpen = false;
         ReturnTo = Page;
         Page = page;
         Scroll = 0f;
@@ -615,6 +927,7 @@ internal sealed class VybeState
 
     public void Back()
     {
+        StoryMoreOpen = false;
         var keep = PeopleFind.Scroll;
         Page = ReturnTo == Page ? NightPage.Tabs : ReturnTo;
         ReturnTo = NightPage.Tabs;
@@ -757,6 +1070,7 @@ internal sealed class VybeState
 
         Wash = 0f;
         EnterMode(WashToNight ? SocialMode.AfterDark : SocialMode.Daylight);
+        DropExpiredStory();
         Save(paths);
     }
 
@@ -885,6 +1199,27 @@ internal sealed class VybeState
 
         person = default;
         return false;
+    }
+
+    public void BlockPerson(ScenePerson person)
+    {
+        Blocked.Add(person.Id);
+        var label = person.Name.Trim();
+        if (label.Length == 0)
+        {
+            label = person.Handle.Trim();
+        }
+
+        if (label.Length > 0)
+        {
+            BlockedLabels[person.Id] = label;
+        }
+    }
+
+    public void Unblock(int id)
+    {
+        Blocked.Remove(id);
+        BlockedLabels.Remove(id);
     }
 
     public void Bind(PearlSnapshot snap)
@@ -1262,6 +1597,25 @@ internal sealed class VybeState
         }
     }
 
+    private static void AbsorbBlockedNames(Dictionary<int, string> target, int[]? ids, string[]? names)
+    {
+        target.Clear();
+        if (ids is not { Length: > 0 } || names is not { Length: > 0 })
+        {
+            return;
+        }
+
+        var count = Math.Min(ids.Length, names.Length);
+        for (var index = 0; index < count; index++)
+        {
+            var name = names[index];
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                target[ids[index]] = name.Trim();
+            }
+        }
+    }
+
     private sealed class NightSave
     {
         public bool Night { get; set; }
@@ -1273,6 +1627,8 @@ internal sealed class VybeState
         public bool PlusAgreed { get; set; }
 
         public bool Onboarded { get; set; }
+
+        public string? AccountId { get; set; }
 
         public bool Discoverable { get; set; }
 
@@ -1308,6 +1664,24 @@ internal sealed class VybeState
 
         public string? OwnStory { get; set; }
 
+        public string? StoryMedia { get; set; }
+
+        public bool OwnStoryPermanent { get; set; }
+
+        public long OwnStoryAtUnix { get; set; }
+
+        public string? OwnStoryPlace { get; set; }
+
+        public PearlComment[]? OwnStoryComments { get; set; }
+
+        public StoryThread[]? GuestStoryThreads { get; set; }
+
+        public int[]? StoryHearts { get; set; }
+
+        public PearlPost[]? StoryReposts { get; set; }
+
+        public PearlPost[]? StorySaves { get; set; }
+
         public string? Sexuality { get; set; }
 
         public string[]? Sexualities { get; set; }
@@ -1333,6 +1707,8 @@ internal sealed class VybeState
         public int[]? Incoming { get; set; }
 
         public int[]? Blocked { get; set; }
+
+        public string[]? BlockedNames { get; set; }
 
         public int[]? LikedPosts { get; set; }
 
@@ -1435,6 +1811,15 @@ internal sealed class VybeState
 
         public SceneComment[]? Lines { get; set; }
     }
+}
+
+internal sealed class StoryThread
+{
+    public int PersonId { get; set; }
+
+    public long AtUnix { get; set; }
+
+    public List<PearlComment> Lines { get; set; } = new();
 }
 
 internal readonly record struct ScenePerson(

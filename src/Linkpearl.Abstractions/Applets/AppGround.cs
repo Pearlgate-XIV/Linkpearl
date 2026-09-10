@@ -32,9 +32,7 @@ public static class AppGround
         "friends" => new Vector4(0.91f, 0.26f, 0.48f, 1f),
         "market" => new Vector4(0.00f, 0.54f, 0.48f, 1f),
         "appstore" or "announcements" => new Vector4(0.46f, 0.36f, 0.88f, 1f),
-        "retainer" => new Vector4(0.72f, 0.48f, 0.28f, 1f),
         "events" => new Vector4(0.96f, 0.45f, 0.16f, 1f),
-        "place" => new Vector4(0.26f, 0.62f, 0.28f, 1f),
         "eorzea" => new Vector4(0.22f, 0.38f, 0.72f, 1f),
         "settings" => new Vector4(0.42f, 0.45f, 0.48f, 1f),
         "feedback" => new Vector4(0.35f, 0.40f, 0.90f, 1f),
@@ -98,17 +96,9 @@ public static class AppGround
                 top = new Vector4(0.13f, 0.09f, 0.20f, 1f);
                 bottom = new Vector4(0.07f, 0.05f, 0.11f, 1f);
                 return;
-            case "retainer":
-                top = new Vector4(0.16f, 0.11f, 0.07f, 1f);
-                bottom = new Vector4(0.08f, 0.06f, 0.04f, 1f);
-                return;
             case "events":
                 top = new Vector4(0.20f, 0.11f, 0.06f, 1f);
                 bottom = new Vector4(0.10f, 0.06f, 0.04f, 1f);
-                return;
-            case "place":
-                top = new Vector4(0.07f, 0.15f, 0.08f, 1f);
-                bottom = new Vector4(0.04f, 0.08f, 0.05f, 1f);
                 return;
             case "eorzea":
                 top = new Vector4(0.08f, 0.10f, 0.20f, 1f);

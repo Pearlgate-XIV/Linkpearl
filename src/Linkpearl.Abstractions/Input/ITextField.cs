@@ -17,6 +17,13 @@ public interface ITextField
     string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted,
         bool retainFocus);
 
+    string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted,
+        bool retainFocus, bool secret) =>
+        Draw(id, area, value, placeholder, maxLength, out submitted, retainFocus);
+
+    string Draw(string id, Rect area, string value, string placeholder, bool secret) =>
+        Draw(id, area, value, placeholder, 128, out _, false, secret);
+
     string Write(string id, Rect area, string value, string placeholder, int maxLength);
 
     int Pick(string id, Rect area, IReadOnlyList<string> labels, int selected);

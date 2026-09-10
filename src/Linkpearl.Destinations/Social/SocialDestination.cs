@@ -55,7 +55,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public string Glyph => "👥";
 
-    public string Label => "Social";
+    public string Label => PhoneLanguages.T("nav.social");
 
     public int CurrentSection => selectedSection;
 

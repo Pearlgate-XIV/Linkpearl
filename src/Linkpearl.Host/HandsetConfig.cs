@@ -8,7 +8,11 @@ namespace Linkpearl.Host.Composition;
 
 public sealed class HandsetConfig : IPluginConfiguration
 {
+    public const int FreshBootMark = 2;
+
     public int Version { get; set; } = 1;
+
+    public int FreshBoot { get; set; }
 
     public float ScaleStep { get; set; } = HandsetSizeCatalog.DefaultStep;
 
@@ -52,6 +56,8 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public bool Use24HourClock { get; set; }
 
+    public string LanguageId { get; set; } = "en-US";
+
     public int Appearance { get; set; } = (int)AppearanceMode.Night;
 
     public string WallpaperId { get; set; } = WallpaperCatalog.DefaultId;
@@ -70,7 +76,7 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public string Colorway { get; set; } = ColorwayId.Night;
 
-    public string Core { get; set; } = CoreId.Blue;
+    public string Core { get; set; } = CoreId.White;
 
     public int Shade { get; set; } = (int)ShadeLevel.Even;
 
@@ -260,6 +266,7 @@ public sealed class HandsetConfig : IPluginConfiguration
         Core = CoreId.Sanitize(Core);
         Appearance = Math.Clamp(Appearance, 0, 2);
         Shade = Math.Clamp(Shade, 0, 2);
+        LanguageId = PhoneLanguages.Sanitize(LanguageId);
         ClockFace = Math.Clamp(ClockFace, 0, 2);
         Lettering = Math.Clamp(Lettering, 0, 2);
         NameStyle = Math.Clamp(NameStyle, 0, 2);

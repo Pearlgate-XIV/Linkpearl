@@ -38,7 +38,7 @@ public sealed class YouDestination : IDestinationScreen
 
     public string Glyph => "🧑";
 
-    public string Label => "You";
+    public string Label => PhoneLanguages.T("nav.you");
 
     public bool CanGoBack => profile.OverlayOpen;
 

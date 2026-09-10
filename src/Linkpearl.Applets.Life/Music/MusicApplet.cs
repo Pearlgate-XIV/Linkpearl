@@ -52,6 +52,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private readonly HashSet<string> liveSeen = new(StringComparer.OrdinalIgnoreCase);
     private bool liveSeeded;
     private readonly MusicState state;
+    private readonly MusicBook book;
     private int profileStamp;
     private float nameClock;
     private long lastCaptureTry;
@@ -96,12 +97,22 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         this.notices = notices;
         this.clock = clock;
         state = MusicState.Load(paths, game.Character.Name);
-        FillFromCharacter();
-        profiles.Add(this);
-        if (state.UsesHandsetIdentity || state.UsesHandsetProfile)
+        book = MusicBook.Load(paths);
+        state.Sit(book);
+        if (state.HasAccount)
         {
-            AcceptHandsetProfile(HandsetName(), HandsetLook.Honorific(display));
+            FillFromCharacter();
+            if (state.UsesHandsetIdentity || state.UsesHandsetProfile)
+            {
+                AcceptHandsetProfile(HandsetName(), HandsetLook.Honorific(display));
+            }
         }
+        else if (state.JoinName.Length == 0)
+        {
+            state.JoinName = HandsetName();
+        }
+
+        profiles.Add(this);
 
         sense.CapturedPcm += push.WritePcm;
         sense.RefreshPoints();
@@ -252,6 +263,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         publicRadio.Ensure(state.Genre);
         WarmStations();
         community.Refresh();
+        if (!state.HasAccount)
+        {
+            state.Page = state.OnAuthSheet ? state.Page : MusicPage.Auth;
+            return;
+        }
+
         if (!state.Onboarded)
         {
             return;
@@ -477,7 +494,10 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         state.Save(paths);
     }
 
-    public bool CanGoBack => state.Page != MusicPage.Tabs && state.Page != MusicPage.Onboard;
+    public bool CanGoBack =>
+        !state.HasAccount
+            ? state.Page is MusicPage.AuthLogin or MusicPage.AuthCreate
+            : state.Page != MusicPage.Tabs && state.Page != MusicPage.Onboard;
 
     public bool Back()
     {
@@ -485,6 +505,19 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         {
             CloseReport();
             return true;
+        }
+
+        if (!state.HasAccount)
+        {
+            if (state.Page is MusicPage.AuthLogin or MusicPage.AuthCreate)
+            {
+                state.AuthNote = string.Empty;
+                state.Page = MusicPage.Auth;
+                state.Scroll = 0f;
+                return true;
+            }
+
+            return false;
         }
 
         if (state.Page == MusicPage.Tabs || state.Page == MusicPage.Onboard)
@@ -548,7 +581,22 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         try
         {
             ApplyImagePick(frame);
+            if (!state.HasAccount && !state.OnAuthSheet)
+            {
+                state.Page = MusicPage.Auth;
+            }
+            else if (state.HasAccount && state.OnAuthSheet)
+            {
+                state.Page = state.Onboarded ? MusicPage.Tabs : MusicPage.Onboard;
+            }
+
             MusicChrome.PaintGround(frame, frame.Content);
+            if (state.OnAuthSheet)
+            {
+                DrawAuth(frame, frame.Content.Inset(frame.Units(16f)));
+                return;
+            }
+
             if (state.Page == MusicPage.Onboard)
             {
                 DrawOnboard(frame, frame.Content.Inset(frame.Units(16f)));

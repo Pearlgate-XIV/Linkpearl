@@ -219,7 +219,7 @@ internal sealed class StudioHunt
         cursor = Place(cursor, needle, "Sounds", "Speaker and microphone", DestinationTab.Settings);
         cursor = Place(cursor, needle, "Notifications", "Do not disturb", DestinationTab.Settings);
         cursor = Place(cursor, needle, "Feed", "Say shout yell party", DestinationTab.Settings);
-        cursor = Place(cursor, needle, "Languages", "Clock and language", DestinationTab.Settings);
+        cursor = Place(cursor, needle, "Language & Time", "Clock and language", DestinationTab.Settings);
         cursor = Place(cursor, needle, "Terms of service", "Legal", DestinationTab.Settings);
         cursor = Place(cursor, needle, "Credits", "Who built this phone", DestinationTab.Settings);
         return cursor;
@@ -230,7 +230,8 @@ internal sealed class StudioHunt
         for (var index = 0; index < AppShelf.Catalog.Length && cursor < hits.Length; index++)
         {
             var spec = AppShelf.Catalog[index];
-            if (!Hit(spec.Name, needle) && !Hit(spec.Caption, needle) && !Hit(spec.Id, needle))
+            if (spec.Hidden ||
+                (!Hit(spec.Name, needle) && !Hit(spec.Caption, needle) && !Hit(spec.Id, needle)))
             {
                 continue;
             }

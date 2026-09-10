@@ -52,6 +52,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private float pendingFocusY;
     private bool hasFocusY;
     private bool creditsOpen;
+    private string creditLook = string.Empty;
     private string sliderDrag = string.Empty;
     private long lastPortScan;
 
@@ -78,7 +79,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     public string Glyph => "⚙";
 
-    public string Label => "Settings";
+    public string Label => PhoneLanguages.T("nav.settings");
 
     public int CurrentSection => unfolded.Contains("General") || unfolded.Contains("Notifications")
         ? SettingsPane.Presence
@@ -104,22 +105,33 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         if (string.Equals(title, "Credits", StringComparison.OrdinalIgnoreCase))
         {
             creditsOpen = true;
+            creditLook = string.Empty;
             return;
         }
 
         creditsOpen = false;
         unfolded.Clear();
-        unfolded.Add(title);
-        searchPinned = title;
+        var topic = string.Equals(title, "Languages", StringComparison.OrdinalIgnoreCase)
+            ? "Language & Time"
+            : title;
+        unfolded.Add(topic);
+        searchPinned = topic;
         hasFocusY = false;
     }
 
-    public bool CanGoBack => profile.OverlayOpen || creditsOpen || part != Part.None || flipped;
+    public bool CanGoBack =>
+        profile.OverlayOpen || creditLook.Length > 0 || creditsOpen || part != Part.None || flipped;
 
     public bool Back()
     {
         if (profile.Back())
         {
+            return true;
+        }
+
+        if (creditLook.Length > 0)
+        {
+            creditLook = string.Empty;
             return true;
         }
 
@@ -205,12 +217,13 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
 
         frame.Text.DrawIn(row.Inset(new Edges(frame.Units(42f), 0f, 0f, 0f)),
-            creditsOpen ? "Credits" : "Settings",
+            creditsOpen ? PhoneLanguages.T("set.credits") : PhoneLanguages.T("nav.settings"),
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
     }
 
     private void DrawBook(AppletFrame frame, ref Stack stack)
     {
+        DrawPatreonSupport(frame, stack.Take(frame.Units(52f)));
         DrawSearch(frame, stack.Take(frame.Units(32f)));
         var needle = listQuery.Trim();
         if (needle != listNeedle)
@@ -232,13 +245,14 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             "feed say shout yell party chat live", OptionBand(frame, 4), DrawFeedPage);
         DrawTopic(frame, ref stack, "Phone calls", "Calls, wake, and portraits",
             "phone call phonecalls wake portrait cutscene", OptionBand(frame, 3), DrawPhonePage);
-        DrawTopic(frame, ref stack, "Languages", "Language and date and time",
-            "language english clock 12 24 eorzea", OptionBand(frame, 6), DrawLanguagesPage);
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Version " + environment.Version,
+        DrawTopic(frame, ref stack, "Language & Time", PhoneLanguages.T("set.language.blurb"),
+            "language languages english clock 12 24 eorzea time timezone", LanguagePageHeight(frame),
+            DrawLanguagesPage);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("set.version") + " " + environment.Version,
             new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
         DrawTopic(frame, ref stack, "Terms of service", "How this phone may be used", "tos terms legal",
             frame.Units(220f), DrawTosPage);
-        DrawBoxedLink(frame, stack.Take(OptionHeight(frame)), "Join our Discord",
+        DrawBoxedLink(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.discord"),
             () => OpenSite("https://discord.gg/KBf4wrzS6F"));
         DrawCreditsLink(frame, stack.Take(OptionHeight(frame)));
     }
@@ -315,16 +329,32 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawLanguagesPage(AppletFrame frame, ref Stack stack)
     {
-        ExclusiveRow(frame, ref stack, "English", true, () => { }, "App language on this phone.");
-        ExclusiveRow(frame, ref stack, "Use 12-hour format", !display.Use24HourClock,
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("set.app.language"),
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        var row = stack.Take(OptionHeight(frame));
+        var gold = frame.Theme.Palette.WarmAccent;
+        frame.Paint.Fill(row, frame.Theme.Palette.SurfaceOverlay, frame.Units(12f));
+        frame.Paint.Stroke(row, gold with { W = 0.32f }, frame.Theme.Metrics.Hairline, frame.Units(12f));
+        var inner = row.Inset(new Edges(frame.Units(8f), frame.Units(6f), frame.Units(8f), frame.Units(6f)));
+        var selected = Math.Max(0, PhoneLanguages.IndexOf(display.LanguageId));
+        var picked = frame.TextField.Combo("phone-language", inner, PhoneLanguages.MenuLabels, selected);
+        frame.Input.Claim(row);
+        if (picked != selected)
+        {
+            display.LanguageId = PhoneLanguages.All[picked].Id;
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(32f)), PhoneLanguages.T("set.app.language.hint"),
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.hour12"), !display.Use24HourClock,
             () => display.Use24HourClock = false, "1:00 PM.");
-        ExclusiveRow(frame, ref stack, "Use 24-hour format", display.Use24HourClock,
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.hour24"), display.Use24HourClock,
             () => display.Use24HourClock = true, "13:00.");
-        ExclusiveRow(frame, ref stack, "Local time", display.ClockFace == ClockFace.Local,
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.local"), display.ClockFace == ClockFace.Local,
             () => display.ClockFace = ClockFace.Local, "Your real-world clock.");
-        ExclusiveRow(frame, ref stack, "Eorzea time", display.ClockFace == ClockFace.Eorzea,
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.eorzea"), display.ClockFace == ClockFace.Eorzea,
             () => display.ClockFace = ClockFace.Eorzea, "In-world clock.");
-        ExclusiveRow(frame, ref stack, "Both clocks", display.ClockFace == ClockFace.Both,
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.both"), display.ClockFace == ClockFace.Both,
             () => display.ClockFace = ClockFace.Both, "Local and Eorzea time together.");
     }
 
@@ -831,6 +861,26 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawCreditsLink(frame, stack.Take(frame.Units(36f)));
     }
 
+    private static void DrawPatreonSupport(in AppletFrame frame, Rect row)
+    {
+        var radius = row.Height * 0.5f;
+        var hovered = frame.Input.IsHovering(row);
+        var coral = new Vector4(1.00f, 0.42f, 0.40f, 1f);
+        var peach = new Vector4(1.00f, 0.72f, 0.38f, 1f);
+        var rose = new Vector4(0.96f, 0.28f, 0.52f, 1f);
+        var ember = new Vector4(1.00f, 0.34f, 0.32f, 1f);
+        frame.Paint.Glow(row, coral with { W = hovered ? 0.48f : 0.30f }, radius, frame.Units(hovered ? 12f : 9f));
+        frame.Paint.FillSquircleGradient(row, coral, peach, rose, ember, radius);
+        frame.Paint.Stroke(row, new Vector4(1f, 0.92f, 0.86f, hovered ? 0.55f : 0.32f), frame.Units(1.2f), radius);
+        frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f, frame.Units(10f), 0f)),
+            PhoneLanguages.T("set.patreon"),
+            new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
+        if (frame.Input.ConsumeClick(row))
+        {
+            OpenSite("https://www.patreon.com/c/LinkPearl_XIV/membership");
+        }
+    }
+
     private void DrawBoxedLink(in AppletFrame frame, Rect row, string title, Action tap)
     {
         CardChrome.DrawGold(frame, row);
@@ -847,68 +897,208 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawCreditsLink(in AppletFrame frame, Rect row)
     {
-        DrawBoxedLink(frame, row, "Credits", () => creditsOpen = true);
+        DrawBoxedLink(frame, row, PhoneLanguages.T("set.credits"), () => creditsOpen = true);
     }
 
     private void DrawCreditsPanel(in AppletFrame frame, ref Stack stack)
     {
-        var bar = stack.Take(frame.Units(36f));
-        Chip(frame, bar.LeftSlice(frame.Units(72f)), "Back", false, () => creditsOpen = false);
-        frame.Text.DrawIn(bar.Inset(new Edges(frame.Units(80f), 0f, 0f, 0f)), "Credits",
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(32f)),
-            "People who built this phone. Tap a name to open their Pearlgate profile when we have one.",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         var credits = CreditBook.Resolve(pearl.Current, game.Character.Name);
+        if (creditLook.Length > 0)
+        {
+            for (var index = 0; index < credits.Length; index++)
+            {
+                if (string.Equals(credits[index].Id, creditLook, StringComparison.Ordinal))
+                {
+                    DrawCreditProfile(frame, ref stack, credits[index]);
+                    return;
+                }
+            }
+
+            creditLook = string.Empty;
+        }
+
+        var bar = stack.Take(frame.Units(36f));
+        Chip(frame, bar.LeftSlice(frame.Units(72f)), "Back", false, () =>
+        {
+            creditLook = string.Empty;
+            creditsOpen = false;
+        });
+        frame.Text.DrawIn(bar.Inset(new Edges(frame.Units(80f), 0f, 0f, 0f)), PhoneLanguages.T("set.credits"),
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(stack.Take(frame.Units(28f)),
+            "Plugins and people behind this phone. Tap a profile to open it.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "PLUGINS",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
         for (var index = 0; index < credits.Length; index++)
         {
-            DrawCreditRow(frame, stack.Take(frame.Units(56f)), credits[index]);
+            if (credits[index].Kind == CreditKind.Plugin)
+            {
+                DrawCreditRow(frame, stack.Take(frame.Units(80f)), credits[index]);
+            }
+        }
+
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "PEOPLE",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
+        for (var index = 0; index < credits.Length; index++)
+        {
+            if (credits[index].Kind == CreditKind.Person)
+            {
+                DrawCreditRow(frame, stack.Take(frame.Units(80f)), credits[index]);
+            }
+        }
+    }
+
+    private void DrawCreditProfile(in AppletFrame frame, ref Stack stack, ShownCredit credit)
+    {
+        var bar = stack.Take(frame.Units(36f));
+        Chip(frame, bar.LeftSlice(frame.Units(72f)), "Back", false, () => creditLook = string.Empty);
+        frame.Text.DrawIn(bar.Inset(new Edges(frame.Units(80f), 0f, 0f, 0f)), "Profile",
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+
+        var hero = stack.Take(frame.Units(132f));
+        CardChrome.DrawGold(frame, hero);
+        var inset = hero.Inset(frame.Units(14f));
+        var face = inset.LeftSlice(frame.Units(88f));
+        DrawCreditFace(frame, face, credit);
+        var copy = inset.Inset(new Edges(frame.Units(100f), frame.Units(8f), 0f, 0f));
+        frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(22f)), credit.Name,
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        var kind = credit.Kind == CreditKind.Plugin ? "Plugin" : "Person";
+        var line = credit.Handle.Length > 0 ? "@" + credit.Handle.TrimStart('@') + "  ·  " + kind : kind;
+        frame.Text.DrawEllipsized(copy.Inset(new Edges(0f, frame.Units(24f), 0f, frame.Units(22f))), line,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.WarmAccent));
+        frame.Text.DrawWrapped(copy.BottomSlice(frame.Units(36f)), credit.Work,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+
+        var about = stack.Take(frame.Units(72f));
+        CardChrome.Draw(frame, about);
+        var body = about.Inset(frame.Units(12f));
+        frame.Text.DrawIn(body.TopSlice(frame.Units(16f)), "Contribution",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
+        frame.Text.DrawWrapped(body.Inset(new Edges(0f, frame.Units(20f), 0f, 0f)), credit.Work,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+
+        if (credit.Kind == CreditKind.Person && credit.Name.Length > 0)
+        {
+            pearl.NoteQuery(credit.Name);
+        }
+
+        DrawCreditSite(frame, ref stack, "Plugin page", credit.PluginPage);
+        DrawCreditSite(frame, ref stack, "GitHub", credit.GitHubPage);
+
+        if (credit.ProfileId.Length > 0)
+        {
+            var gate = stack.Take(frame.Units(44f));
+            CardChrome.DrawGold(frame, gate);
+            frame.Text.DrawIn(gate, "Open Pearlgate profile",
+                new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+            if (frame.Input.ConsumeClick(gate))
+            {
+                pearl.WatchProfile(credit.ProfileId);
+                hub.OpenProfile(credit.ProfileId);
+            }
+        }
+    }
+
+    private static void DrawCreditSite(in AppletFrame frame, ref Stack stack, string label, string url)
+    {
+        if (url.Length == 0)
+        {
+            return;
+        }
+
+        var row = stack.Take(frame.Units(44f));
+        CardChrome.DrawGold(frame, row);
+        frame.Text.DrawIn(row, label,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        if (frame.Input.ConsumeClick(row))
+        {
+            OpenSite(url);
         }
     }
 
     private void DrawCreditRow(in AppletFrame frame, Rect row, ShownCredit credit)
     {
         CardChrome.DrawGold(frame, row);
-        var inner = row.Inset(frame.Units(8f));
-        var face = inner.LeftSlice(frame.Units(40f));
+        var inner = row.Inset(frame.Units(10f));
+        var face = inner.LeftSlice(frame.Units(48f));
         DrawCreditFace(frame, face, credit);
-        var copy = inner.Inset(new Edges(frame.Units(48f), frame.Units(2f), 0f, 0f));
-        var name = credit.Handle.Length > 0 ? credit.Name + "  " + credit.Handle : credit.Name;
+        var copy = inner.Inset(new Edges(frame.Units(58f), frame.Units(4f), frame.Units(18f), 0f));
+        var name = credit.Handle.Length > 0 ? credit.Name + "  @" + credit.Handle.TrimStart('@') : credit.Name;
         frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(20f)), name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(18f)), credit.Work,
+        frame.Text.DrawWrapped(copy.Inset(new Edges(0f, frame.Units(22f), 0f, 0f)), credit.Work,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        if (frame.Input.ConsumeClick(row) && credit.ProfileId.Length > 0)
+        frame.Text.DrawIn(inner.RightSlice(frame.Units(16f)), "›",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.WarmAccent, TextAlign.Center));
+        if (frame.Input.ConsumeClick(row))
         {
-            hub.OpenProfile(credit.ProfileId);
+            creditLook = credit.Id;
+            if (credit.Kind == CreditKind.Person && credit.Name.Length > 0)
+            {
+                pearl.NoteQuery(credit.Name);
+            }
+
+            if (credit.ProfileId.Length > 0)
+            {
+                pearl.WatchProfile(credit.ProfileId);
+            }
         }
     }
 
     private void DrawCreditFace(in AppletFrame frame, Rect area, ShownCredit credit)
     {
         var radius = MathF.Min(area.Width, area.Height) * 0.5f;
-        if (credit.AvatarUrl.Length > 0)
+        if (TryDrawCreditFace(frame, area, credit.AvatarUrl, radius, true))
         {
-            pearl.PrefetchMedia(credit.AvatarUrl);
-            var path = pearl.LocalMedia(credit.AvatarUrl);
-            if (path is { Length: > 0 })
-            {
-                var texture = frame.Textures.FromFile(path);
-                if (texture is { IsReady: true })
-                {
-                    var dest = Rect.FromSize(area.Center - new Vector2(radius, radius),
-                        new Vector2(radius * 2f, radius * 2f));
-                    var uv = CoverFit.Uv(texture.Size, dest.Size);
-                    frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, radius);
-                    return;
-                }
-            }
+            return;
+        }
+
+        if (credit.IconAsset.Length > 0 &&
+            TryDrawCreditFace(frame, area, frame.Paths.Asset(credit.IconAsset.Replace('/', Path.DirectorySeparatorChar)),
+                radius, false))
+        {
+            return;
         }
 
         frame.Paint.FillCircle(area.Center, radius, frame.Theme.Palette.SurfaceRaised);
         frame.Paint.StrokeCircle(area.Center, radius, frame.Theme.Palette.WarmAccent, frame.Units(1.2f));
         var glyph = credit.Name.Length > 0 ? credit.Name[0].ToString() : "?";
         frame.Text.DrawIn(area, glyph, new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
+    }
+
+    private bool TryDrawCreditFace(in AppletFrame frame, Rect area, string source, float radius, bool remote)
+    {
+        if (source.Length == 0)
+        {
+            return false;
+        }
+
+        var path = source;
+        if (remote)
+        {
+            pearl.PrefetchMedia(source);
+            path = pearl.LocalMedia(source) ?? string.Empty;
+        }
+
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        var texture = frame.Textures.FromFile(path);
+        if (texture is not { IsReady: true })
+        {
+            return false;
+        }
+
+        var dest = Rect.FromSize(area.Center - new Vector2(radius, radius),
+            new Vector2(radius * 2f, radius * 2f));
+        var uv = CoverFit.Uv(texture.Size, dest.Size);
+        frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, radius);
+        return true;
     }
 
     private void DrawInkControls(AppletFrame frame, ref Stack stack)
@@ -1227,6 +1417,23 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             () => display.Fight = FightPresence.Vanish, "Hide the phone in combat.");
     }
 
+    private static string TopicLabel(string title) => title switch
+    {
+        "General" => PhoneLanguages.T("set.general"),
+        "Appearance" => PhoneLanguages.T("set.appearance"),
+        "Sounds" => PhoneLanguages.T("set.sounds"),
+        "Notifications" => PhoneLanguages.T("set.notifications"),
+        "Feed" => PhoneLanguages.T("set.feed"),
+        "Phone calls" => PhoneLanguages.T("set.calls"),
+        "Languages" or "Language & Time" => PhoneLanguages.T("set.language"),
+        "Terms of service" => PhoneLanguages.T("set.tos"),
+        _ => title,
+    };
+
+    private static float LanguagePageHeight(in AppletFrame frame) =>
+        frame.Units(16f) + frame.Units(8f) + OptionHeight(frame) + frame.Units(8f) + frame.Units(32f) +
+        frame.Units(8f) + OptionBand(frame, 5);
+
     private static float OptionHeight(in AppletFrame frame) => frame.Units(48f);
 
     private static float OptionBand(in AppletFrame frame, int count)
@@ -1288,7 +1495,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         CardChrome.DrawGold(frame, card);
         var head = card.TopSlice(headH);
         var inner = head.Inset(new Edges(frame.Units(12f), 0f, frame.Units(12f), 0f));
-        frame.Text.DrawIn(inner.LeftSlice(inner.Width * 0.7f), title,
+        frame.Text.DrawIn(inner.LeftSlice(inner.Width * 0.7f), TopicLabel(title),
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         frame.Text.DrawIn(inner.RightSlice(inner.Width * 0.3f), open ? "Close" : "Open",
             new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));

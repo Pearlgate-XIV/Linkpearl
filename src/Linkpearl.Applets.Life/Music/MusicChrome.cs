@@ -27,6 +27,7 @@ internal static class MusicChrome
     public static readonly Vector4 Ink = new(0.96f, 0.96f, 0.98f, 0.96f);
     public static readonly Vector4 Mute = new(0.70f, 0.70f, 0.76f, 0.88f);
     public static readonly Vector4 Faint = new(0.96f, 0.96f, 0.98f, 0.08f);
+    public static readonly Vector4 Danger = new(1f, 0.42f, 0.48f, 1f);
 
     public static void ArtShadow(in AppletFrame frame, Rect area)
     {
@@ -60,6 +61,30 @@ internal static class MusicChrome
     {
         frame.Paint.Fill(area, Purple, frame.Units(12f));
         frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, GroundHi, TextAlign.Center));
+    }
+
+    public static void Ghost(in AppletFrame frame, Rect area, string label)
+    {
+        frame.Paint.Fill(area, Card, frame.Units(12f));
+        frame.Paint.Stroke(area, DockBlue, frame.Units(1.6f), frame.Units(12f));
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Ink, TextAlign.Center));
+    }
+
+    public static Rect FieldWell(in AppletFrame frame, Rect area)
+    {
+        Plate(frame, area, frame.Units(12f));
+        return area.Inset(new Edges(frame.Units(12f), 0f));
+    }
+
+    public static void DiscMark(in AppletFrame frame, Rect area)
+    {
+        var radius = MathF.Min(area.Width, area.Height) * 0.42f;
+        var center = area.Center;
+        frame.Paint.Glow(area, DockBlue with { W = 0.22f }, radius, frame.Units(16f));
+        frame.Paint.FillCircle(center, radius, Card);
+        frame.Paint.StrokeCircle(center, radius, DockBlue, MathF.Max(2f, radius * 0.08f));
+        frame.Paint.StrokeCircle(center, radius * 0.62f, Ink with { W = 0.55f }, MathF.Max(1.4f, radius * 0.05f));
+        frame.Paint.FillCircle(center, radius * 0.16f, DockBlue);
     }
 
     public static bool FollowAction(in AppletFrame frame, Rect area, bool on)

@@ -12,7 +12,6 @@ public sealed class HandsetTheme : ITheme
         ["calculator"] = new Vector4(0.420f, 0.447f, 0.502f, 1.00f),
         ["timer"] = new Vector4(0.361f, 0.620f, 0.910f, 1.00f),
         ["stopwatch"] = new Vector4(0.510f, 0.400f, 0.910f, 1.00f),
-        ["place"] = new Vector4(0.361f, 0.749f, 0.463f, 1.00f),
         ["alarms"] = new Vector4(0.910f, 0.420f, 0.280f, 1.00f),
         ["weather"] = new Vector4(0.400f, 0.620f, 0.910f, 1.00f),
         ["calendar"] = new Vector4(0.910f, 0.620f, 0.280f, 1.00f),
@@ -25,7 +24,6 @@ public sealed class HandsetTheme : ITheme
         ["pearlchat"] = new Vector4(0.831f, 0.686f, 0.373f, 1.00f),
         ["friends"] = new Vector4(0.45f, 0.70f, 0.95f, 1.00f),
         ["market"] = new Vector4(0.38f, 0.86f, 0.52f, 1.00f),
-        ["retainer"] = new Vector4(0.831f, 0.686f, 0.373f, 1.00f),
         ["events"] = new Vector4(0.72f, 0.48f, 0.92f, 1.00f),
         ["settings"] = new Vector4(0.635f, 0.663f, 0.706f, 1.00f),
     };

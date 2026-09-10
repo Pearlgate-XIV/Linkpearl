@@ -126,6 +126,7 @@ public sealed class HandsetShell
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
+        PhoneLanguages.Apply(preferences.LanguageId);
         var scale = outerFrame.Scale;
         var hush = preferences.Hushed(game.IsInDuty || game.IsInCutscene);
         banner.Observe(pearl.Current, talk, clock, notices, hush);
@@ -741,7 +742,8 @@ public sealed class HandsetShell
         var list = new List<IApplet>();
         for (var index = 0; index < applets.Count; index++)
         {
-            if (applets[index].Manifest.Family == AppletFamily.System)
+            if (applets[index].Manifest.Family == AppletFamily.System ||
+                AppShelf.IsHidden(applets[index].Manifest.Id))
             {
                 continue;
             }
@@ -950,7 +952,7 @@ public sealed class HandsetShell
 
     private void LaunchStudioApplet(string id, Rect origin, string? place)
     {
-        if (!router.CanOpen(id))
+        if (AppShelf.IsHidden(id) || !router.CanOpen(id))
         {
             return;
         }
@@ -969,6 +971,11 @@ public sealed class HandsetShell
     private void ResumeRecent(string id)
     {
         recents.Close();
+        if (AppShelf.IsHidden(id))
+        {
+            return;
+        }
+
         if (router.CanOpen(id))
         {
             RememberLaunchSeat();
@@ -993,7 +1000,7 @@ public sealed class HandsetShell
 
     private void LaunchQuickApp(string id, string routeHint)
     {
-        if (AppShelf.Find(id) is not AppSpec spec)
+        if (AppShelf.Find(id) is not AppSpec spec || spec.Hidden)
         {
             return;
         }

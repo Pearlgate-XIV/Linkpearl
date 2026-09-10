@@ -76,11 +76,10 @@ public static class EmojiText
             true);
         if (caret)
         {
-            var pad = MathF.Max(2f, area.Height * 0.18f);
-            var caretH = MathF.Max(8f, area.Height - pad * 2f);
+            var caretH = MathF.Max(10f, face * 0.82f);
             var x = Math.Clamp(empty ? origin.X : origin.X + wide + 1f, area.Min.X + 1f, area.Max.X - 2f);
-            var top = area.Min.Y + (area.Height - caretH) * 0.5f;
-            paint.Line(new Vector2(x, top), new Vector2(x, top + caretH), ink, 1.35f);
+            var top = textY + MathF.Max(0f, (face - caretH) * 0.5f);
+            paint.Line(new Vector2(x, top), new Vector2(x, top + caretH), ink, 1.2f);
         }
 
         paint.PopClip();

@@ -24,10 +24,7 @@ public static class ModuleDiscovery
         new TimerModule(),
         new StopwatchModule(),
         new WeatherModule(),
-        new PlaceModule(),
-        new EorzeaModule(),
         new CameraModule(),
-        new WalletModule(),
         new MarketModule(),
         new AppStoreModule(),
     };

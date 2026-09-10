@@ -1332,7 +1332,7 @@ internal sealed class StudioSurface
 
     private void OpenHomeApp(string appletId, Rect cell)
     {
-        if (AppShelf.Find(appletId) is AppSpec spec)
+        if (AppShelf.Find(appletId) is AppSpec spec && !spec.Hidden)
         {
             if (spec.Kind == AppKind.Shortcut)
             {

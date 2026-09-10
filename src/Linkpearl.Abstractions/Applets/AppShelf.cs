@@ -45,6 +45,8 @@ public readonly struct AppSpec
 
     public bool OnShelfByDefault { get; init; }
 
+    public bool Hidden { get; init; }
+
     public string IconAsset { get; init; }
 }
 
@@ -64,8 +66,8 @@ public static class AppShelf
             "weather.png"),
         Spec("calendar", "Calendar", "Schedule", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0,
             true, "calendar.png"),
-        Spec("wallet", "Pearls", "Currency", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
-            "wallet.png"),
+        Spec("wallet", "Pearls", "Currency", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, false,
+            "wallet.png", hidden: true),
         Spec("camera", "Camera", "Capture", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
             "camera.png"),
         Spec("friends", "Friends", "Social", AppGroup.Life, AppChip.Social, AppKind.Applet, default, 0, true,
@@ -74,14 +76,10 @@ public static class AppShelf
             "market_watch.png"),
         Spec("appstore", "App Store", "Catalog", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
             "announcement.png"),
-        Spec("retainer", "Retainer", "Companions", AppGroup.Life, AppChip.Utility, AppKind.Shortcut, DestinationTab.Home,
-            HomePane.Dashboard, true, "retainer.png"),
         Spec("events", "Events", "Activities", AppGroup.Life, AppChip.Social, AppKind.Shortcut, DestinationTab.Explore,
-            ExplorePane.Events, true, "events.png"),
-        Spec("place", "Place", "Navigation", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
-            "place.png"),
-        Spec("eorzea", "Eorzea", "Game menus", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
-            "eorzea.png"),
+            ExplorePane.Events, false, "events.png", hidden: true),
+        Spec("eorzea", "Eorzea", "Game menus", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, false,
+            "eorzea.png", hidden: true),
         Spec("settings", "Settings", "System", AppGroup.Tools, AppChip.System, AppKind.Shortcut, DestinationTab.Settings,
             SettingsPane.Front, true, "settings.png"),
         Spec("feedback", "Feedback", "Discord", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
@@ -100,8 +98,8 @@ public static class AppShelf
 
     public static readonly string[] DefaultInstalled =
     {
-        "pearlchat", "phone", "music", "afterdark", "weather", "calendar", "wallet", "camera", "friends", "settings",
-        "feedback", "market", "appstore", "retainer", "events", "place", "eorzea", "notes", "alarms",
+        "pearlchat", "phone", "music", "afterdark", "weather", "calendar", "camera", "friends", "settings",
+        "feedback", "market", "appstore", "notes", "alarms",
     };
 
     public static readonly string[] ChipLabels = { "All", "Social", "Music", "Utility", "System", "Favorites" };
@@ -123,8 +121,10 @@ public static class AppShelf
 
     public static bool Known(string id) => Find(id) is not null || id.StartsWith("folder:", StringComparison.Ordinal);
 
+    public static bool IsHidden(string id) => Find(id) is { Hidden: true };
+
     private static AppSpec Spec(string id, string name, string caption, AppGroup group, AppChip chip, AppKind kind,
-        DestinationTab tab, int pane, bool onShelf, string iconAsset) =>
+        DestinationTab tab, int pane, bool onShelf, string iconAsset, bool hidden = false) =>
         new()
         {
             Id = id,
@@ -136,6 +136,7 @@ public static class AppShelf
             Tab = tab,
             Pane = pane,
             OnShelfByDefault = onShelf,
+            Hidden = hidden,
             IconAsset = iconAsset,
         };
 }

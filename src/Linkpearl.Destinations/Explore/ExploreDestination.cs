@@ -6,6 +6,7 @@ using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Preferences;
 using Linkpearl.Time;
 
 namespace Linkpearl.Destinations.Explore;
@@ -29,7 +30,7 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
 
     public string Glyph => "◈";
 
-    public string Label => "Explore";
+    public string Label => PhoneLanguages.T("nav.explore");
 
     public int CurrentSection => selectedSection;
 

@@ -154,6 +154,16 @@ internal static class VybeChrome
             new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
     }
 
+    public static void StoryBadge(in AppletFrame frame, Rect area, bool permanent = false)
+    {
+        var accent = Night.Accent;
+        var radius = area.Height * 0.5f;
+        frame.Paint.Fill(area, accent with { W = 0.18f }, radius);
+        frame.Paint.Stroke(area, accent, frame.Units(1.2f), radius);
+        frame.Text.DrawIn(area, permanent ? "STORY  •  PERM" : "STORY  •  24h",
+            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
+    }
+
     public static void TagChip(in AppletFrame frame, Rect area, string label, bool plus)
     {
         var accent = plus ? PlusViolet : Night.Accent;
@@ -202,9 +212,9 @@ internal static class VybeChrome
     {
         var ink = on ? Night.Accent : Vector4.One;
         frame.Text.DrawIn(area.TopSlice(area.Height * 0.58f), glyph,
-            new TextStyle(FontRole.Title, ink, TextAlign.Center));
+            new TextStyle(FontRole.Caption, ink, TextAlign.Center));
         frame.Text.DrawIn(area.BottomSlice(area.Height * 0.42f), count,
-            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
+            new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
     }
 
@@ -212,10 +222,10 @@ internal static class VybeChrome
         string fallback)
     {
         var ink = on ? Night.Accent : Vector4.One;
-        ActionGlyph(frame, area.TopSlice(area.Height * 0.58f).Inset(frame.Units(4f)), file, ink, fallback,
-            FontRole.Title);
+        ActionGlyph(frame, area.TopSlice(area.Height * 0.58f).Inset(frame.Units(12f)), file, ink, fallback,
+            FontRole.Caption);
         frame.Text.DrawIn(area.BottomSlice(area.Height * 0.42f), count,
-            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
+            new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
     }
 
@@ -344,6 +354,27 @@ internal static class VybeChrome
         _ = night;
         WashFill(frame, area, frame.Units(12f));
         frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
+    }
+
+    public static void Ghost(in AppletFrame frame, Rect area, string label, bool night)
+    {
+        var tone = Tone(night);
+        var radius = frame.Units(12f);
+        frame.Paint.Fill(area, tone.Card, radius);
+        frame.Paint.Stroke(area, tone.Accent with { W = 0.55f }, frame.Units(1.2f), radius);
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, tone.Ink, TextAlign.Center));
+    }
+
+    public static void LockMark(in AppletFrame frame, Rect area)
+    {
+        var tone = Night;
+        var glow = area.Center;
+        frame.Paint.FillCircle(glow, frame.Units(28f), tone.Accent with { W = 0.16f });
+        frame.Paint.FillCircle(glow, frame.Units(18f), tone.Accent with { W = 0.28f });
+        frame.Paint.StrokeCircle(glow + new Vector2(0f, -frame.Units(6f)), frame.Units(6f), Vector4.One,
+            frame.Units(2f));
+        frame.Paint.Fill(Rect.FromSize(glow + new Vector2(-frame.Units(7f), -frame.Units(2f)),
+            new Vector2(frame.Units(14f), frame.Units(12f))), Vector4.One, frame.Units(2.5f));
     }
 
     public static void PlusButton(in AppletFrame frame, Rect area, string label, bool enabled)
@@ -818,6 +849,12 @@ internal static class VybeChrome
             new TextStyle(FontRole.Display, tone.Accent, TextAlign.Center));
     }
 
+    public static void BackChip(in AppletFrame frame, Rect area, Vector4 ink)
+    {
+        var mark = ToolInk(frame, area, ink);
+        frame.Text.DrawIn(area, "‹", new TextStyle(FontRole.Title, mark, TextAlign.Center));
+    }
+
     public static bool Back(in AppletFrame frame, Rect row, string label, bool night)
     {
         var tone = Tone(night);
@@ -838,13 +875,32 @@ internal static class VybeChrome
 
     public static void ReportFlag(in AppletFrame frame, Rect area, Vector4 ink)
     {
-        if (TryPacked(frame, CoverFit.InscribedSquare(area), "music-report.png", ink) ||
-            TryGlyph(frame, area, "music-report.png", ink))
+        var mark = ToolInk(frame, area, ink);
+        var box = ToolGlyphBox(area);
+        if (TryPacked(frame, box, "music-report.png", mark) ||
+            TryGlyph(frame, box, "music-report.png", mark))
         {
             return;
         }
 
-        frame.Text.DrawIn(area, "⚑", new TextStyle(FontRole.Title, ink, TextAlign.Center));
+        frame.Text.DrawIn(box, "⚑", new TextStyle(FontRole.CaptionStrong, mark, TextAlign.Center));
+    }
+
+    public static void BlockMark(in AppletFrame frame, Rect area, Vector4 ink)
+    {
+        var mark = ToolInk(frame, area, ink);
+        var box = ToolGlyphBox(area);
+        if (TryPacked(frame, box, "vybe-block.png", mark) ||
+            TryGlyph(frame, box, "vybe-block.png", mark))
+        {
+            return;
+        }
+
+        var radius = MathF.Min(box.Width, box.Height) * 0.38f;
+        var stroke = MathF.Max(1.8f, radius * 0.28f);
+        frame.Paint.StrokeCircle(box.Center, radius, mark, stroke);
+        var dir = new Vector2(0.72f, -0.72f);
+        frame.Paint.Line(box.Center - dir * radius, box.Center + dir * radius, mark, stroke);
     }
 
     public static void ReportTick(in AppletFrame frame, Rect area, Vector4 ink)

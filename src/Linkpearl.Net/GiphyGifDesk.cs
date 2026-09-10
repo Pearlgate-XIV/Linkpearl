@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Linkpearl.Chat;
@@ -22,7 +21,7 @@ public sealed class GiphyGifDesk : IGifDesk
     })
     { Timeout = TimeSpan.FromSeconds(18) };
     private readonly HostPaths paths;
-    private readonly string key;
+    private readonly Func<string, int, CancellationToken, Task<(byte[]? Body, int Status)>> search;
     private readonly object gate = new();
     private readonly HashSet<string> fetching = new(StringComparer.Ordinal);
     private GifHit[] hits = [];
@@ -34,15 +33,12 @@ public sealed class GiphyGifDesk : IGifDesk
     private int stamp;
     private int loaded;
 
-    public GiphyGifDesk(HostPaths paths, string apiKey)
+    public GiphyGifDesk(HostPaths paths,
+        Func<string, int, CancellationToken, Task<(byte[]? Body, int Status)>> search)
     {
         this.paths = paths;
-        key = apiKey.Trim();
+        this.search = search;
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Linkpearl/0.1.0");
-        if (key.Length == 0)
-        {
-            notice = "Add a GIPHY API key to search (LINKPEARL_GIPHY_KEY).";
-        }
     }
 
     public string Brand => "GIPHY";
@@ -86,7 +82,7 @@ public sealed class GiphyGifDesk : IGifDesk
         {
             lock (gate)
             {
-                return hasMore && !busy && key.Length > 0;
+                return hasMore && !busy;
             }
         }
     }
@@ -98,7 +94,7 @@ public sealed class GiphyGifDesk : IGifDesk
         int mine;
         lock (gate)
         {
-            if (!hasMore || busy || key.Length == 0)
+            if (!hasMore || busy)
             {
                 return;
             }
@@ -170,11 +166,6 @@ public sealed class GiphyGifDesk : IGifDesk
 
     private async Task SearchAsync(string needle, int mine, int start)
     {
-        if (key.Length == 0)
-        {
-            return;
-        }
-
         if (start == 0)
         {
             lock (gate)
@@ -185,22 +176,13 @@ public sealed class GiphyGifDesk : IGifDesk
 
         try
         {
-            var path = needle.Length == 0
-                ? "https://api.giphy.com/v1/gifs/trending?api_key=" + Uri.EscapeDataString(key) +
-                  "&limit=24&rating=pg-13&offset=" + start.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                : "https://api.giphy.com/v1/gifs/search?api_key=" + Uri.EscapeDataString(key) +
-                  "&q=" + Uri.EscapeDataString(needle) + "&limit=24&rating=pg-13&offset=" +
-                  start.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            using var request = new HttpRequestMessage(HttpMethod.Get, path);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            using var response = await http.SendAsync(request).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var (bytes, status) = await search(needle, start, CancellationToken.None).ConfigureAwait(false);
             if (mine != Volatile.Read(ref stamp))
             {
                 return;
             }
 
-            if (!response.IsSuccessStatusCode)
+            if (status is < 200 or >= 300 || bytes is null || bytes.Length == 0)
             {
                 lock (gate)
                 {
@@ -209,9 +191,11 @@ public sealed class GiphyGifDesk : IGifDesk
                         hits = [];
                     }
 
-                    notice = (int)response.StatusCode == 401
-                        ? "GIPHY refused this API key."
-                        : "GIPHY is not answering right now.";
+                    notice = status == 401
+                        ? "Sign in to search GIFs."
+                        : status == 404
+                            ? "GIF search is not on Pearlgate yet."
+                            : "GIF search is not answering right now.";
                     busy = false;
                     hasMore = false;
                 }
@@ -219,7 +203,9 @@ public sealed class GiphyGifDesk : IGifDesk
                 return;
             }
 
+            var body = System.Text.Encoding.UTF8.GetString(bytes);
             var page = JsonSerializer.Deserialize<GiphyPage>(body, Json);
+            var gatePage = JsonSerializer.Deserialize(body, GateJson.Default.GifPageDto);
             var next = new List<GifHit>();
             if (start > 0)
             {
@@ -243,25 +229,17 @@ public sealed class GiphyGifDesk : IGifDesk
                     : FirstUrl(row.Images?.FixedWidth, row.Images?.Downsized, row.Images?.Preview);
                 var preview = FirstUrl(row.Images?.Preview, row.Images?.FixedWidth, row.Images?.Still,
                     row.Images?.PreviewStill);
-                if (send.Length == 0)
-                {
-                    continue;
-                }
-
-                if (id.Length == 0)
-                {
-                    id = send;
-                }
-                if (!seen.Add(id))
-                {
-                    continue;
-                }
-
-                var title = row.Title is { Length: > 0 } titleText ? titleText : "GIF";
-                next.Add(new GifHit(id, title, preview.Length > 0 ? preview : send, send));
+                AddHit(next, seen, id, row.Title, preview, send);
             }
 
-            var total = page?.Pagination?.TotalCount ?? next.Count;
+            foreach (var row in gatePage?.Items ?? [])
+            {
+                var send = FirstText(row.SendUrl, row.Send, row.Url);
+                var preview = FirstText(row.PreviewUrl, row.Preview, send);
+                AddHit(next, seen, row.Id, row.Title, preview, send);
+            }
+
+            var total = page?.Pagination?.TotalCount ?? (gatePage is { Total: > 0 } ? gatePage.Total : next.Count);
             lock (gate)
             {
                 hits = next.ToArray();
@@ -287,7 +265,7 @@ public sealed class GiphyGifDesk : IGifDesk
                     hits = [];
                 }
 
-                notice = "Could not reach GIPHY.";
+                notice = "Could not reach GIF search.";
                 busy = false;
                 hasMore = false;
             }
@@ -340,6 +318,37 @@ public sealed class GiphyGifDesk : IGifDesk
 
     private static bool IsJpeg(byte[] bytes) =>
         bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+
+    private static void AddHit(List<GifHit> next, HashSet<string> seen, string? id, string? title, string preview,
+        string send)
+    {
+        if (send.Length == 0)
+        {
+            return;
+        }
+
+        var key = id is { Length: > 0 } ? id : send;
+        if (!seen.Add(key))
+        {
+            return;
+        }
+
+        next.Add(new GifHit(key, title is { Length: > 0 } ? title : "GIF", preview.Length > 0 ? preview : send, send));
+    }
+
+    private static string FirstText(params string?[] values)
+    {
+        for (var index = 0; index < values.Length; index++)
+        {
+            var text = values[index]?.Trim();
+            if (text is { Length: > 0 })
+            {
+                return text;
+            }
+        }
+
+        return string.Empty;
+    }
 
     private static string FirstUrl(params GiphyFile?[] files)
     {

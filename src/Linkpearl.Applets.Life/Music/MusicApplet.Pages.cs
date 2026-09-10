@@ -13,6 +13,338 @@ namespace Linkpearl.Applets.Life.Music;
 
 public sealed partial class MusicApplet
 {
+    private void DrawAuth(in AppletFrame frame, Rect area)
+    {
+        if (state.Page == MusicPage.AuthLogin)
+        {
+            DrawAuthLogin(frame, area);
+            return;
+        }
+
+        if (state.Page == MusicPage.AuthCreate)
+        {
+            DrawAuthCreate(frame, area);
+            return;
+        }
+
+        DrawAuthWelcome(frame, area);
+    }
+
+    private void DrawAuthWelcome(in AppletFrame frame, Rect area)
+    {
+        MusicChrome.Wheel(frame, area, state, frame.Units(760f + book.Seats.Count * 40f));
+        var stack = new Stack(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)).Translate(new Vector2(0f, -state.Scroll)),
+            StackAxis.Vertical, frame.Units(8f));
+        MusicChrome.DiscMark(frame, stack.Take(frame.Units(88f)));
+        var title = stack.Take(frame.Units(44f));
+        frame.Text.DrawIn(title.TopSlice(frame.Units(16f)), "Tune in to",
+            new TextStyle(FontRole.BodyStrong, MusicChrome.Mute, TextAlign.Center));
+        frame.Text.DrawIn(title.BottomSlice(frame.Units(26f)), "MUSIC",
+            new TextStyle(FontRole.Title, MusicChrome.Ink, TextAlign.Center));
+        frame.Text.DrawIn(stack.Take(frame.Units(20f)), "Your station. Your crowd.",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute, TextAlign.Center));
+
+        var card = stack.Take(frame.Units(80f));
+        MusicChrome.Plate(frame, card, frame.Units(14f));
+        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "♪", "Make a handle and password on this handset");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "▷", "Sign out and come back whenever you want");
+
+        var have = book.Seats.Count > 0;
+        var enter = stack.Take(frame.Units(44f));
+        MusicChrome.Primary(frame, enter, have ? "Log in" : "Create account");
+        if (frame.Input.ConsumeClick(enter))
+        {
+            state.AuthNote = string.Empty;
+            state.Page = have ? MusicPage.AuthLogin : MusicPage.AuthCreate;
+            state.Scroll = 0f;
+            return;
+        }
+
+        var other = stack.Take(frame.Units(44f));
+        MusicChrome.Ghost(frame, other, have ? "Create account" : "I already have an account");
+        if (frame.Input.ConsumeClick(other))
+        {
+            state.AuthNote = string.Empty;
+            state.Page = have ? MusicPage.AuthCreate : MusicPage.AuthLogin;
+            state.Scroll = 0f;
+            return;
+        }
+
+        if (have)
+        {
+            DrawHandsetSeats(frame, ref stack, remove: false);
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
+            "Accounts stay on this handset. Sign out whenever you want to come back.",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute, TextAlign.Center));
+    }
+
+    private void DrawAuthLogin(in AppletFrame frame, Rect area)
+    {
+        MusicChrome.Wheel(frame, area, state, frame.Units(900f));
+        var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), "Log in"))
+        {
+            state.AuthNote = string.Empty;
+            state.Page = MusicPage.Auth;
+            return;
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(28f)),
+            "Use a handle you already made on this handset.",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "HANDLE");
+        state.EnterHandle = frame.TextField.Draw("music-in-handle",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.EnterHandle, "@handle");
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "PASSWORD");
+        state.EnterSecret = frame.TextField.Draw("music-in-secret",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.EnterSecret, "Password", 64,
+            out var submitted, false, true);
+        DrawAuthNote(frame, ref stack);
+        var go = stack.Take(frame.Units(44f));
+        MusicChrome.Primary(frame, go, "Log in");
+        if (submitted || frame.Input.ConsumeClick(go))
+        {
+            EnterMusic();
+            return;
+        }
+
+        var swap = stack.Take(frame.Units(28f));
+        frame.Text.DrawIn(swap, "Create account",
+            new TextStyle(FontRole.CaptionStrong, MusicChrome.DockBlue, TextAlign.Center));
+        if (frame.Input.ConsumeClick(swap))
+        {
+            state.AuthNote = string.Empty;
+            state.Page = MusicPage.AuthCreate;
+        }
+    }
+
+    private void DrawAuthCreate(in AppletFrame frame, Rect area)
+    {
+        var dock = area.BottomSlice(frame.Units(state.AuthNote.Length > 0 ? 118f : 84f));
+        var body = new Rect(area.Min, new Vector2(area.Max.X, dock.Min.Y - frame.Units(8f)));
+        MusicChrome.Wheel(frame, body, state, frame.Units(760f + book.Seats.Count * 52f));
+        var stack = new Stack(body.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), "Create account"))
+        {
+            state.AuthNote = string.Empty;
+            state.DropSeatId = string.Empty;
+            state.Page = MusicPage.Auth;
+            return;
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
+            "Pick a handle and a password. You can sign out and use them again anytime.",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        DrawHandsetSeats(frame, ref stack, true);
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "DISPLAY NAME");
+        state.JoinName = frame.TextField.Draw("music-join-name",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinName, "Display name");
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "TITLE");
+        state.JoinTitle = frame.TextField.Draw("music-join-title",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinTitle, "Title");
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "HANDLE");
+        state.JoinHandle = frame.TextField.Draw("music-join-handle",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinHandle, "@handle");
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "PASSWORD");
+        state.JoinSecret = frame.TextField.Draw("music-join-secret",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinSecret, "Password", true);
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "CONFIRM");
+        state.JoinAgain = frame.TextField.Draw("music-join-again",
+            MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinAgain, "Confirm password", 64,
+            out var submitted, false, true);
+
+        var steps = new Stack(dock, StackAxis.Vertical, frame.Units(6f));
+        DrawAuthNote(frame, ref steps);
+        var go = steps.Take(frame.Units(44f));
+        MusicChrome.Primary(frame, go, "Create account");
+        if (submitted || frame.Input.ConsumeClick(go))
+        {
+            JoinMusic();
+            return;
+        }
+
+        var swap = steps.Take(frame.Units(24f));
+        frame.Text.DrawIn(swap, "I already have an account",
+            new TextStyle(FontRole.CaptionStrong, MusicChrome.DockBlue, TextAlign.Center));
+        if (frame.Input.ConsumeClick(swap))
+        {
+            state.AuthNote = string.Empty;
+            state.Page = MusicPage.AuthLogin;
+        }
+    }
+
+    private void DrawAuthNote(in AppletFrame frame, ref Stack stack)
+    {
+        if (state.AuthNote.Length == 0)
+        {
+            return;
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(32f)), state.AuthNote,
+            new TextStyle(FontRole.Caption, MusicChrome.Danger, TextAlign.Center));
+    }
+
+    private void DrawGateFact(in AppletFrame frame, Rect area, string mark, string copy)
+    {
+        frame.Text.DrawIn(area.LeftSlice(frame.Units(22f)), mark,
+            new TextStyle(FontRole.CaptionStrong, MusicChrome.DockBlue, TextAlign.Center));
+        frame.Text.DrawEllipsized(area.Inset(new Edges(frame.Units(26f), 0f, 0f, 0f)), copy,
+            new TextStyle(FontRole.Caption, MusicChrome.Ink));
+    }
+
+    private void EnterMusic()
+    {
+        var pass = book.TryEnter(state.EnterHandle, state.EnterSecret);
+        if (!pass.Ok || pass.Seat is null)
+        {
+            state.AuthNote = pass.Note;
+            return;
+        }
+
+        profileStamp++;
+        state.EnterSeat(pass.Seat);
+        state.Save(paths);
+    }
+
+    private void JoinMusic()
+    {
+        var hadAccount = state.HasAccount;
+        var keepStudio = !hadAccount && state.Onboarded;
+        var handle = state.JoinHandle.Trim().Length > 0 ? state.JoinHandle : state.JoinName;
+        var pass = book.TryJoin(state.JoinName, handle, state.JoinSecret, state.JoinAgain);
+        if (!pass.Ok || pass.Seat is null)
+        {
+            state.AuthNote = pass.Note;
+            state.Scroll = 0f;
+            return;
+        }
+
+        if (keepStudio)
+        {
+            pass.Seat.Face = MusicFace.From(state);
+            pass.Seat.Face.DisplayName = pass.Seat.DisplayName;
+            pass.Seat.Face.Handle = pass.Seat.Handle;
+        }
+
+        pass.Seat.Face.Honorific = ShownName.ClampTitle(state.JoinTitle);
+        book.Save(paths);
+        profileStamp++;
+        state.EnterSeat(pass.Seat);
+        state.Save(paths);
+    }
+
+    private void SignOutMusic()
+    {
+        if (state.HasAccount)
+        {
+            book.Keep(state);
+            book.Save(paths);
+        }
+
+        state.ClearSession();
+        state.Save(paths);
+    }
+
+    private void DropMusic()
+    {
+        if (!state.HasAccount)
+        {
+            return;
+        }
+
+        if (!state.DropConfirm)
+        {
+            state.DropConfirm = true;
+            return;
+        }
+
+        book.Drop(state.AccountId);
+        book.Save(paths);
+        state.ClearSession();
+        state.Save(paths);
+    }
+
+    private void ForgetSeat(string id)
+    {
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        if (!string.Equals(state.DropSeatId, id, StringComparison.Ordinal))
+        {
+            state.DropSeatId = id;
+            return;
+        }
+
+        var tag = MusicBook.Tag(state.EnterHandle);
+        book.TrySeat(id, out var gone);
+        book.Drop(id);
+        book.Save(paths);
+        state.DropSeatId = string.Empty;
+        if (gone is not null && string.Equals(MusicBook.Tag(gone.Handle), tag, StringComparison.Ordinal))
+        {
+            state.EnterHandle = string.Empty;
+        }
+    }
+
+    private void DrawHandsetSeats(in AppletFrame frame, ref Stack stack, bool remove)
+    {
+        if (book.Seats.Count == 0)
+        {
+            return;
+        }
+
+        MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "ON THIS HANDSET");
+        foreach (var seat in book.Seats.ToArray())
+        {
+            var row = stack.Take(frame.Units(40f));
+            MusicChrome.Plate(frame, row, frame.Units(12f));
+            var inner = row.Inset(new Edges(frame.Units(10f), 0f));
+            var kill = inner.RightSlice(frame.Units(64f));
+            frame.Text.DrawEllipsized(inner.Inset(new Edges(0f, 0f, frame.Units(70f), 0f)),
+                seat.DisplayName.Length > 0 ? seat.DisplayName + "  " + seat.Handle : seat.Handle,
+                new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink));
+            if (!remove)
+            {
+                if (frame.Input.ConsumeClick(row))
+                {
+                    state.EnterHandle = seat.Handle;
+                    state.EnterSecret = string.Empty;
+                    state.AuthNote = string.Empty;
+                    state.DropSeatId = string.Empty;
+                    state.Page = MusicPage.AuthLogin;
+                    state.Scroll = 0f;
+                }
+
+                continue;
+            }
+
+            var warn = string.Equals(state.DropSeatId, seat.Id, StringComparison.Ordinal);
+            frame.Text.DrawIn(kill, warn ? "Sure?" : "Delete",
+                new TextStyle(FontRole.CaptionStrong, MusicChrome.Danger, TextAlign.Center));
+            if (frame.Input.ConsumeClick(kill))
+            {
+                ForgetSeat(seat.Id);
+                return;
+            }
+
+            if (frame.Input.ConsumeClick(inner.Inset(new Edges(0f, 0f, frame.Units(70f), 0f))))
+            {
+                state.DropSeatId = string.Empty;
+                state.EnterHandle = seat.Handle;
+                state.EnterSecret = string.Empty;
+                state.AuthNote = string.Empty;
+                state.Page = MusicPage.AuthLogin;
+                state.Scroll = 0f;
+                return;
+            }
+        }
+    }
+
     private void DrawSetup(in AppletFrame frame, Rect area)
     {
         var stack = MusicChrome.BeginSheet(frame, area, state, frame.Units(10f));
@@ -1142,7 +1474,34 @@ public sealed partial class MusicApplet
         {
             if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), "Music settings"))
             {
+                state.DropConfirm = false;
                 state.Back();
+                return;
+            }
+
+            MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "ACCOUNT");
+            var tag = state.Handle.Trim();
+            frame.Text.DrawIn(stack.Take(frame.Units(20f)),
+                tag.Length > 0 ? "Signed in as " + tag : "Signed in to Music",
+                new TextStyle(FontRole.Caption, MusicChrome.Mute));
+            frame.Text.DrawWrapped(stack.Take(frame.Units(28f)),
+                "Sign out to log in as someone else or create a new account.",
+                new TextStyle(FontRole.Caption, MusicChrome.Mute));
+            var leave = stack.Take(frame.Units(44f));
+            MusicChrome.Ghost(frame, leave, "Sign out");
+            if (frame.Input.ConsumeClick(leave))
+            {
+                SignOutMusic();
+                return;
+            }
+
+            var drop = stack.Take(frame.Units(40f));
+            MusicChrome.Plate(frame, drop, frame.Units(12f));
+            frame.Text.DrawIn(drop, state.DropConfirm ? "Tap again to delete" : "Delete this account",
+                new TextStyle(FontRole.CaptionStrong, MusicChrome.Danger, TextAlign.Center));
+            if (frame.Input.ConsumeClick(drop))
+            {
+                DropMusic();
                 return;
             }
 

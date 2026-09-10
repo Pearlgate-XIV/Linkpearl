@@ -3,6 +3,7 @@ using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 
 namespace Linkpearl.Device.Shell;
 
@@ -143,7 +144,7 @@ public sealed class HomeSurface
         var labelArea = new Rect(
             new Vector2(cell.Min.X + frame.Units(2f), iconArea.Max.Y + labelGap),
             new Vector2(cell.Max.X - frame.Units(2f), iconArea.Max.Y + labelGap + labelHeight));
-        DrawLabel(frame, labelArea, applet.Manifest.DisplayNameKey);
+        DrawLabel(frame, labelArea, PhoneLanguages.App(applet.Manifest.Id, applet.Manifest.DisplayNameKey));
 
         if (frame.Input.ConsumeClick(cell))
         {

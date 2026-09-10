@@ -2,6 +2,7 @@ using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
@@ -20,10 +21,10 @@ public sealed class DestinationDock
 
     private static readonly MenuItem[] Items =
     {
-        new("Messages", DestinationTab.Social, SocialPane.Messages),
-        new("You", DestinationTab.You, 0),
-        new("Explore", DestinationTab.Explore, ExplorePane.ForYou),
-        new("Settings", DestinationTab.Settings, 0),
+        new("nav.messages", DestinationTab.Social, SocialPane.Messages),
+        new("nav.you", DestinationTab.You, 0),
+        new("nav.explore", DestinationTab.Explore, ExplorePane.ForYou),
+        new("nav.settings", DestinationTab.Settings, 0),
     };
 
     private bool expanded;
@@ -136,7 +137,7 @@ public sealed class DestinationDock
             }
 
             DrawItemMark(paint, mark, item.Tab, glyphInk);
-            text.DrawIn(cell.Inset(new Edges(markWidth + scale * 10f, 0f, 0f, 0f)), item.Label,
+            text.DrawIn(cell.Inset(new Edges(markWidth + scale * 10f, 0f, 0f, 0f)), PhoneLanguages.T(item.Label),
                 new TextStyle(FontRole.BodyStrong, labelInk));
             if (interactive && input.ConsumeClick(cell))
             {

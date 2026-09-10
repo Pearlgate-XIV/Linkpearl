@@ -63,6 +63,42 @@ public sealed class PearlLedger
 
     public int LifetimeEarned => lifetimeEarned;
 
+    public int LifetimeSpent
+    {
+        get
+        {
+            var spent = 0;
+            for (var index = 0; index < history.Count; index++)
+            {
+                if (history[index].Amount < 0)
+                {
+                    spent -= history[index].Amount;
+                }
+            }
+
+            return spent;
+        }
+    }
+
+    public int EarnedToday
+    {
+        get
+        {
+            var start = new DateTimeOffset(clock.Now.Date, clock.Now.Offset).ToUnixTimeSeconds();
+            var earned = 0;
+            for (var index = 0; index < history.Count; index++)
+            {
+                var row = history[index];
+                if (row.AtUnix >= start && row.Amount > 0)
+                {
+                    earned += row.Amount;
+                }
+            }
+
+            return earned;
+        }
+    }
+
     public int Streak => streak;
 
     public int CheckIns => checkIns;

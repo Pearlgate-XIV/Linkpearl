@@ -250,7 +250,6 @@ public static class AppMarks
         "phone" => "phone.png",
         "pearlchat" => "messages.png",
         "friends" => "friends.png",
-        "retainer" => "retainer.png",
         "camera" => "camera.png",
         "settings" => "settings.png",
         "wallet" => "wallet.png",
@@ -342,15 +341,9 @@ public static class AppMarks
             case "market":
                 DrawChart(paint, center, size, White, stroke);
                 break;
-            case "retainer":
-                DrawShield(paint, center, size, White, stroke);
-                break;
             case "events":
             case "eorzea":
                 DrawTickets(paint, center, size, White, stroke);
-                break;
-            case "place":
-                DrawPin(paint, center, size, White, stroke);
                 break;
             case "notes":
                 DrawNotes(paint, center, size, White, stroke);
@@ -452,20 +445,6 @@ public static class AppMarks
         paint.FillCircle(b, s * 0.10f, ink);
         paint.FillCircle(d, s * 0.10f, ink);
         paint.FillCircle(e, s * 0.10f, ink);
-    }
-
-    private static void DrawShield(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)
-    {
-        var top = c + new Vector2(0f, -s * 0.62f);
-        var left = c + new Vector2(-s * 0.58f, -s * 0.18f);
-        var right = c + new Vector2(s * 0.58f, -s * 0.18f);
-        var tip = c + new Vector2(0f, s * 0.78f);
-        paint.Line(top, left, ink, stroke);
-        paint.Line(left, tip, ink, stroke);
-        paint.Line(tip, right, ink, stroke);
-        paint.Line(right, top, ink, stroke);
-        paint.Line(c + new Vector2(0f, -s * 0.22f), c + new Vector2(0f, s * 0.18f), ink, stroke);
-        paint.Line(c + new Vector2(-s * 0.22f, -s * 0.02f), c + new Vector2(s * 0.22f, -s * 0.02f), ink, stroke);
     }
 
     private static void DrawTickets(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)
@@ -587,14 +566,6 @@ public static class AppMarks
         paint.StrokeCircle(c + new Vector2(-s * 0.28f, s * 0.12f), s * 0.34f, cloud, stroke);
         paint.StrokeCircle(c + new Vector2(s * 0.18f, s * 0.10f), s * 0.40f, cloud, stroke);
         paint.Line(c + new Vector2(-s * 0.55f, s * 0.22f), c + new Vector2(s * 0.52f, s * 0.22f), cloud, stroke);
-    }
-
-    private static void DrawPin(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)
-    {
-        paint.StrokeCircle(c + new Vector2(0f, -s * 0.22f), s * 0.42f, ink, stroke);
-        paint.FillCircle(c + new Vector2(0f, -s * 0.22f), s * 0.14f, ink);
-        paint.Line(c + new Vector2(-s * 0.36f, -s * 0.02f), c + new Vector2(0f, s * 0.78f), ink, stroke);
-        paint.Line(c + new Vector2(s * 0.36f, -s * 0.02f), c + new Vector2(0f, s * 0.78f), ink, stroke);
     }
 
     private static void DrawCamera(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)

@@ -175,6 +175,17 @@ internal sealed record MarketPageDto(MarketWatchDto[]? Items);
 
 internal sealed record MarketWatchBodyDto(int ItemId, string? World, string? Label);
 
+internal sealed record GifRowDto(
+    string? Id,
+    string? Title,
+    string? PreviewUrl,
+    string? SendUrl,
+    string? Url,
+    string? Preview,
+    string? Send);
+
+internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
+
 [JsonSerializable(typeof(ChallengeRequestDto))]
 [JsonSerializable(typeof(ChallengeReplyDto))]
 [JsonSerializable(typeof(VerifyRequestDto))]
@@ -213,6 +224,8 @@ internal sealed record MarketWatchBodyDto(int ItemId, string? World, string? Lab
 [JsonSerializable(typeof(MarketWatchDto))]
 [JsonSerializable(typeof(MarketPageDto))]
 [JsonSerializable(typeof(MarketWatchBodyDto))]
+[JsonSerializable(typeof(GifRowDto))]
+[JsonSerializable(typeof(GifPageDto))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal sealed partial class GateJson : JsonSerializerContext

@@ -2,13 +2,23 @@ using Linkpearl.Net;
 
 namespace Linkpearl.Destinations.Settings;
 
+public enum CreditKind : byte
+{
+    Person = 0,
+    Plugin = 1,
+}
+
 public readonly record struct CreditPerson(
     string Id,
     string FallbackName,
     string Handle,
     string GateId,
     string Work,
-    string Plugin = "");
+    CreditKind Kind = CreditKind.Person,
+    string PluginPage = "",
+    string GitHubPage = "",
+    string IconUrl = "",
+    string IconAsset = "");
 
 public readonly record struct ShownCredit(
     string Id,
@@ -17,13 +27,30 @@ public readonly record struct ShownCredit(
     string Work,
     string AvatarUrl,
     string ProfileId,
-    bool FromProfile);
+    bool FromProfile,
+    CreditKind Kind,
+    string PluginPage = "",
+    string GitHubPage = "",
+    string IconAsset = "");
 
 public static class CreditBook
 {
     public static readonly CreditPerson[] People =
     [
-        new("alyx", "", "", "", "Linkpearl · engineering"),
+        new("alyx", "A'lyx Nightingale", "", "", "UI/UX design & Development"),
+        new("sibyl", "Sibyl Cenotaph", "", "", "Moderation | Management | Concept development"),
+        new("roxanne", "Roxanne Delyre", "", "", "System & Security Development | Concept Development"),
+        new("lucia", "Lucia Mae", "", "", "Moderation"),
+        new("aetheros", "AetherOS", "", "", "General Contribution | Inspiration", CreditKind.Plugin,
+            "https://puni.sh/directory/aetherlove",
+            "https://github.com/FFXIV-Aetherlove/Aetherlove",
+            "https://puni.sh/api/plugins/icon/154",
+            "Icons/credits/aetheros.png"),
+        new("echomix", "Echomix", "", "", "General Contribution | Inspiration", CreditKind.Plugin,
+            "https://echomix.app",
+            "https://github.com/jfraygit/EchoXIV/tree/main/EchoMix",
+            "https://raw.githubusercontent.com/jfraygit/EchoXIV/main/icons/echomix-icon.png",
+            "Icons/credits/echomix.png"),
     ];
 
     public static ShownCredit[] Resolve(PearlSnapshot snapshot, string characterName = "")
@@ -43,10 +70,15 @@ public static class CreditBook
 
     public static ShownCredit Resolve(CreditPerson person, PearlSnapshot snapshot, string characterName = "")
     {
-        var name = CreditName(characterName, snapshot.MeName, person.FallbackName);
+        if (person.Kind == CreditKind.Plugin)
+        {
+            return Show(person, person.FallbackName, person.Handle, person.IconUrl, string.Empty, false);
+        }
+
         if (IsMe(person, snapshot, characterName))
         {
-            return new ShownCredit(person.Id, name, string.Empty, person.Work, snapshot.MeAvatarUrl,
+            var mine = LiveName(characterName, snapshot.MeName, person.FallbackName);
+            return Show(person, mine, string.Empty, snapshot.MeAvatarUrl,
                 snapshot.MeId.Length > 0 ? snapshot.MeId : person.GateId, true);
         }
 
@@ -58,8 +90,8 @@ public static class CreditBook
                 continue;
             }
 
-            return new ShownCredit(person.Id, CreditName(characterName, peer.DisplayName, person.FallbackName),
-                string.Empty, person.Work, peer.AvatarUrl, peer.Id, true);
+            return Show(person, Prefer(peer.DisplayName, person.FallbackName), peer.Handle, peer.AvatarUrl, peer.Id,
+                true);
         }
 
         for (var index = 0; index < snapshot.SearchHits.Length; index++)
@@ -70,18 +102,21 @@ public static class CreditBook
                 continue;
             }
 
-            return new ShownCredit(person.Id, CreditName(characterName, hit.Title, person.FallbackName),
-                string.Empty, person.Work, string.Empty, hit.Id, true);
+            return Show(person, Prefer(hit.Title, person.FallbackName), string.Empty, string.Empty, hit.Id, true);
         }
 
-        return new ShownCredit(person.Id, name, string.Empty, person.Work, string.Empty,
-            person.GateId, false);
+        return Show(person, person.FallbackName, person.Handle, string.Empty, person.GateId, false);
     }
+
+    private static ShownCredit Show(CreditPerson person, string name, string handle, string avatar, string profileId,
+        bool fromProfile) =>
+        new(person.Id, name, handle, person.Work, avatar, profileId, fromProfile, person.Kind, person.PluginPage,
+            person.GitHubPage, person.IconAsset);
 
     private static bool IsMe(CreditPerson person, PearlSnapshot snapshot, string characterName) =>
         snapshot.SignedIn &&
         (Matches(person, snapshot.MeId, snapshot.MeHandle, snapshot.MeName) ||
-         person.Id == "alyx" && characterName.Trim().Length > 0);
+         Matches(person, snapshot.MeId, snapshot.MeHandle, characterName));
 
     private static bool Matches(CreditPerson person, string id, string handle, string name) =>
         person.GateId.Length > 0 && SameId(person.GateId, id) ||
@@ -107,28 +142,16 @@ public static class CreditBook
                                                b.Contains(a, StringComparison.Ordinal));
     }
 
-    private static string CreditName(string character, string pearl, string fallback)
+    private static string Prefer(string live, string fallback)
     {
-        var inGame = character.Trim();
-        if (inGame.Length > 0 && !IsHiddenAlias(inGame))
-        {
-            return inGame;
-        }
-
-        var live = pearl.Trim();
-        if (live.Length > 0 && !IsHiddenAlias(live))
-        {
-            return live;
-        }
-
-        var reserve = fallback.Trim();
-        return IsHiddenAlias(reserve) ? string.Empty : reserve;
+        var shown = live.Trim();
+        return shown.Length > 0 ? shown : fallback.Trim();
     }
 
-    private static bool IsHiddenAlias(string name)
+    private static string LiveName(string character, string pearl, string fallback)
     {
-        var fold = Fold(name);
-        return fold is "alyx" or "alyx";
+        var inGame = character.Trim();
+        return inGame.Length > 0 ? inGame : Prefer(pearl, fallback);
     }
 
     private static string StripAt(string value)

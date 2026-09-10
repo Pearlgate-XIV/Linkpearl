@@ -171,7 +171,11 @@ public sealed class DalamudTextField : ITextField
         Draw(id, area, value, placeholder, maxLength, out submitted, false);
 
     public string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted,
-        bool retainFocus)
+        bool retainFocus) =>
+        Draw(id, area, value, placeholder, maxLength, out submitted, retainFocus, false);
+
+    public string Draw(string id, Rect area, string value, string placeholder, int maxLength, out bool submitted,
+        bool retainFocus, bool secret)
     {
         submitted = false;
         if (area.Width < 1f || area.Height < 1f)
@@ -214,10 +218,15 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(padX, padY));
 
-        var current = EmojiBits.ToWire(value, wireFaces);
+        var flags = ImGuiInputTextFlags.EnterReturnsTrue;
+        if (secret)
+        {
+            flags |= ImGuiInputTextFlags.Password;
+        }
+
+        var current = secret ? value : EmojiBits.ToWire(value, wireFaces);
         var enter = ImGui.InputTextWithHint($"##{id}", placeholder, ref current,
-            Math.Max(maxLength + wireFaces.Count * 8, 1),
-            ImGuiInputTextFlags.EnterReturnsTrue);
+            Math.Max(maxLength + (secret ? 0 : wireFaces.Count * 8), 1), flags);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
@@ -272,15 +281,15 @@ public sealed class DalamudTextField : ITextField
         }
 
         submitted = enter;
-        var shown = EmojiBits.FromWire(current, wireFaces);
-        if (EmojiBits.HasFace(value) && !EmojiBits.HasFace(shown) && current.Contains('?'))
+        var shown = secret ? current : EmojiBits.FromWire(current, wireFaces);
+        if (!secret && EmojiBits.HasFace(value) && !EmojiBits.HasFace(shown) && current.Contains('?'))
         {
             shown = value;
         }
 
         if (shown.Length > maxLength)
         {
-            shown = shown[..EmojiBits.ClampIndex(shown, maxLength)];
+            shown = secret ? shown[..maxLength] : shown[..EmojiBits.ClampIndex(shown, maxLength)];
         }
 
         if (shown.Length != value.Length)
@@ -288,7 +297,8 @@ public sealed class DalamudTextField : ITextField
             carets[id] = shown.Length;
         }
 
-        Paint(area, shown, placeholder, focused, padX, padY, line, ink);
+        Paint(area, secret && shown.Length > 0 ? new string('•', shown.Length) : shown, placeholder, focused, padX,
+            padY, line, ink);
         _ = native;
         return shown;
     }
@@ -495,13 +505,13 @@ public sealed class DalamudTextField : ITextField
 
         if (CaretOn(focused))
         {
-            var pad = MathF.Max(2f, area.Height * 0.18f);
-            var caretH = MathF.Max(8f, area.Height - pad * 2f);
+            var face = MathF.Max(line, 1f);
+            var caretH = MathF.Max(10f, face * 0.82f);
             var caretX = Math.Clamp(empty ? origin.X : origin.X + ImGui.CalcTextSize(shown).X + 1f,
                 area.Min.X + 1f, area.Max.X - 2f);
-            var top = area.Min.Y + (area.Height - caretH) * 0.5f;
+            var top = origin.Y + MathF.Max(0f, (face - caretH) * 0.5f);
             draw.AddLine(new Vector2(caretX, top), new Vector2(caretX, top + caretH),
-                ImGui.GetColorU32(ink), 1.35f);
+                ImGui.GetColorU32(ink), 1.2f);
         }
 
         draw.PopClipRect();
