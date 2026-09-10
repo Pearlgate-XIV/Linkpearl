@@ -1158,7 +1158,11 @@ public sealed class HandsetShell
 
     private static string RecentPlaceFor(DestinationTab tab, int section) => tab switch
     {
-        DestinationTab.Settings => section == SettingsPane.Presence ? "presence" : "display",
+        DestinationTab.Settings => section == SettingsPane.Notices
+            ? "notifications"
+            : section == SettingsPane.Presence
+                ? "presence"
+                : "display",
         DestinationTab.Social => section switch
         {
             SocialPane.Phone => "phone",

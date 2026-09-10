@@ -1550,10 +1550,10 @@ public sealed partial class VybeApplet
         }
 
         state.CommentDraft = frame.TextField.Draw("ad-comment", stack.Take(frame.Units(36f)), state.CommentDraft,
-            "Write a comment…");
+            pearl.Current.AccountMuted ? "You are muted." : "Write a comment…");
         var send = stack.Take(frame.Units(40f));
-        VybeChrome.Primary(frame, send, "Comment", night);
-        if (frame.Input.ConsumeClick(send) && state.CommentDraft.Length > 0)
+        VybeChrome.Primary(frame, send, pearl.Current.AccountMuted ? "Muted" : "Comment", night);
+        if (frame.Input.ConsumeClick(send) && state.CommentDraft.Length > 0 && !pearl.Current.AccountMuted)
         {
             pearl.CommentOn(ready.Id, state.CommentDraft);
             state.CommentDraft = string.Empty;
@@ -1596,12 +1596,13 @@ public sealed partial class VybeApplet
 
         var quotingPlus = quoted is { } locked && VybeDemo.IsPlusPost(locked);
         var offerPlus = CanPostPlus();
+        var muted = pearl.Current.AccountMuted;
         var hasContent = state.Caption.Length > 0 || state.DraftMedia.Count > 0 ||
                          (!story && state.QuoteOf.Length > 0);
         var tagged = story || VybePostTags.HasAny(state.DraftTags);
         var rated = story || !plus || VybePostMark.PlusRatingPicked(state.DraftRating);
-        var ready = hasContent && tagged && rated && (story || !plus || offerPlus);
-        var postLabel = story ? "Share Story" : plus ? "Post to VYBE+" : "Post to VYBE";
+        var ready = hasContent && tagged && rated && (story || !plus || offerPlus) && !muted;
+        var postLabel = muted ? "Muted" : story ? "Share Story" : plus ? "Post to VYBE+" : "Post to VYBE";
         if (VybeChrome.ComposeSend(frame, foot.Inset(new Edges(0f, frame.Units(6f))), postLabel, ready, plus, live))
         {
             state.DraftSfwOk = false;

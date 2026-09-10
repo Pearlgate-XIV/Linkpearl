@@ -72,6 +72,16 @@ public sealed partial class PearlHub
             return;
         }
 
+        if (Current.AccountMuted)
+        {
+            Replace(Current with
+            {
+                Notice = "You are muted and cannot post.",
+                Generation = NextGeneration(),
+            });
+            return;
+        }
+
         Enqueue(new SocialWrite(SocialKind.Publish, string.Empty, text, everyone, files, quote));
     }
 
@@ -93,6 +103,16 @@ public sealed partial class PearlHub
         var text = body.Trim();
         if (id.Length == 0 || text.Length == 0 || !Current.SignedIn)
         {
+            return;
+        }
+
+        if (Current.AccountMuted)
+        {
+            Replace(Current with
+            {
+                Notice = "You are muted and cannot comment.",
+                Generation = NextGeneration(),
+            });
             return;
         }
 
@@ -378,6 +398,18 @@ public sealed partial class PearlHub
             if (status == 401)
             {
                 DropSession("Session expired. Sign in again.");
+                return;
+            }
+
+            if (status == 403 && write.Kind is SocialKind.Comment or SocialKind.Publish)
+            {
+                Replace(Current with
+                {
+                    AccountMuted = true,
+                    Notice = "You are muted and cannot post or comment.",
+                    Generation = NextGeneration(),
+                });
+                QueueRefresh();
                 return;
             }
 

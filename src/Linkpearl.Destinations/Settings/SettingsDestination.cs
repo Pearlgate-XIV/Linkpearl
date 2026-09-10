@@ -10,6 +10,7 @@ using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
+using Linkpearl.Notices;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
@@ -92,6 +93,11 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         if (section == SettingsPane.Presence)
         {
             unfolded.Add("General");
+        }
+
+        if (section == SettingsPane.Notices)
+        {
+            unfolded.Add("Notifications");
         }
     }
 
@@ -239,8 +245,9 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             DrawAppearancePage);
         DrawTopic(frame, ref stack, "Sounds", "Speaker, microphone, and volume",
             "sound speaker mic volume silent vibration", SoundsHeight(frame), DrawSoundsPage);
-        DrawTopic(frame, ref stack, "Notifications", "Do not disturb and badges",
-            "notify quiet silent duty badge", OptionBand(frame, 3), DrawNotificationsPage);
+        DrawTopic(frame, ref stack, "Notifications", "Do not disturb, badges, and staff notices",
+            "notify quiet silent duty badge staff warn mute ban", NoticesInnerHeight(frame),
+            DrawNotificationsPage);
         DrawTopic(frame, ref stack, "Feed", "Which live channels appear",
             "feed say shout yell party chat live", OptionBand(frame, 4), DrawFeedPage);
         DrawTopic(frame, ref stack, "Phone calls", "Calls, wake, and portraits",
@@ -314,6 +321,59 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.QuietWhenBusy = value, "Silence automatically while you are in a duty.");
         ToggleRow(frame, stack.Take(OptionHeight(frame)), "App icon badges", display.ShowMarks,
             value => display.ShowMarks = value, "Show marks on the status bar.");
+        var snapshot = pearl.Current;
+        if (snapshot.AccountMuted)
+        {
+            ActionRow(frame, ref stack, "VYBE mute", "You cannot post or comment until staff lifts it.", () => { });
+        }
+
+        if (snapshot.AccountBanned)
+        {
+            ActionRow(frame, ref stack, "Account suspended",
+                snapshot.BanReason.Length > 0 ? snapshot.BanReason : "This account cannot sign in.", () => { });
+        }
+
+        var notices = snapshot.StaffNotices;
+        if (notices.Length == 0)
+        {
+            ActionRow(frame, ref stack, "Staff notices",
+                snapshot.SignedIn ? "No warn, mute, or ban notices yet." : "Sign in to see staff notices.",
+                () => { });
+            return;
+        }
+
+        var shown = Math.Min(6, notices.Length);
+        for (var index = 0; index < shown; index++)
+        {
+            var item = notices[index];
+            var title = item.Read ? item.Title : item.Title + " · new";
+            var when = AnnouncementChrome.Ago(item.CreatedAtUnix, DateTimeOffset.UtcNow);
+            var detail = item.Body.Length > 0 ? item.Body : item.Kind;
+            if (when.Length > 0)
+            {
+                detail = when + " · " + detail;
+            }
+
+            ActionRow(frame, ref stack, title, detail, () => pearl.MarkNoticeRead(item.Id));
+        }
+    }
+
+    private float NoticesInnerHeight(in AppletFrame frame)
+    {
+        var extra = 1;
+        var snapshot = pearl.Current;
+        if (snapshot.AccountMuted)
+        {
+            extra++;
+        }
+
+        if (snapshot.AccountBanned)
+        {
+            extra++;
+        }
+
+        extra += Math.Max(1, Math.Min(6, snapshot.StaffNotices.Length));
+        return OptionBand(frame, 3 + extra);
     }
 
     private void DrawPhonePage(AppletFrame frame, ref Stack stack)

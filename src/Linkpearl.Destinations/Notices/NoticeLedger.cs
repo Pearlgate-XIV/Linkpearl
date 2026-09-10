@@ -13,6 +13,7 @@ public enum NoticeKind : byte
     People = 2,
     Music = 3,
     Calendar = 4,
+    Staff = 5,
 }
 
 public static class NoticeMarks
@@ -23,6 +24,7 @@ public static class NoticeMarks
         NoticeKind.Announcement => "events",
         NoticeKind.Music => "music",
         NoticeKind.Calendar => "calendar",
+        NoticeKind.Staff => "settings",
         _ => "pearlchat",
     };
 }
@@ -108,6 +110,12 @@ public sealed class NoticeLedger : INoticeTray
                 seen.Add("ann:" + notices[index].Id);
             }
 
+            var staff = snapshot.StaffNotices;
+            for (var index = 0; index < staff.Length; index++)
+            {
+                seen.Add("staff:" + staff[index].Id);
+            }
+
             if (snapshot.People.Length > 0)
             {
                 seen.Add("people:" + snapshot.People[0].Id);
@@ -130,6 +138,20 @@ public sealed class NoticeLedger : INoticeTray
 
             Keep(new GlassNotice(id, NoticeKind.Announcement, item.Title, Snippet(item.Body),
                 Stamp(clock), DestinationTab.Home, HomePane.Announcements, item.Id));
+        }
+
+        var staffPosted = snapshot.StaffNotices;
+        for (var index = 0; index < staffPosted.Length; index++)
+        {
+            var item = staffPosted[index];
+            var id = "staff:" + item.Id;
+            if (!seen.Add(id))
+            {
+                continue;
+            }
+
+            Keep(new GlassNotice(id, NoticeKind.Staff, item.Title, Snippet(item.Body),
+                Stamp(clock), DestinationTab.Settings, SettingsPane.Notices, item.Id));
         }
 
         if (unread > lastUnread)
