@@ -41,6 +41,7 @@ public static class SettingsPane
 {
     public const int Front = 0;
     public const int Presence = 1;
+    public const int Notices = 2;
 }
 
 public sealed class DestinationHub

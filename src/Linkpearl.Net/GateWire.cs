@@ -186,6 +186,24 @@ internal sealed record GifRowDto(
 
 internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 
+internal sealed record AccountNoticeDto(
+    string? Id,
+    string? Kind,
+    string? Title,
+    string? Body,
+    long CreatedAtUnix,
+    bool Read);
+
+internal sealed record AccountNoticePageDto(AccountNoticeDto[]? Items);
+
+internal sealed record BanCheckDto(
+    bool Banned,
+    string? BanReason,
+    long BanUntilUnix,
+    bool Muted,
+    long MuteUntilUnix,
+    int WarnCount);
+
 [JsonSerializable(typeof(ChallengeRequestDto))]
 [JsonSerializable(typeof(ChallengeReplyDto))]
 [JsonSerializable(typeof(VerifyRequestDto))]
@@ -226,6 +244,9 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(MarketWatchBodyDto))]
 [JsonSerializable(typeof(GifRowDto))]
 [JsonSerializable(typeof(GifPageDto))]
+[JsonSerializable(typeof(AccountNoticeDto))]
+[JsonSerializable(typeof(AccountNoticePageDto))]
+[JsonSerializable(typeof(BanCheckDto))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal sealed partial class GateJson : JsonSerializerContext

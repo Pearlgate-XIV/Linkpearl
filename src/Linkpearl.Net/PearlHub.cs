@@ -46,6 +46,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly Queue<SocialWrite> writes = new();
     private readonly Queue<(bool Add, uint ItemId, string Label)> marketWrites = new();
     private readonly Queue<(bool Add, string UserId, string Number)> friendWrites = new();
+    private readonly Queue<string> noticeReads = new();
 
     public PearlHub(string baseUrl, string? savedToken, IGameSession game, IFrameLoop frames, ILinkpearlLog log,
         Action<string?> persistToken, string? mediaCache = null)
@@ -161,6 +162,20 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         lock (gate)
         {
             marketWrites.Enqueue((false, itemId, string.Empty));
+        }
+    }
+
+    public void MarkNoticeRead(string noticeId)
+    {
+        var id = noticeId.Trim();
+        if (id.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            noticeReads.Enqueue(id);
         }
     }
 
@@ -301,6 +316,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         (bool Add, uint ItemId, string Label)? market = null;
         (bool Add, string UserId, string Number)? friend = null;
         string? mediaUrl = null;
+        string? noticeRead = null;
         lock (gate)
         {
             if (writes.Count > 0)
@@ -316,6 +332,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             if (friendWrites.Count > 0)
             {
                 friend = friendWrites.Dequeue();
+            }
+
+            if (noticeReads.Count > 0)
+            {
+                noticeRead = noticeReads.Dequeue();
             }
 
             if (mediaWanted.Count > 0)
@@ -343,6 +364,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var userId = link.UserId;
             var number = link.Number;
             Start(token => RunFriendWriteAsync(add, userId, number, token));
+        }
+
+        if (noticeRead is { Length: > 0 } noticeId)
+        {
+            Start(token => RunNoticeReadAsync(noticeId, token));
         }
 
         if (mediaUrl is { Length: > 0 } url)
@@ -477,6 +503,24 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 .ConfigureAwait(false);
             var (announcements, _) = await client.GetAsync("/announcements", GateJson.Default.AnnouncementPageDto, token)
                 .ConfigureAwait(false);
+            var (noticePage, _) = await client.GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
+                .ConfigureAwait(false);
+            BanCheckDto? ban = null;
+            if (!string.IsNullOrWhiteSpace(me.Id))
+            {
+                (ban, _) = await client.GetAsync("/bans/" + Uri.EscapeDataString(me.Id), GateJson.Default.BanCheckDto,
+                    token).ConfigureAwait(false);
+            }
+
+            if (ban?.Banned == true)
+            {
+                var reason = string.IsNullOrWhiteSpace(ban.BanReason)
+                    ? "This account is suspended."
+                    : ban.BanReason;
+                DropSession(reason);
+                return;
+            }
+
             var (feedPage, feedStatus) = await client
                 .GetAsync("/feed?tab=" + Uri.EscapeDataString(feedTab), GateJson.Default.PostPageDto, token)
                 .ConfigureAwait(false);
@@ -525,6 +569,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 People = people,
                 Stories = MapStories(stories?.Rings),
                 Announcements = MapAnnouncements(announcements?.Items),
+                StaffNotices = MapStaffNotices(noticePage?.Items),
+                AccountBanned = false,
+                BanReason = string.Empty,
+                BanUntilUnix = 0,
+                AccountMuted = ban?.Muted == true,
+                MuteUntilUnix = ban?.MuteUntilUnix ?? 0,
+                WarnCount = ban?.WarnCount ?? 0,
                 SearchHits = prior.SearchHits,
                 SearchPosts = prior.SearchPosts,
                 Feed = feedStatus is >= 200 and < 300 ? feed : prior.Feed,
@@ -653,6 +704,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         writes.Clear();
         marketWrites.Clear();
         friendWrites.Clear();
+        noticeReads.Clear();
         watchedPost = string.Empty;
         watchedUser = string.Empty;
     }
@@ -878,6 +930,55 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
 
         return mapped.ToArray();
+    }
+
+    private static PearlStaffNotice[] MapStaffNotices(AccountNoticeDto[]? items)
+    {
+        if (items is null || items.Length == 0)
+        {
+            return [];
+        }
+
+        var mapped = new List<PearlStaffNotice>(items.Length);
+        for (var index = 0; index < items.Length; index++)
+        {
+            var item = items[index];
+            if (string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Title))
+            {
+                continue;
+            }
+
+            mapped.Add(new PearlStaffNotice(item.Id, item.Kind ?? string.Empty, item.Title,
+                item.Body ?? string.Empty, item.CreatedAtUnix, item.Read));
+        }
+
+        return mapped.ToArray();
+    }
+
+    private async Task RunNoticeReadAsync(string noticeId, CancellationToken token)
+    {
+        try
+        {
+            var status = await client
+                .PostAsync("/account/notices/" + Uri.EscapeDataString(noticeId) + "/read", null, token)
+                .ConfigureAwait(false);
+            if (status is >= 200 and < 300)
+            {
+                var current = Current;
+                var next = new List<PearlStaffNotice>(current.StaffNotices.Length);
+                for (var index = 0; index < current.StaffNotices.Length; index++)
+                {
+                    var item = current.StaffNotices[index];
+                    next.Add(item.Id == noticeId ? item with { Read = true } : item);
+                }
+
+                Replace(current with { StaffNotices = next.ToArray(), Generation = NextGeneration() });
+            }
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate notice read failed");
+        }
     }
 
     private static PearlHit[] MapHits(GateUserDto[]? users)

@@ -746,6 +746,11 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
     private void BeginCompose(bool plusPreferred, bool keepQuote = false)
     {
+        if (pearl.Current.AccountMuted)
+        {
+            return;
+        }
+
         if (!keepQuote)
         {
             state.QuoteOf = string.Empty;
@@ -782,16 +787,25 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             OwnFacePath().Length > 0 ? string.Empty : pearl.Current.MeAvatarUrl, tone.Accent, night,
             OwnFacePath());
         var go = inner.RightSlice(frame.Units(96f)).Inset(new Edges(frame.Units(4f), frame.Units(6f)));
-        var send = VybeChrome.ComposeSend(frame, go, plusHint ? "Post to VYBE+" : "Post to VYBE", true, plusHint);
+        var muted = pearl.Current.AccountMuted;
+        var send = VybeChrome.ComposeSend(frame, go,
+            muted ? "Muted" : plusHint ? "Post to VYBE+" : "Post to VYBE", !muted, plusHint);
         var field = inner.Inset(new Edges(faceR * 2f + frame.Units(8f), frame.Units(6f), frame.Units(104f),
             frame.Units(6f)));
         frame.Paint.Fill(field, new Vector4(1f, 1f, 1f, 0.05f), field.Height * 0.5f);
         frame.Paint.Stroke(field, new Vector4(1f, 1f, 1f, 0.10f), frame.Units(1f), field.Height * 0.5f);
         frame.Text.DrawEllipsized(field.Inset(new Edges(frame.Units(12f), 0f)),
-            plusHint ? "What's the vibe tonight?" : "What's the Vybe?",
+            pearl.Current.AccountMuted
+                ? "You are muted and cannot post."
+                : plusHint ? "What's the vibe tonight?" : "What's the Vybe?",
             new TextStyle(FontRole.Caption, new Vector4(1f, 1f, 1f, 0.55f)));
         if (send || frame.Input.ConsumeClick(area))
         {
+            if (pearl.Current.AccountMuted)
+            {
+                return;
+            }
+
             BeginCompose(plusHint);
         }
     }
@@ -867,6 +881,11 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         }
 
         var plus = state.DraftPlus;
+        if (pearl.Current.AccountMuted)
+        {
+            return false;
+        }
+
         if (plus && !VybePostMark.PlusRatingPicked(state.DraftRating))
         {
             return false;
@@ -1901,6 +1920,23 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         VybeChrome.Title(frame, head.LeftSlice(head.Width * 0.7f), "Notifications", night);
 
         var empty = true;
+        foreach (var notice in pearl.Current.StaffNotices)
+        {
+            empty = false;
+            var row = stack.Take(frame.Units(64f));
+            VybeChrome.Plate(frame, row, frame.Units(12f), night);
+            var inner = row.Inset(frame.Units(10f));
+            var title = notice.Read ? notice.Title : notice.Title + " · new";
+            frame.Text.DrawEllipsized(inner.TopSlice(frame.Units(16f)), title,
+                new TextStyle(FontRole.CaptionStrong, VybeChrome.Tone(night).Ink));
+            var line = notice.Body.Length > 0 ? notice.Body : notice.Kind;
+            VybeChrome.Mute(frame, inner.BottomSlice(frame.Units(14f)), line, night);
+            if (frame.Input.ConsumeClick(row) && !notice.Read)
+            {
+                pearl.MarkNoticeRead(notice.Id);
+            }
+        }
+
         foreach (var note in pearl.Current.Notes)
         {
             empty = false;

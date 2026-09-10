@@ -32,6 +32,14 @@ public readonly record struct PearlAnnouncement(
     string Body,
     long CreatedAtUnix);
 
+public readonly record struct PearlStaffNotice(
+    string Id,
+    string Kind,
+    string Title,
+    string Body,
+    long CreatedAtUnix,
+    bool Read);
+
 public readonly record struct PearlHit(string Kind, string Title, string Subtitle, string Id);
 
 public readonly record struct PearlChatLine(bool Mine, string Body, string When, string Author);
@@ -133,6 +141,20 @@ public sealed record PearlSnapshot
 
     public PearlAnnouncement[] Announcements { get; init; } = [];
 
+    public PearlStaffNotice[] StaffNotices { get; init; } = [];
+
+    public bool AccountBanned { get; init; }
+
+    public string BanReason { get; init; } = string.Empty;
+
+    public long BanUntilUnix { get; init; }
+
+    public bool AccountMuted { get; init; }
+
+    public long MuteUntilUnix { get; init; }
+
+    public int WarnCount { get; init; }
+
     public PearlHit[] SearchHits { get; init; } = [];
 
     public PearlPost[] SearchPosts { get; init; } = [];
@@ -217,4 +239,6 @@ public interface IPearlHub
     void WatchMarket(uint itemId, string label);
 
     void UnwatchMarket(uint itemId);
+
+    void MarkNoticeRead(string noticeId);
 }
