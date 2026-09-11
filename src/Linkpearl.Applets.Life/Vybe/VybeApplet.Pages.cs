@@ -5,6 +5,7 @@ using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Camera;
 using Linkpearl.Chat;
 using Linkpearl.Geometry;
+using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Net;
@@ -469,7 +470,7 @@ public sealed partial class VybeApplet
             NightPage.OnboardIntent => 720f,
             NightPage.OnboardAbout => 900f,
             NightPage.OnboardReady => 780f,
-            _ => 2200f,
+            _ => state.PlusAgreed ? 2480f : 2200f,
         };
         VybeChrome.Wheel(frame, area, state, frame.Units(wheel));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
@@ -518,6 +519,19 @@ public sealed partial class VybeApplet
                 state.Onboarded
                     ? "This is the first thing people see in Discover."
                     : "Your account is ready. Finish how you show up in Discover.", night);
+            var heroArea = stack.Take(frame.Units(188f));
+            var hero = DrawProfileHero(frame, heroArea, night, OwnBannerPath(),
+                VybeChrome.Tone(night).AccentDim, string.Empty, OwnFacePath(),
+                VybeChrome.Tone(night).Accent, own: true, back: false, tools: false);
+            if (hero.Face)
+            {
+                OpenOwnStill(face: true);
+            }
+            else if (hero.Banner)
+            {
+                OpenOwnStill(face: false);
+            }
+
             var shown = EditableName();
             var next = frame.TextField.Draw("ad-name-" + profileStamp, stack.Take(frame.Units(34f)), shown,
                 "Display name");
@@ -545,6 +559,11 @@ public sealed partial class VybeApplet
             VybeChrome.Mute(frame, stack.Take(frame.Units(28f)),
                 ZoneClock.Line(display.OwnTimeZoneId, display.Use24HourClock) +
                 "  ·  Change this on the Settings profile.", night);
+            VybeChrome.Kicker(frame, stack.Take(frame.Units(16f)), "RACE", night);
+            VybeChrome.FlowOne(frame, ref stack, SceneBook.Races, state.Race, value =>
+            {
+                state.Race = value;
+            }, night);
             VybeChrome.Kicker(frame, stack.Take(frame.Units(16f)), "GENDER", night);
             VybeChrome.FlowMany(frame, ref stack, SceneBook.Genders, state.Genders, night);
             VybeChrome.Kicker(frame, stack.Take(frame.Units(16f)), "SEXUALITY", night);
@@ -568,6 +587,7 @@ public sealed partial class VybeApplet
             if (state.Onboarded)
             {
                 DrawPlusSettings(frame, ref stack, night);
+                DrawLaneEntry(frame, ref stack, night);
             }
         }
         else if (state.Page == NightPage.OnboardIntent)
@@ -618,13 +638,14 @@ public sealed partial class VybeApplet
             new TextStyle(FontRole.BodyStrong, tone.Ink, TextAlign.Center));
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Same community. More freedom.",
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
-        var card = stack.Take(frame.Units(132f));
+        var card = stack.Take(frame.Units(158f));
         VybeChrome.Plate(frame, card, frame.Units(14f), night);
         var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "An 18+ space to view and share NSFW content");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "☺", "Your VYBE profile stays the same");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "NSFW stays hidden from SFW browsers");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "⚙", "You opt in later from Edit profile");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "✦", "Unlock a role survey after VYBE+ is on");
         frame.Text.DrawWrapped(stack.Take(frame.Units(48f)),
             "You cannot turn VYBE+ on during setup. After you enter VYBE, open Profile, tap Edit profile, and unlock it there.",
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
@@ -683,15 +704,7 @@ public sealed partial class VybeApplet
                 DrawCompose(frame, area);
                 break;
             case NightPage.Filters:
-                if (state.DiscoverPane == 0)
-                {
-                    DrawPeopleFilters(frame, area);
-                }
-                else
-                {
-                    DrawFilters(frame, area);
-                }
-
+                DrawPeopleFilters(frame, area);
                 break;
             case NightPage.Chat:
                 DrawChat(frame, area);
@@ -716,6 +729,18 @@ public sealed partial class VybeApplet
                 break;
             case NightPage.StoryComments:
                 DrawStoryComments(frame, area);
+                break;
+            case NightPage.PostComments:
+                DrawPostComments(frame, area);
+                break;
+            case NightPage.Club:
+                DrawClubPage(frame, area, state.ClubKey, state.Night);
+                break;
+            case NightPage.ClubCreate:
+                DrawClubCreate(frame, area);
+                break;
+            case NightPage.ClubEvent:
+                DrawClubEvent(frame, area);
                 break;
             case NightPage.StoryCompose:
                 DrawStoryCompose(frame, area);
@@ -746,6 +771,9 @@ public sealed partial class VybeApplet
                 break;
             case NightPage.Saves:
                 DrawSaves(frame, area);
+                break;
+            case NightPage.LaneSurvey:
+                DrawLaneSurvey(frame, area);
                 break;
             default:
                 DrawBlocked(frame, area);
@@ -819,20 +847,14 @@ public sealed partial class VybeApplet
             new Vector4(0f, 0f, 0f, 0.72f), GradientAxis.Vertical);
 
         var post = StoryLinkedPost(person);
-        var hours24 = StoryHours24(person);
-        var liked = post is { } likedPost
-            ? likedPost.Liked
-            : state.StoryHearts.Contains(person.Id);
-        var likes = post is { } likePost
-            ? likePost.Likes
-            : state.StoryHearts.Contains(person.Id) ? 1 : 0;
+        var liked = state.StoryHearts.Contains(person.Id);
+        var likes = StoryLikeCount(person);
         var comments = state.StoryCommentsFor(person.Id).Count;
         var kept = post is { } savedPost
             ? state.KeptPosts.Contains(savedPost.Id)
             : still.Length > 0 && state.KeptShots.Contains(still);
         var reposted = StoryAlreadyReposted(person);
-        var showShare = !hours24;
-        var showMore = person.Id >= 0 || state.OwnStoryPermanent;
+        var showMore = true;
 
         DrawStoryProgress(frame, area.TopSlice(frame.Units(10f)).Inset(new Edges(frame.Units(10f), frame.Units(6f),
             frame.Units(10f), 0f)));
@@ -885,7 +907,7 @@ public sealed partial class VybeApplet
             return;
         }
 
-        var copy = area.BottomSlice(frame.Units(86f)).Inset(new Edges(frame.Units(14f), 0f, frame.Units(52f),
+        var copy = area.BottomSlice(frame.Units(86f)).Inset(new Edges(frame.Units(14f), 0f, frame.Units(58f),
             frame.Units(6f)));
         var handle = person.Handle.Length > 0
             ? (person.Handle.StartsWith('@') ? person.Handle : "@" + person.Handle)
@@ -899,9 +921,13 @@ public sealed partial class VybeApplet
             StoryPlace(person) + " · " + StoryWhen(person),
             new TextStyle(FontRole.Caption, new Vector4(1f, 1f, 1f, 0.72f)));
 
-        var rail = area.RightSlice(frame.Units(46f)).Inset(new Edges(0f, frame.Units(132f), frame.Units(8f),
-            frame.Units(92f)));
-        var slotH = frame.Units(44f);
+        var slotH = frame.Units(46f);
+        var railW = frame.Units(48f);
+        var slots = 4 + (showMore ? 1 : 0);
+        var railH = slotH * slots;
+        var rail = Rect.FromSize(
+            new Vector2(area.Max.X - railW - frame.Units(6f), area.Max.Y - frame.Units(8f) - railH),
+            new Vector2(railW, railH));
         var slotY = rail.Min.Y;
         Rect NextSlot()
         {
@@ -910,9 +936,15 @@ public sealed partial class VybeApplet
             return hit;
         }
 
+        if (showMore && VybeChrome.StoryAction(frame, NextSlot(), "···", "More", state.StoryMoreOpen))
+        {
+            state.StoryMoreOpen = !state.StoryMoreOpen;
+            return;
+        }
+
         if (VybeChrome.StoryGlyphAction(frame, NextSlot(), VybeChrome.LikeGlyph, CompactCount(likes), liked, "♥"))
         {
-            LikeStory(person, post);
+            LikeStory(person);
             return;
         }
 
@@ -920,31 +952,22 @@ public sealed partial class VybeApplet
                 "💬"))
         {
             state.CommentDraft = string.Empty;
+            state.Scroll = 0f;
             state.Open(NightPage.StoryComments);
             return;
         }
 
-        if (showShare)
+        if (VybeChrome.StoryGlyphAction(frame, NextSlot(), VybeChrome.RepostGlyph,
+                CompactCount(Math.Max(reposted ? 1 : 0, post?.Reposts ?? 0)),
+                reposted || post is { Reposted: true }, "↻"))
         {
-            if (VybeChrome.StoryGlyphAction(frame, NextSlot(), VybeChrome.RepostGlyph,
-                    CompactCount(Math.Max(reposted ? 1 : 0, post?.Reposts ?? 0)),
-                    reposted || post is { Reposted: true }, "↻"))
-            {
-                RepostStory(person, still, post);
-                return;
-            }
-
-            if (VybeChrome.StoryGlyphAction(frame, NextSlot(), VybeChrome.SaveGlyph, kept ? "Saved" : "Save", kept,
-                    "⇩"))
-            {
-                SaveStory(still, post);
-                return;
-            }
+            RepostStory(person, still, post);
+            return;
         }
 
-        if (showMore && VybeChrome.StoryAction(frame, NextSlot(), "···", "More", state.StoryMoreOpen))
+        if (VybeChrome.StoryGlyphAction(frame, NextSlot(), VybeChrome.SaveGlyph, kept ? "1" : "Save", kept, "⇩"))
         {
-            state.StoryMoreOpen = !state.StoryMoreOpen;
+            SaveStory(still, post);
             return;
         }
 
@@ -972,7 +995,7 @@ public sealed partial class VybeApplet
     {
         var night = state.Night;
         frame.Paint.Fill(area, new Vector4(0f, 0f, 0f, 0.52f));
-        var rows = (person.Id >= 0 ? 1 : 0) + (person.Id < 0 && state.OwnStoryPermanent ? 1 : 0) + 1;
+        var rows = (person.Id >= 0 ? 1 : 0) + (person.Id < 0 ? 1 : 0) + 1;
         var plate = area.Inset(new Edges(frame.Units(10f), 0f, frame.Units(10f), frame.Units(10f)))
             .BottomSlice(frame.Units(16f) + frame.Units(44f) * rows);
         VybeChrome.PostSheet(frame, plate);
@@ -991,7 +1014,7 @@ public sealed partial class VybeApplet
             }
         }
 
-        if (person.Id < 0 && state.OwnStoryPermanent)
+        if (person.Id < 0)
         {
             var remove = stack.Take(frame.Units(40f));
             VybeChrome.Ghost(frame, remove, "Remove story", night);
@@ -1016,49 +1039,276 @@ public sealed partial class VybeApplet
     private void DrawStoryComments(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
+        var tone = VybeChrome.Tone(night);
         if (!TryStoryPerson(out var person))
         {
             state.Back();
             return;
         }
 
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Comments", night))
+        var still = person.Id < 0 ? state.StoryMedia : VybeDemo.StoryStill(paths, person.GateId);
+        frame.Paint.Fill(area, person.Wash with { W = 1f }, frame.Units(16f));
+        if (still.Length > 0)
+        {
+            DrawStill(frame, area, still, true);
+        }
+
+        frame.Paint.Fill(area, new Vector4(0f, 0f, 0f, 0.42f), frame.Units(16f));
+        var sheet = area.BottomSlice(area.Height * 0.78f);
+        frame.Paint.Fill(sheet, new Vector4(0.06f, 0.06f, 0.07f, 0.97f), frame.Units(18f));
+        frame.Paint.Stroke(sheet, new Vector4(1f, 1f, 1f, 0.08f), frame.Units(1f), frame.Units(18f));
+
+        var peek = new Rect(area.Min, new Vector2(area.Max.X, sheet.Min.Y));
+        if (frame.Input.ConsumeClick(peek))
         {
             state.Back();
             return;
         }
 
-        VybeChrome.Mute(frame, stack.Take(frame.Units(18f)),
-            person.Name + (StoryHours24(person) ? " · disappears with the story" : string.Empty), night);
-        var lines = state.StoryCommentsFor(person.Id);
-        if (lines.Count > 0)
+        var head = sheet.TopSlice(frame.Units(48f)).Inset(new Edges(frame.Units(12f), frame.Units(10f),
+            frame.Units(12f), 0f));
+        var close = head.RightSlice(frame.Units(32f));
+        frame.Text.DrawIn(close, "✕", new TextStyle(FontRole.Title, Vector4.One, TextAlign.Center));
+        if (VybeChrome.Back(frame, head.Inset(new Edges(0f, 0f, frame.Units(36f), 0f)), "Comments", night) ||
+            frame.Input.ConsumeClick(close))
         {
-            foreach (var comment in lines)
+            state.Back();
+            return;
+        }
+
+        var lines = state.StoryCommentsFor(person.Id);
+        DrawCommentThread(frame, sheet, head, lines, "ad-story-comment", night, () =>
+        {
+            state.AddStoryComment(person.Id, ProfileName(), state.CommentDraft.Trim());
+            state.Save(paths);
+        });
+        _ = tone;
+    }
+
+    private void DrawPostComments(in AppletFrame frame, Rect area)
+    {
+        var night = state.Night;
+        var tone = VybeChrome.Tone(night);
+        pearl.WatchPost(state.PostKey);
+        frame.Paint.Fill(area, new Vector4(0.04f, 0.04f, 0.045f, 1f));
+        var sheet = area.Inset(new Edges(frame.Units(14f), frame.Units(8f), frame.Units(14f), frame.Units(10f)));
+        var head = sheet.TopSlice(frame.Units(40f));
+        var close = head.RightSlice(frame.Units(32f));
+        frame.Text.DrawIn(close, "×", new TextStyle(FontRole.Title, tone.Ink, TextAlign.Center));
+        var back = head.Inset(new Edges(0f, 0f, frame.Units(36f), 0f));
+        frame.Text.DrawIn(back.LeftSlice(frame.Units(22f)), "‹",
+            new TextStyle(FontRole.Title, tone.Accent, TextAlign.Center));
+        frame.Text.DrawEllipsized(back.Inset(new Edges(frame.Units(26f), 0f, 0f, 0f)), "Comments",
+            new TextStyle(FontRole.Title, tone.Ink));
+        if (frame.Input.ConsumeClick(close) || frame.Input.ConsumeClick(back.LeftSlice(frame.Units(120f))))
+        {
+            state.Back();
+            return;
+        }
+
+        var lines = LivePostComments(state.PostKey);
+        DrawCommentThread(frame, sheet, head, lines, "ad-post-comment", night, () =>
+        {
+            var text = state.CommentDraft.Trim();
+            state.AddPostComment(state.PostKey, ProfileName(), text);
+            pearl.CommentOn(state.PostKey, text);
+            state.Save(paths);
+        }, BoardPost(state.PostKey));
+    }
+
+    private void DrawCommentThread(in AppletFrame frame, Rect sheet, Rect head, IReadOnlyList<PearlComment> lines,
+        string fieldId, bool night, Action sent, PearlPost? post = null)
+    {
+        var composer = sheet.BottomSlice(frame.Units(62f));
+        var list = new Rect(new Vector2(sheet.Min.X, head.Max.Y + frame.Units(6f)),
+            new Vector2(sheet.Max.X, composer.Min.Y - frame.Units(10f)));
+        var gap = frame.Units(10f);
+        var peekH = 0f;
+        if (post is { } shown)
+        {
+            peekH = CommentPostHeight(frame, shown, list.Width);
+        }
+
+        var content = peekH;
+        if (lines.Count == 0)
+        {
+            content += frame.Units(48f);
+        }
+        else
+        {
+            for (var index = 0; index < lines.Count; index++)
             {
-                var row = stack.Take(frame.Units(44f));
-                VybeChrome.Plate(frame, row, frame.Units(10f), night);
-                VybeChrome.Title(frame, row.TopSlice(frame.Units(18f)).Inset(new Edges(frame.Units(8f), 0f)),
-                    comment.Author, night);
-                VybeChrome.Mute(frame, row.BottomSlice(frame.Units(18f)).Inset(new Edges(frame.Units(8f), 0f)),
-                    comment.Body, night);
+                content += CommentRowHeight(frame, lines[index], list.Width) + gap;
+            }
+        }
+
+        VybeChrome.Wheel(frame, list, state, content + list.Height * 0.12f);
+        frame.Paint.PushClip(list);
+        var y = list.Min.Y - state.Scroll;
+        if (post is { } peek)
+        {
+            var card = Rect.FromSize(new Vector2(list.Min.X, y), new Vector2(list.Width, peekH));
+            if (card.Max.Y > list.Min.Y && card.Min.Y < list.Max.Y)
+            {
+                DrawCommentPost(frame, card, peek, night);
+            }
+
+            y += peekH + gap;
+        }
+
+        if (lines.Count == 0)
+        {
+            var empty = Rect.FromSize(new Vector2(list.Min.X, y), new Vector2(list.Width, frame.Units(36f)));
+            if (empty.Max.Y > list.Min.Y && empty.Min.Y < list.Max.Y)
+            {
+                VybeChrome.Mute(frame, empty, "No comments yet. Be the first.", night);
             }
         }
         else
         {
-            VybeChrome.Mute(frame, stack.Take(frame.Units(24f)), "No comments yet. Be the first.", night);
+            for (var index = 0; index < lines.Count; index++)
+            {
+                var rowH = CommentRowHeight(frame, lines[index], list.Width);
+                var row = Rect.FromSize(new Vector2(list.Min.X, y), new Vector2(list.Width, rowH));
+                if (row.Max.Y > list.Min.Y && row.Min.Y < list.Max.Y)
+                {
+                    DrawCommentCard(frame, row, lines[index], night);
+                }
+
+                y += rowH + gap;
+            }
         }
 
-        state.CommentDraft = frame.TextField.Draw("ad-story-comment", stack.Take(frame.Units(36f)),
-            state.CommentDraft, "Write a comment…");
-        var send = stack.Take(frame.Units(40f));
-        VybeChrome.Primary(frame, send, "Comment", night);
-        if (frame.Input.ConsumeClick(send) && state.CommentDraft.Trim().Length > 0)
+        frame.Paint.PopClip();
+        DrawCommentComposer(frame, composer, fieldId, night, sent);
+    }
+
+    private float CommentPostHeight(in AppletFrame frame, PearlPost post, float width)
+    {
+        var pad = frame.Units(12f);
+        var wrap = MathF.Max(1f, width - pad * 2f);
+        var caption = CardCaption(post);
+        var textH = caption.Length > 0
+            ? frame.Text.MeasureWrapped(caption, FontRole.Caption, wrap).Y
+            : 0f;
+        var mediaH = post.Media.Length > 0 ? MathF.Min(frame.Units(168f), width * 0.62f) : 0f;
+        return frame.Units(46f) + textH + mediaH + frame.Units(16f);
+    }
+
+    private void DrawCommentPost(in AppletFrame frame, Rect area, PearlPost post, bool night)
+    {
+        var tone = VybeChrome.Tone(night);
+        VybeChrome.PostSheet(frame, area, flush: true);
+        var inner = area.Inset(new Edges(frame.Units(12f), frame.Units(10f)));
+        var wash = tone.AccentDim;
+        if (state.TryFindGate(post.AuthorId, out var author))
         {
-            state.AddStoryComment(person.Id, ProfileName(), state.CommentDraft.Trim());
-            state.CommentDraft = string.Empty;
-            state.Save(paths);
+            wash = author.Wash;
         }
+
+        var faceR = frame.Units(12f);
+        DrawFace(frame, new Vector2(inner.Min.X + faceR, inner.Min.Y + faceR), faceR, post.AuthorAvatarUrl, wash,
+            night);
+        var head = inner.Inset(new Edges(faceR * 2.2f, 0f, 0f, 0f)).TopSlice(frame.Units(28f));
+        var who = post.AuthorHandle.Length > 0
+            ? post.AuthorName + "  " + (post.AuthorHandle.StartsWith('@') ? post.AuthorHandle : "@" + post.AuthorHandle)
+            : post.AuthorName;
+        frame.Text.DrawEllipsized(head.TopSlice(frame.Units(16f)), who,
+            new TextStyle(FontRole.CaptionStrong, tone.Ink));
+        frame.Text.DrawEllipsized(head.BottomSlice(frame.Units(12f)), post.When,
+            new TextStyle(FontRole.Caption, tone.Mute));
+        var rest = inner.Inset(new Edges(0f, frame.Units(32f), 0f, 0f));
+        var caption = CardCaption(post);
+        if (caption.Length > 0)
+        {
+            var captionH = frame.Text.MeasureWrapped(caption, FontRole.Caption, rest.Width).Y;
+            frame.Text.DrawWrapped(rest.TopSlice(captionH), caption, new TextStyle(FontRole.Caption, tone.Ink));
+            rest = rest.Inset(new Edges(0f, captionH + frame.Units(6f), 0f, 0f));
+        }
+
+        if (post.Media.Length > 0 && rest.Height > frame.Units(24f))
+        {
+            DrawStill(frame, rest, post.Media[0].Url, night);
+        }
+    }
+
+    private float CommentRowHeight(in AppletFrame frame, PearlComment comment, float width)
+    {
+        var pad = frame.Units(12f);
+        var face = frame.Units(16f) * 2.6f;
+        var wrap = MathF.Max(1f, width - face - pad);
+        var bodyH = frame.Text.MeasureWrapped(comment.Body ?? string.Empty, FontRole.Caption, wrap).Y;
+        return MathF.Max(frame.Units(62f), frame.Units(36f) + bodyH);
+    }
+
+    private void DrawCommentCard(in AppletFrame frame, Rect area, PearlComment comment, bool night)
+    {
+        var tone = VybeChrome.Tone(night);
+        frame.Paint.Fill(area, new Vector4(0.10f, 0.10f, 0.11f, 1f), frame.Units(18f));
+        var faceR = frame.Units(16f);
+        var face = area.LeftSlice(faceR * 2.5f);
+        ResolveStoryCommentFace(comment, out var url, out var wash);
+        DrawFace(frame, face.Center, faceR, url, wash, night,
+            comment.Mine ? state.ProfileFacePath : string.Empty);
+        var copy = area.Inset(new Edges(faceR * 2.6f, frame.Units(10f), frame.Units(12f), frame.Units(10f)));
+        var who = copy.TopSlice(frame.Units(16f));
+        frame.Text.DrawEllipsized(who.LeftSlice(who.Width * 0.70f), comment.Author,
+            new TextStyle(FontRole.BodyStrong, tone.Ink));
+        frame.Text.DrawEllipsized(who.RightSlice(who.Width * 0.30f), comment.When,
+            new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Right));
+        frame.Text.DrawWrapped(copy.Inset(new Edges(0f, frame.Units(18f), 0f, 0f)), comment.Body,
+            new TextStyle(FontRole.Caption, new Vector4(1f, 1f, 1f, 0.86f)));
+    }
+
+    private void DrawCommentComposer(in AppletFrame frame, Rect area, string fieldId, bool night, Action sent)
+    {
+        var well = area.Inset(new Edges(0f, frame.Units(6f), 0f, 0f));
+        frame.Paint.Fill(well, new Vector4(0.10f, 0.10f, 0.11f, 1f), well.Height * 0.5f);
+        var send = well.RightSlice(well.Height).Inset(frame.Units(6f));
+        var field = well.Inset(new Edges(frame.Units(14f), frame.Units(6f), well.Height + frame.Units(4f),
+            frame.Units(6f)));
+        state.CommentDraft = frame.TextField.Draw(fieldId, field, state.CommentDraft, "Reply...");
+        var ready = state.CommentDraft.Trim().Length > 0;
+        if (ready)
+        {
+            VybeChrome.WashFill(frame, send, send.Width * 0.5f);
+        }
+        else
+        {
+            frame.Paint.Fill(send, VybeChrome.Tone(night).CardHi, send.Width * 0.5f);
+        }
+
+        frame.Text.DrawIn(send, "Send",
+            new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center, 1f, 0.86f));
+        if (ready && frame.Input.ConsumeClick(send))
+        {
+            sent();
+            state.CommentDraft = string.Empty;
+            state.Scroll = float.MaxValue;
+        }
+    }
+
+    private void ResolveStoryCommentFace(PearlComment comment, out string url, out Vector4 wash)
+    {
+        wash = VybeChrome.Tone(state.Night).Accent;
+        if (comment.Mine)
+        {
+            url = pearl.Current.MeAvatarUrl;
+            return;
+        }
+
+        for (var index = 0; index < state.Roster.Count; index++)
+        {
+            var person = state.Roster[index];
+            if (string.Equals(person.Name, comment.Author, StringComparison.Ordinal))
+            {
+                url = person.AvatarUrl;
+                wash = person.Wash;
+                return;
+            }
+        }
+
+        url = string.Empty;
     }
 
     private bool TryStoryPerson(out ScenePerson person)
@@ -1073,9 +1323,6 @@ public sealed partial class VybeApplet
 
         return state.TryFind(state.StoryIndex, out person);
     }
-
-    private bool StoryHours24(in ScenePerson person) =>
-        person.Id >= 0 || !state.OwnStoryPermanent;
 
     private string StoryPlace(in ScenePerson person)
     {
@@ -1107,27 +1354,31 @@ public sealed partial class VybeApplet
         return clock.Length > 0 ? clock : "now";
     }
 
-    private void LikeStory(in ScenePerson person, PearlPost? post)
+    private void LikeStory(in ScenePerson person)
     {
-        if (post is { } heart)
-        {
-            var next = !heart.Liked;
-            pearl.LikePost(heart.Id, next);
-            if (next)
-            {
-                state.StoryHearts.Add(person.Id);
-            }
-            else
-            {
-                state.StoryHearts.Remove(person.Id);
-            }
-        }
-        else if (!state.StoryHearts.Add(person.Id))
+        if (!state.StoryHearts.Add(person.Id))
         {
             state.StoryHearts.Remove(person.Id);
         }
 
+        if (StoryLinkedPost(person) is { } linked &&
+            state.PostHearted(linked) != state.StoryHearts.Contains(person.Id))
+        {
+            HeartPost(linked.Id, linked.Liked);
+        }
+
         state.Save(paths);
+    }
+
+    private int StoryLikeCount(in ScenePerson person)
+    {
+        var extra = state.StoryHearts.Contains(person.Id) ? 1 : 0;
+        if (person.Id < 0)
+        {
+            return extra;
+        }
+
+        return 3 + Math.Abs(person.Id % 17) + extra;
     }
 
     private string StoryRepostId(in ScenePerson person) =>
@@ -1336,11 +1587,8 @@ public sealed partial class VybeApplet
             state.Open(NightPage.PhotoPick);
         }
 
-        DrawStoryLifeChips(frame, stack.Take(frame.Units(32f)), night, true);
         VybeChrome.Note(frame, stack.Take(frame.Units(28f)),
-            state.DraftStoryPermanent
-                ? "Stays on your ring until you remove it."
-                : "Deletes after 24 hours, including comments.", night);
+            "Deletes after 24 hours, including comments.", night);
 
         var post = stack.Take(frame.Units(44f));
         var hasStory = state.Caption.Trim().Length > 0 || state.StoryMedia.Length > 0;
@@ -1356,22 +1604,6 @@ public sealed partial class VybeApplet
             state.ClearOwnStory();
             state.Page = NightPage.Tabs;
             state.Save(paths);
-        }
-    }
-
-    private void DrawStoryLifeChips(in AppletFrame frame, Rect area, bool night, bool live)
-    {
-        var gap = frame.Units(6f);
-        var left = area.LeftSlice((area.Width - gap) * 0.5f);
-        var right = area.RightSlice((area.Width - gap) * 0.5f);
-        if (live && VybeChrome.Chip(frame, left, "24 hours", !state.DraftStoryPermanent, night))
-        {
-            state.DraftStoryPermanent = false;
-        }
-
-        if (live && VybeChrome.Chip(frame, right, "Permanent", state.DraftStoryPermanent, night))
-        {
-            state.DraftStoryPermanent = true;
         }
     }
 
@@ -1446,6 +1678,7 @@ public sealed partial class VybeApplet
         var relationship = person.Relationship;
         var dms = person.DmsOpen;
         var intent = JoinShown(person.Intents, night);
+        var race = person.Race;
         if (TryPeopleCard(person, out var card))
         {
             if (gender.Length == 0)
@@ -1463,6 +1696,11 @@ public sealed partial class VybeApplet
                 relationship = card.Relationship;
             }
 
+            if (race.Length == 0)
+            {
+                race = card.Race;
+            }
+
             dms ??= card.DmsOpen;
             if (intent.Length == 0)
             {
@@ -1470,7 +1708,11 @@ public sealed partial class VybeApplet
             }
         }
 
-        DrawProfileFacts(frame, ref stack, gender, sexuality, dms, intent, relationship, night);
+        DrawProfileFacts(frame, ref stack, gender, sexuality, dms, intent, relationship, night, race);
+        if (night && TryPeopleCard(person, out var pulse) && VybeLaneMap.Ready(pulse.Pulse))
+        {
+            DrawLaneFold(frame, ref stack, pulse.Pulse, night, pulse.GateId.Length > 0 ? pulse.GateId : pulse.Id.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     private bool TryPeopleCard(ScenePerson person, out PeopleCard card)
@@ -1530,33 +1772,11 @@ public sealed partial class VybeApplet
         }
 
         DrawPearlCard(frame, stack.Take(frame.Units(PostCardHeight(frame, ready))), ready);
-        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "COMMENTS", night);
-        var lines = pearl.CommentsFor(ready.Id);
-        if (lines.Count > 0)
+        var open = stack.Take(frame.Units(40f));
+        VybeChrome.Primary(frame, open, "View comments", night);
+        if (frame.Input.ConsumeClick(open))
         {
-            foreach (var comment in lines)
-            {
-                var row = stack.Take(frame.Units(44f));
-                VybeChrome.Plate(frame, row, frame.Units(10f), night);
-                VybeChrome.Title(frame, row.TopSlice(frame.Units(18f)).Inset(new Edges(frame.Units(8f), 0f)),
-                    comment.Author, night);
-                VybeChrome.Mute(frame, row.BottomSlice(frame.Units(18f)).Inset(new Edges(frame.Units(8f), 0f)),
-                    comment.Body, night);
-            }
-        }
-        else
-        {
-            VybeChrome.Mute(frame, stack.Take(frame.Units(24f)), "No comments yet. Be the first.", night);
-        }
-
-        state.CommentDraft = frame.TextField.Draw("ad-comment", stack.Take(frame.Units(36f)), state.CommentDraft,
-            "Write a comment…");
-        var send = stack.Take(frame.Units(40f));
-        VybeChrome.Primary(frame, send, "Comment", night);
-        if (frame.Input.ConsumeClick(send) && state.CommentDraft.Length > 0)
-        {
-            pearl.CommentOn(ready.Id, state.CommentDraft);
-            state.CommentDraft = string.Empty;
+            OpenPostComments(ready.Id);
         }
     }
 
@@ -1630,12 +1850,10 @@ public sealed partial class VybeApplet
 
         if (story)
         {
-            VybeChrome.StoryBadge(frame, stack.Take(frame.Units(28f)), state.DraftStoryPermanent);
-            DrawStoryLifeChips(frame, stack.Take(frame.Units(32f)), night, live);
+            state.DraftStoryPermanent = false;
+            VybeChrome.StoryBadge(frame, stack.Take(frame.Units(28f)));
             VybeChrome.Note(frame, stack.Take(frame.Units(28f)),
-                state.DraftStoryPermanent
-                    ? "Stays on your ring until you remove it from More."
-                    : "Deletes after 24 hours, including comments. No repost or save.",
+                "Deletes after 24 hours, including comments.",
                 night);
         }
         else
@@ -1851,8 +2069,7 @@ public sealed partial class VybeApplet
         {
             var storyHit = rest.LeftSlice(wide);
             var plusHit = rest.RightSlice(wide);
-            if (VybeChrome.DestCard(frame, storyHit, "Stories",
-                    story && state.DraftStoryPermanent ? "Until removed" : "24 hours", story, false, live) && !story)
+            if (VybeChrome.DestCard(frame, storyHit, "Stories", "24 hours", story, false, live) && !story)
             {
                 state.DraftStory = true;
                 state.DraftStoryPermanent = false;
@@ -1870,8 +2087,7 @@ public sealed partial class VybeApplet
             return;
         }
 
-        if (VybeChrome.DestCard(frame, rest, "Stories",
-                story && state.DraftStoryPermanent ? "Until removed" : "24 hours", story, false, live) && !story)
+        if (VybeChrome.DestCard(frame, rest, "Stories", "24 hours", story, false, live) && !story)
         {
             state.DraftStory = true;
             state.DraftStoryPermanent = false;
@@ -1998,9 +2214,7 @@ public sealed partial class VybeApplet
         else if (story)
         {
             VybeChrome.Note(frame, body,
-                state.DraftStoryPermanent
-                    ? "This stays on your story ring until you remove it. It is not a lasting VYBE feed post."
-                    : "This goes on your story ring for 24 hours. Comments disappear with it.",
+                "This goes on your story ring for 24 hours. Comments disappear with it.",
                 night);
             if (VybeChrome.ComposeSend(frame, send, "Share Story", true, false) &&
                 !frame.Input.IsHovering(dismiss))
@@ -2121,7 +2335,8 @@ public sealed partial class VybeApplet
         var thread = state.Thread(person.Id);
         talkTray.TickFiles(files, body => PushTalk(thread, body, person));
         if (DrawTalkRoom(frame, area, person.Name, person.Online ? "Active now" : person.World, person.AvatarUrl,
-                person.Wash, person.Online, night, thread, "ad-dm", body => PushTalk(thread, body, person)))
+                person.Wash, person.Online, night, thread, "ad-dm", body => PushTalk(thread, body, person),
+                () => OpenPerson(person.GateId)))
         {
             return;
         }
@@ -2142,9 +2357,25 @@ public sealed partial class VybeApplet
             return;
         }
 
-        thread.Add(new ChatLine(true, body, TalkStamp()));
+        var outgoing = marks.Seal(TalkId(), body);
+        var when = TalkStamp();
+        thread.Add(new ChatLine(true, outgoing, when));
+        marks.CatchSent(TalkId(), "me", when, outgoing);
         state.FollowPerson(person, pearl, true);
         state.Save(paths);
+        state.Scroll = float.MaxValue;
+    }
+
+    private void SendPearl(string body)
+    {
+        if (body.Length == 0 || state.ChatKey.Length == 0)
+        {
+            return;
+        }
+
+        var outgoing = marks.Seal(TalkId(), body);
+        pearl.SendChat(state.ChatKey, outgoing);
+        marks.CatchSent(TalkId(), "me", string.Empty, outgoing);
         state.Scroll = float.MaxValue;
     }
 
@@ -2179,15 +2410,13 @@ public sealed partial class VybeApplet
 
         talkTray.TickFiles(files, body =>
         {
-            pearl.SendChat(state.ChatKey, body);
-            state.Scroll = float.MaxValue;
+            SendPearl(body);
         });
         if (DrawTalkRoom(frame, area, title, other.Length > 0 ? "Pearlgate" : "", face, VybeChrome.Tone(night).Accent,
                 false, night, lines, "ad-pearl-dm", body =>
                 {
-                    pearl.SendChat(state.ChatKey, body);
-                    state.Scroll = float.MaxValue;
-                }))
+                    SendPearl(body);
+                }, other.Length > 0 ? () => OpenPerson(other) : null))
         {
             return;
         }
@@ -2197,13 +2426,13 @@ public sealed partial class VybeApplet
             return;
         }
 
-        pearl.SendChat(state.ChatKey, state.Draft.Trim());
+        SendPearl(state.Draft.Trim());
         state.Draft = string.Empty;
-        state.Scroll = float.MaxValue;
     }
 
     private bool DrawTalkRoom(in AppletFrame frame, Rect area, string title, string status, string avatar, Vector4 wash,
-        bool live, bool night, IReadOnlyList<ChatLine> lines, string fieldId, Action<string> sendBit)
+        bool live, bool night, IReadOnlyList<ChatLine> lines, string fieldId, Action<string> sendBit,
+        Action? openProfile = null)
     {
         if (talkLook.Length > 0)
         {
@@ -2220,18 +2449,26 @@ public sealed partial class VybeApplet
         var tone = VybeChrome.Tone(night);
         var head = area.TopSlice(frame.Units(56f));
         var sheetH = talkTray.SheetHeight(frame);
-        var composer = area.BottomSlice(frame.Units(56f) + sheetH);
-        var bar = composer.TopSlice(frame.Units(56f));
-        var sheet = composer.BottomSlice(sheetH);
+        var quoteH = marks.ComposerHeight(frame, TalkId());
+        var composer = area.BottomSlice(frame.Units(56f) + sheetH + quoteH);
+        var quote = quoteH > 0f ? composer.TopSlice(quoteH) : default;
+        var rest = quoteH > 0f ? composer.Inset(new Edges(0f, quoteH, 0f, 0f)) : composer;
+        var bar = rest.TopSlice(frame.Units(56f));
+        var sheet = rest.BottomSlice(sheetH);
         var thread = new Rect(new Vector2(area.Min.X, head.Max.Y + frame.Units(4f)),
             new Vector2(area.Max.X, bar.Min.Y - frame.Units(4f)));
 
-        if (DrawTalkHead(frame, head, title, status, avatar, wash, live, night))
+        if (DrawTalkHead(frame, head, title, status, avatar, wash, live, night, openProfile))
         {
             return true;
         }
 
         DrawTalkThread(frame, thread, title, avatar, wash, night, lines);
+        if (quoteH > 0f)
+        {
+            marks.DrawReply(frame, quote, TalkId(), tone.Ink, tone.Mute, tone.Card);
+        }
+
         var hold = DrawTalkComposer(frame, bar, fieldId, tone, sendBit);
         var fields = frame.TextField;
         talkTray.DrawSheet(frame, sheet, tone.Ink, tone.Mute, tone.Accent, tone.Card, files, TalkGallery(),
@@ -2320,7 +2557,7 @@ public sealed partial class VybeApplet
     }
 
     private bool DrawTalkHead(in AppletFrame frame, Rect area, string title, string status, string avatar, Vector4 wash,
-        bool live, bool night)
+        bool live, bool night, Action? openProfile)
     {
         var tone = VybeChrome.Tone(night);
         var back = area.LeftSlice(frame.Units(32f));
@@ -2334,11 +2571,7 @@ public sealed partial class VybeApplet
 
         var face = area.Inset(new Edges(frame.Units(36f), frame.Units(8f), 0f, frame.Units(8f))).LeftSlice(frame.Units(40f));
         DrawFace(frame, face.Center, frame.Units(16f), avatar, wash, night);
-        if (live)
-        {
-            frame.Paint.FillCircle(face.Center + new Vector2(frame.Units(11f), frame.Units(11f)), frame.Units(4.2f),
-                VybeChrome.Online);
-        }
+        VybeChrome.LivePip(frame, face.Center, frame.Units(16f), live);
 
         var copy = area.Inset(new Edges(frame.Units(82f), frame.Units(8f), frame.Units(8f), frame.Units(8f)));
         frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(22f)), title,
@@ -2347,6 +2580,13 @@ public sealed partial class VybeApplet
         {
             frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), status,
                 new TextStyle(FontRole.Caption, live ? VybeChrome.Online : tone.Mute));
+        }
+
+        if (openProfile is not null &&
+            (frame.Input.ConsumeClick(face) || frame.Input.ConsumeClick(copy)))
+        {
+            openProfile();
+            return true;
         }
 
         return false;
@@ -2375,7 +2615,10 @@ public sealed partial class VybeApplet
         var total = frame.Units(10f);
         for (var index = 0; index < lines.Count; index++)
         {
-            heights[index] = ChatBits.BubbleHeight(frame, area.Width, lines[index].Body);
+            var lineKey = TalkLineKey(lines[index], title);
+            heights[index] = ChatBits.NamedRowHeight(frame, area.Width, lines[index].Body,
+                                 marks.Cite(lineKey, TalkId(), lines[index].Body, lines[index].Mine)) +
+                             marks.Band(frame, lineKey) + frame.Units(14f);
             total += heights[index] + gap;
         }
 
@@ -2387,17 +2630,22 @@ public sealed partial class VybeApplet
 
         VybeChrome.Wheel(frame, area, state, total);
         frame.Paint.PushClip(area);
-        var cursor = area.Min.Y - state.Scroll + frame.Units(8f);
-        for (var index = 0; index < lines.Count; index++)
+        try
         {
-            var line = lines[index];
-            var row = Rect.FromSize(new Vector2(area.Min.X, cursor), new Vector2(area.Width, heights[index]));
-            var grouped = index + 1 < lines.Count && lines[index + 1].Mine == line.Mine;
-            DrawTalkBubble(frame, row, line, avatar, wash, grouped, night);
-            cursor += heights[index] + gap;
+            var cursor = area.Min.Y - state.Scroll + frame.Units(8f);
+            for (var index = 0; index < lines.Count; index++)
+            {
+                var line = lines[index];
+                var row = Rect.FromSize(new Vector2(area.Min.X, cursor), new Vector2(area.Width, heights[index]));
+                var grouped = index + 1 < lines.Count && lines[index + 1].Mine == line.Mine;
+                DrawTalkBubble(frame, row, line, title, avatar, wash, grouped, night);
+                cursor += heights[index] + gap;
+            }
         }
-
-        frame.Paint.PopClip();
+        finally
+        {
+            frame.Paint.PopClip();
+        }
     }
 
     private void DrawTalkEmpty(in AppletFrame frame, Rect area, string title, string avatar, Vector4 wash, bool night)
@@ -2413,52 +2661,82 @@ public sealed partial class VybeApplet
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
     }
 
-    private void DrawTalkBubble(in AppletFrame frame, Rect row, ChatLine line, string avatar, Vector4 wash, bool grouped,
-        bool night)
+    private string TalkId() =>
+        state.ChatKey.Length > 0
+            ? "pearl:" + state.ChatKey
+            : "vybe:" + state.ChatIndex.ToString(CultureInfo.InvariantCulture);
+
+    private string TalkLineKey(ChatLine line, string title) =>
+        ChatMarks.Key(TalkId(), line.Mine ? "me" : title, line.When, line.Body);
+
+    private void DrawTalkBubble(in AppletFrame frame, Rect row, ChatLine line, string title, string avatar, Vector4 wash,
+        bool grouped, bool night)
     {
         var tone = VybeChrome.Tone(night);
+        var key = TalkLineKey(line, title);
+        var band = marks.Band(frame, key);
+        var cite = marks.Cite(key, TalkId(), line.Body, line.Mine);
         var bit = ChatBits.Read(line.Body);
-        var maxW = row.Width * 0.78f;
-        var bubbleW = bit.Kind == ChatBitKind.Pic
-            ? ChatBits.StillBox(frame, maxW, bit.Path).X
-            : bit.Kind == ChatBitKind.Gif && GifCache.IsUrl(bit.Body)
-            ? ChatBits.StillBox(frame, maxW, GifCache.PathFor(frame.Paths, bit.Body)).X
-            : bit.Kind is ChatBitKind.Gif or ChatBitKind.Sticker or ChatBitKind.Place
-            ? maxW
-            : MathF.Max(frame.Units(56f),
-                MathF.Min(maxW, frame.Text.MeasureWrapped(line.Body, FontRole.Body, maxW - frame.Units(20f)).X +
-                                frame.Units(20f)));
+        var who = line.Mine ? "You" : title.Length > 0 ? title : "Them";
         var incoming = new Vector4(0.165f, 0.175f, 0.210f, 0.96f);
-        Rect bubble;
+        var bubbleW = row.Width * 0.78f;
+        Rect lane;
         if (line.Mine)
         {
-            bubble = row.RightSlice(bubbleW);
-            frame.Paint.Fill(bubble, tone.Accent, frame.Units(18f));
-            ChatBits.Draw(frame, bubble.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f),
-                    frame.Units(16f))), line.Body, tone.AccentInk, tone.AccentInk with { W = 0.72f }, lifestream, gifs);
-            frame.Text.DrawIn(bubble.BottomSlice(frame.Units(14f)).Inset(new Edges(frame.Units(10f), 0f)),
-                line.When.Length > 0 ? line.When : "Now",
-                new TextStyle(FontRole.Caption, tone.AccentInk with { W = 0.72f }, TextAlign.Right, 1f, 0.85f));
-            OpenTalkPic(frame, bubble, bit);
-            return;
+            lane = row.RightSlice(bubbleW);
         }
-
-        var face = row.LeftSlice(frame.Units(28f));
-        if (!grouped)
+        else
         {
-            DrawFace(frame, new Vector2(face.Center.X, row.Max.Y - frame.Units(14f)), frame.Units(10f), avatar, wash,
-                night);
+            var face = row.LeftSlice(frame.Units(28f));
+            if (!grouped)
+            {
+                DrawFace(frame, new Vector2(face.Center.X, row.Max.Y - frame.Units(14f)), frame.Units(10f), avatar,
+                    wash, night);
+            }
+
+            lane = Rect.FromSize(new Vector2(row.Min.X + frame.Units(32f), row.Min.Y),
+                new Vector2(MathF.Min(bubbleW, row.Width - frame.Units(32f)), row.Height));
         }
 
-        bubble = Rect.FromSize(new Vector2(row.Min.X + frame.Units(32f), row.Min.Y),
-            new Vector2(bubbleW, row.Height));
-        frame.Paint.Fill(bubble, incoming, frame.Units(18f));
-        ChatBits.Draw(frame, bubble.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f),
-                frame.Units(16f))), line.Body, tone.Ink, tone.Mute, lifestream, gifs);
-        frame.Text.DrawIn(bubble.BottomSlice(frame.Units(14f)).Inset(new Edges(frame.Units(10f), 0f)),
-            line.When.Length > 0 ? line.When : "Now",
-            new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Left, 1f, 0.85f));
-        OpenTalkPic(frame, bubble, bit);
+        var nameRow = lane.TopSlice(frame.Units(14f));
+        frame.Text.DrawEllipsized(nameRow, who,
+            new TextStyle(FontRole.CaptionStrong, tone.Accent,
+                line.Mine ? TextAlign.Right : TextAlign.Left));
+        var top = lane.Inset(new Edges(0f, frame.Units(16f), 0f, frame.Units(14f)));
+        frame.Paint.Fill(top, line.Mine ? tone.Accent : incoming, frame.Units(16f));
+        var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f),
+            frame.Units(7f) + band));
+        frame.Paint.PushClip(copy);
+        try
+        {
+            ChatBits.Draw(frame, copy, line.Body ?? string.Empty,
+                line.Mine ? tone.AccentInk : tone.Ink,
+                line.Mine ? tone.AccentInk with { W = 0.72f } : tone.Mute, lifestream, gifs, cite);
+        }
+        finally
+        {
+            frame.Paint.PopClip();
+        }
+
+        if (band > 0f)
+        {
+            marks.DrawBand(frame, top.BottomSlice(band).Inset(new Edges(frame.Units(8f), 0f)), key);
+        }
+
+        frame.Text.DrawIn(lane.BottomSlice(frame.Units(14f)).Inset(new Edges(frame.Units(10f), 0f)),
+            ShowTalkWhen(line.When),
+            new TextStyle(FontRole.Caption, line.Mine ? tone.AccentInk with { W = 0.72f } : tone.Mute,
+                line.Mine ? TextAlign.Right : TextAlign.Left, 1f, 0.85f));
+        OpenTalkPic(frame, top, bit);
+        OfferTalkMark(frame, lane, key, who, line.Body);
+    }
+
+    private void OfferTalkMark(in AppletFrame frame, Rect bubble, string key, string who, string body)
+    {
+        if (!marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
+        {
+            marks.Offer(TalkId(), key, who, ChatBits.Snippet(body ?? string.Empty), frame.Input.Pointer);
+        }
     }
 
     private void OpenTalkPic(in AppletFrame frame, Rect bubble, ChatBit bit)
@@ -2565,10 +2843,21 @@ public sealed partial class VybeApplet
         paint.Line(bot, mid, ink, size * 0.24f);
     }
 
-    private static string TalkStamp()
+    private static string TalkStamp() => DateTimeOffset.Now.ToString("O");
+
+    private static string ShowTalkWhen(string when)
     {
-        var now = DateTime.Now;
-        return now.ToString("h:mm tt", CultureInfo.InvariantCulture);
+        if (string.IsNullOrEmpty(when) || string.Equals(when, "now", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Now";
+        }
+
+        if (DateTimeOffset.TryParse(when, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var at))
+        {
+            return at.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture);
+        }
+
+        return when;
     }
 
     private void DrawRequests(in AppletFrame frame, Rect area)
@@ -2707,6 +2996,159 @@ public sealed partial class VybeApplet
         }
     }
 
+    private void DrawLaneEntry(in AppletFrame frame, ref Stack stack, bool night)
+    {
+        if (!state.PlusAgreed || state.PlusBlocked)
+        {
+            return;
+        }
+
+        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "ROLE SURVEY", night);
+        VybeChrome.Mute(frame, stack.Take(frame.Units(40f)),
+            "VYBE's own role map. bdsmtest.org cannot be used here — no public API — so this survey is original.",
+            night);
+        var go = stack.Take(frame.Units(40f));
+        VybeChrome.Primary(frame, go, state.LaneDone ? "Retake role survey" : "Take role survey", night);
+        if (frame.Input.ConsumeClick(go))
+        {
+            OpenLaneSurvey();
+        }
+
+        if (state.LaneDone)
+        {
+            VybeLaneMap.DrawBars(frame, ref stack, state.LaneMarks, night);
+        }
+    }
+
+    private void OpenLaneSurvey()
+    {
+        state.LaneAsk = 0;
+        state.LanePicks = new int[VybeLaneMap.AskCount];
+        for (var index = 0; index < state.LanePicks.Length; index++)
+        {
+            state.LanePicks[index] = -1;
+        }
+
+        state.Open(NightPage.LaneSurvey);
+        laneHold = 0f;
+    }
+
+    private void DrawLaneSurvey(in AppletFrame frame, Rect area)
+    {
+        var night = true;
+        var asks = VybeLaneMap.Asks;
+        var moved = false;
+        if (laneHold > 0f)
+        {
+            laneHold -= frame.DeltaSeconds;
+            if (laneHold <= 0f)
+            {
+                AdvanceLaneAsk();
+                moved = true;
+            }
+        }
+
+        var done = state.LaneAsk >= asks.Length;
+        VybeChrome.Wheel(frame, area, state, frame.Units(done ? 720f : 640f));
+        var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Role survey", night))
+        {
+            laneHold = 0f;
+            if (state.LaneAsk > 0 && !done)
+            {
+                state.LaneAsk--;
+                return;
+            }
+
+            state.Back();
+            return;
+        }
+
+        if (done)
+        {
+            laneHold = 0f;
+            VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
+                "Your map is ready. These percentages show on VYBE+ profiles and feed Discover match.", night);
+            VybeLaneMap.DrawBars(frame, ref stack, state.LaneMarks, night);
+            var finish = stack.Take(frame.Units(44f));
+            VybeChrome.Primary(frame, finish, "Save to profile", night);
+            if (frame.Input.ConsumeClick(finish))
+            {
+                state.Save(paths);
+                state.Back();
+            }
+
+            return;
+        }
+
+        if (state.LanePicks.Length != asks.Length)
+        {
+            state.LanePicks = new int[asks.Length];
+            Array.Fill(state.LanePicks, -1);
+        }
+
+        var step = Math.Clamp(state.LaneAsk, 0, asks.Length - 1);
+        var tone = VybeChrome.Tone(night);
+        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)),
+            (step + 1).ToString(CultureInfo.InvariantCulture) + " / " +
+            asks.Length.ToString(CultureInfo.InvariantCulture), night);
+        frame.Text.DrawWrapped(stack.Take(frame.Units(72f)), asks[step],
+            new TextStyle(FontRole.BodyStrong, tone.Ink));
+        for (var index = 0; index < VybeLaneMap.Scale.Length; index++)
+        {
+            var row = stack.Take(frame.Units(36f));
+            var on = state.LanePicks[step] == index;
+            var hot = on || frame.Input.IsHovering(row);
+            DrawLaneChoice(frame, row, VybeLaneMap.Scale[index], on, hot, tone);
+            if (!moved && frame.Input.ConsumeClick(row))
+            {
+                state.LanePicks[step] = index;
+                laneHold = 0.28f;
+            }
+        }
+    }
+
+    private void AdvanceLaneAsk()
+    {
+        laneHold = 0f;
+        var asks = VybeLaneMap.AskCount;
+        if (state.LaneAsk + 1 >= asks)
+        {
+            state.LaneMarks = VybeLaneMap.Score(state.LanePicks);
+            state.LaneDone = true;
+            state.LaneAsk = asks;
+            state.Save(paths);
+            return;
+        }
+
+        state.LaneAsk++;
+    }
+
+    private static void DrawLaneChoice(in AppletFrame frame, Rect area, string label, bool on, bool hot,
+        NightPalette tone)
+    {
+        var radius = frame.Units(12f);
+        if (on)
+        {
+            VybeChrome.WashFill(frame, area, radius);
+            frame.Paint.Stroke(area, Vector4.One with { W = 0.92f }, frame.Units(1.6f), radius);
+            frame.Text.DrawIn(area, label, new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
+            return;
+        }
+
+        if (hot)
+        {
+            frame.Paint.Fill(area, tone.Accent with { W = 0.28f }, radius);
+            frame.Paint.Stroke(area, tone.Accent with { W = 0.95f }, frame.Units(1.4f), radius);
+            frame.Text.DrawIn(area, label, new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
+            return;
+        }
+
+        frame.Paint.Fill(area, tone.CardHi, radius);
+        frame.Paint.Stroke(area, tone.Faint, frame.Units(1.2f), radius);
+        frame.Text.DrawIn(area, label, new TextStyle(FontRole.CaptionStrong, tone.Mute, TextAlign.Center));
+    }
+
     private void DrawSettings(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
@@ -2764,6 +3206,7 @@ public sealed partial class VybeApplet
 
         DrawPlusSwitch(frame, ref stack, night);
         DrawPlusSettings(frame, ref stack, night);
+        DrawLaneEntry(frame, ref stack, night);
 
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "PROFILE", night);
         if (VybeChrome.Chip(frame, stack.Take(frame.Units(36f)), "Edit profile", false, night))
@@ -2791,14 +3234,14 @@ public sealed partial class VybeApplet
             state.Open(NightPage.Following);
         }
 
-        if (state.ProfileFacePath.Length > 0 &&
-            VybeChrome.Chip(frame, stack.Take(frame.Units(36f)), "Place photo", false, night))
+        if (VybeChrome.Chip(frame, stack.Take(frame.Units(36f)),
+                VybeChrome.StillReady(state.ProfileFacePath) ? "Place photo" : "Add photo", false, night))
         {
             OpenOwnStill(face: true);
         }
 
-        if (state.ProfileBannerPath.Length > 0 &&
-            VybeChrome.Chip(frame, stack.Take(frame.Units(36f)), "Place banner", false, night))
+        if (VybeChrome.Chip(frame, stack.Take(frame.Units(36f)),
+                VybeChrome.StillReady(state.ProfileBannerPath) ? "Place banner" : "Add banner", false, night))
         {
             OpenOwnStill(face: false);
         }
@@ -2825,6 +3268,7 @@ public sealed partial class VybeApplet
         }
 
         DrawGallerySearch(frame, stack.Take(frame.Units(36f)), night);
+        DrawGalleryRecs(frame, ref stack, night && state.GalleryPlus, night);
         DrawMasonryGallery(frame, stack.TakeRemaining(), GalleryBoard(), night);
     }
 
@@ -2841,7 +3285,7 @@ public sealed partial class VybeApplet
         var shown = 0;
         foreach (var wallPost in OpenBoard())
         {
-            if (!wallPost.Liked)
+            if (!state.PostHearted(wallPost))
             {
                 continue;
             }
@@ -2956,6 +3400,7 @@ public sealed partial class VybeApplet
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)),
                 state.PickingBanner ? "Choose banner" : "Choose a photo", night))
         {
+            state.PickingClubFace = false;
             state.Back();
             return;
         }
@@ -2995,6 +3440,14 @@ public sealed partial class VybeApplet
                 }
 
                 var path = shots[index + col].Path;
+                if (state.PickingClubFace)
+                {
+                    state.DraftClubFace = path;
+                    state.PickingClubFace = false;
+                    state.Back();
+                    return;
+                }
+
                 if (state.PickingAvatar)
                 {
                     state.ProfileFacePath = path;
@@ -3036,13 +3489,34 @@ public sealed partial class VybeApplet
         state.PickingAvatar = face;
         state.PickingBanner = !face;
         var path = face ? state.ProfileFacePath : state.ProfileBannerPath;
-        if (path.Length == 0 || !File.Exists(path))
+        if (!VybeChrome.StillReady(path))
         {
             state.Open(NightPage.PhotoPick);
             return;
         }
 
         state.Open(NightPage.PlacePhoto);
+    }
+
+    private void ClearOwnStill(bool face)
+    {
+        if (face)
+        {
+            state.ProfileFacePath = string.Empty;
+            state.FaceZoom = 1f;
+            state.FaceFocusX = 0.5f;
+            state.FaceFocusY = 0.5f;
+        }
+        else
+        {
+            state.ProfileBannerPath = string.Empty;
+            state.BannerZoom = 1f;
+            state.BannerFocusX = 0.5f;
+            state.BannerFocusY = 0.5f;
+        }
+
+        photoDrag = false;
+        state.Save(paths);
     }
 
     private void ShowPlacePhoto()
@@ -3148,17 +3622,22 @@ public sealed partial class VybeApplet
         var tone = VybeChrome.Tone(night);
         var face = state.PickingAvatar;
         var path = face ? state.ProfileFacePath : state.ProfileBannerPath;
+        var hasStill = VybeChrome.StillReady(path);
         frame.Paint.Fill(area, tone.Ground);
         var inner = area.Inset(frame.Units(16f));
-        frame.Text.DrawIn(inner.TopSlice(frame.Units(24f)), face ? "Place photo" : "Place banner",
+        frame.Text.DrawIn(inner.TopSlice(frame.Units(24f)),
+            hasStill ? face ? "Place photo" : "Place banner" : face ? "Add photo" : "Add banner",
             new TextStyle(FontRole.Title, tone.Ink));
         frame.Text.DrawWrapped(inner.Inset(new Edges(0f, frame.Units(28f), 0f, 0f)).TopSlice(frame.Units(36f)),
-            face
-                ? "Drag to move. Scroll to zoom so the whole photo or just part of it sits in the circle."
-                : "Drag to move. Scroll to zoom so the whole photo or just part of it sits in the banner.",
+            hasStill
+                ? face
+                    ? "Drag to move. Scroll to zoom so the whole photo or just part of it sits in the circle."
+                    : "Drag to move. Scroll to zoom so the whole photo or just part of it sits in the banner."
+                : "Tap the plus, then pick a photo from your gallery.",
             new TextStyle(FontRole.Caption, tone.Mute));
 
-        var actions = inner.BottomSlice(frame.Units(44f));
+        var actions = inner.BottomSlice(frame.Units(hasStill ? 88f : 44f));
+        var pair = hasStill ? actions.BottomSlice(frame.Units(44f)) : actions;
         var preview = new Rect(inner.Min + new Vector2(0f, frame.Units(72f)),
             new Vector2(inner.Max.X, actions.Min.Y - frame.Units(12f)));
         if (face)
@@ -3166,9 +3645,19 @@ public sealed partial class VybeApplet
             var side = MathF.Min(preview.Width, preview.Height);
             preview = Rect.FromSize(preview.Center - new Vector2(side * 0.5f, side * 0.5f),
                 new Vector2(side, side));
-            DrawFace(frame, preview.Center, side * 0.5f, string.Empty, tone.Accent, night, path);
-            frame.Paint.StrokeCircle(preview.Center, side * 0.5f, tone.Accent,
-                MathF.Max(1.6f, frame.Units(2f)));
+            if (hasStill)
+            {
+                DrawFace(frame, preview.Center, side * 0.5f, string.Empty, tone.Accent, night, path);
+                frame.Paint.StrokeCircle(preview.Center, side * 0.5f, tone.Accent,
+                    MathF.Max(1.6f, frame.Units(2f)));
+            }
+            else
+            {
+                VybeChrome.EmptyPortrait(frame, preview.Center, side * 0.5f, night);
+                frame.Paint.StrokeCircle(preview.Center, side * 0.5f, tone.Mute,
+                    MathF.Max(1.6f, frame.Units(2f)));
+                VybeChrome.AddPlus(frame, preview.Center, side * 0.16f, night);
+            }
         }
         else
         {
@@ -3177,18 +3666,40 @@ public sealed partial class VybeApplet
                 new Vector2(preview.Width, height));
             if (!DrawBleedStill(frame, preview, path))
             {
-                frame.Paint.Fill(preview, tone.Card);
+                VybeChrome.EmptyBanner(frame, preview, night);
+                VybeChrome.AddPlus(frame, preview.Center, frame.Units(16f), night);
             }
 
-            frame.Paint.Stroke(preview, tone.Accent, MathF.Max(1.6f, frame.Units(2f)), 0f);
+            frame.Paint.Stroke(preview, hasStill ? tone.Accent : tone.Faint, MathF.Max(1.6f, frame.Units(2f)), 0f);
+        }
+
+        if (!hasStill && frame.Input.ConsumeClick(preview))
+        {
+            state.Page = NightPage.PhotoPick;
+            state.Scroll = 0f;
+            return;
         }
 
         TickPhotoPlace(frame, preview, path);
 
-        var other = actions.LeftSlice(actions.Width * 0.48f);
-        var done = actions.RightSlice(actions.Width * 0.48f);
+        if (hasStill)
+        {
+            var drop = actions.TopSlice(frame.Units(36f));
+            VybeChrome.Plate(frame, drop, frame.Units(12f), night);
+            frame.Text.DrawIn(drop, face ? "Remove photo" : "Remove banner",
+                new TextStyle(FontRole.CaptionStrong, tone.Danger, TextAlign.Center));
+            if (frame.Input.ConsumeClick(drop))
+            {
+                ClearOwnStill(face);
+                state.Back();
+                return;
+            }
+        }
+
+        var other = pair.LeftSlice(pair.Width * 0.48f);
+        var done = pair.RightSlice(pair.Width * 0.48f);
         VybeChrome.Plate(frame, other, frame.Units(12f), night);
-        frame.Text.DrawIn(other, "Choose another",
+        frame.Text.DrawIn(other, hasStill ? "Choose another" : "Choose photo",
             new TextStyle(FontRole.CaptionStrong, tone.Accent, TextAlign.Center));
         VybeChrome.Primary(frame, done, "Done", night);
         if (frame.Input.ConsumeClick(other))
@@ -3249,43 +3760,147 @@ public sealed partial class VybeApplet
         }
     }
 
+    private void TickViewLook(in AppletFrame frame, Rect dest, ITextureHandle? texture)
+    {
+        if (!string.Equals(viewLook, state.ViewMedia, StringComparison.Ordinal))
+        {
+            viewLook = state.ViewMedia;
+            viewZoom = 1f;
+            viewFocus = new Vector2(0.5f, 0.5f);
+            viewDrag = false;
+        }
+
+        if (texture is not { IsReady: true } || dest.Width < 1f || dest.Height < 1f)
+        {
+            return;
+        }
+
+        if (frame.Input.IsHovering(dest))
+        {
+            frame.Input.Claim(dest);
+            if (MathF.Abs(frame.Input.ScrollDelta) > 0.01f)
+            {
+                var before = viewZoom;
+                viewZoom = Math.Clamp(viewZoom * (1f + frame.Input.ScrollDelta * 0.18f), 1f, 4.5f);
+                var local = new Vector2(
+                    Math.Clamp((frame.Input.Pointer.X - dest.Min.X) / dest.Width, 0f, 1f),
+                    Math.Clamp((frame.Input.Pointer.Y - dest.Min.Y) / dest.Height, 0f, 1f));
+                var oldSpan = 1f / before;
+                var img = viewFocus + (local - new Vector2(0.5f, 0.5f)) * oldSpan;
+                var span = 1f / viewZoom;
+                viewFocus = img - (local - new Vector2(0.5f, 0.5f)) * span;
+            }
+        }
+
+        if (viewZoom > 1.01f && frame.Input.WasPressed(dest))
+        {
+            viewDrag = true;
+        }
+
+        if (viewDrag && frame.Input.IsHeld() && viewZoom > 1f)
+        {
+            var span = 1f / viewZoom;
+            viewFocus -= new Vector2(
+                frame.Input.PointerDelta.X / dest.Width * span,
+                frame.Input.PointerDelta.Y / dest.Height * span);
+        }
+
+        if (!frame.Input.IsHeld())
+        {
+            viewDrag = false;
+        }
+
+        var half = 0.5f / viewZoom;
+        viewFocus = new Vector2(
+            Math.Clamp(viewFocus.X, half, 1f - half),
+            Math.Clamp(viewFocus.Y, half, 1f - half));
+    }
+
     private void DrawPhotoView(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Photo", night))
+        var tone = VybeChrome.Tone(night);
+        var post = state.PostKey.Length > 0 ? BoardPost(state.PostKey) : null;
+        var plus = post is { } plusPost && VybeDemo.IsPlusPost(plusPost);
+        var caption = post is { } captionPost ? CardCaption(captionPost) : string.Empty;
+        var marks = post is { } tagPost ? VybePostTags.Collect(tagPost) : [];
+        var tagLine = VybePostTags.Join(marks);
+        var pad = frame.Units(14f);
+        var wrap = MathF.Max(1f, area.Width - pad * 2f);
+        var captionH = caption.Length > 0
+            ? frame.Text.MeasureWrapped(caption, FontRole.Caption, wrap).Y + frame.Units(4f)
+            : 0f;
+        var tagH = tagLine.Length > 0
+            ? frame.Text.MeasureWrapped(tagLine, FontRole.CaptionStrong, wrap).Y + frame.Units(4f)
+            : 0f;
+        var gap = frame.Units(4f);
+        var barH = frame.Units(32f);
+        var metaH = barH + captionH + tagH + frame.Units(8f);
+        var maxImage = Rect.FromSize(area.Min,
+            new Vector2(area.Width, MathF.Max(frame.Units(180f), area.Height - metaH - gap)));
+        var dest = maxImage;
+        var texture = StillTexture(frame, state.ViewMedia);
+        if (texture is { IsReady: true })
+        {
+            var fit = CoverFit.Contained(texture.Size, maxImage);
+            dest = CoverFit.Snapped(Rect.FromSize(new Vector2(fit.Min.X, maxImage.Min.Y), fit.Size));
+        }
+
+        var blockH = dest.Height + gap + metaH;
+        var shift = MathF.Max(0f, (area.Height - blockH) * 0.5f);
+        dest = dest.Translate(new Vector2(0f, shift));
+        TickViewLook(frame, dest, texture);
+        if (texture is { IsReady: true })
+        {
+            var span = 1f / viewZoom;
+            var uvMin = new Vector2(viewFocus.X - span * 0.5f, viewFocus.Y - span * 0.5f);
+            var uvMax = new Vector2(viewFocus.X + span * 0.5f, viewFocus.Y + span * 0.5f);
+            frame.Paint.Image(texture, dest, uvMin, uvMax, Vector4.One);
+        }
+
+        var back = Rect.FromSize(new Vector2(area.Min.X + frame.Units(8f), area.Min.Y + frame.Units(8f)),
+            new Vector2(frame.Units(32f), frame.Units(28f)));
+        frame.Paint.Fill(back, new Vector4(0f, 0f, 0f, 0.42f), back.Height * 0.5f);
+        if (VybeChrome.Back(frame, back, string.Empty, true))
         {
             state.Back();
             return;
         }
 
-        DrawStill(frame, stack.Take(frame.Units(280f)), state.ViewMedia, night);
-        var row = stack.Take(frame.Units(36f));
-        if (VybeChrome.Chip(frame, row.LeftSlice(row.Width * 0.48f), "Open post", false, night) &&
-            state.PostKey.Length > 0)
+        var stack = new Stack(
+            new Rect(new Vector2(area.Min.X, dest.Max.Y + gap), area.Max),
+            StackAxis.Vertical, frame.Units(4f));
+        var bar = stack.Take(frame.Units(32f)).Inset(new Edges(pad, 0f, pad, 0f));
+        if (post is { } live)
         {
-            OpenPost(state.PostKey);
-        }
-
-        if (VybeChrome.Chip(frame, row.RightSlice(row.Width * 0.48f), night ? "Share" : "Repost", false, night))
-        {
-            state.SharePostId = state.PostKey;
-        }
-
-        var keepLabel = state.KeptShots.Contains(state.ViewMedia) ? "Unsave photo" : "Save photo";
-        if (VybeChrome.Chip(frame, stack.Take(frame.Units(36f)), keepLabel, false, night) &&
-            state.ViewMedia.Length > 0)
-        {
-            state.ToggleKeptShot(state.ViewMedia);
-            if (state.PostKey.Length > 0 && BoardPost(state.PostKey) is { } cited)
+            if (DrawFeedActions(frame, bar, live, night))
             {
-                if (state.KeptShots.Contains(state.ViewMedia))
-                {
-                    state.KeptPosts.Add(cited.Id);
-                }
+                return;
             }
+        }
+        else
+        {
+            var liked = state.PostHearted(state.PostKey, false);
+            VybeChrome.PostGlyph(frame, bar.LeftSlice(frame.Units(36f)), VybeChrome.LikeGlyph,
+                CompactCount(liked ? 1 : 0), liked, tone, "♡");
+            if (frame.Input.ConsumeClick(bar.LeftSlice(frame.Units(36f))))
+            {
+                HeartPost(state.PostKey, false);
+                return;
+            }
+        }
 
-            state.Save(paths);
+        if (caption.Length > 0)
+        {
+            frame.Text.DrawWrapped(stack.Take(captionH).Inset(new Edges(pad, 0f, pad, 0f)), caption,
+                new TextStyle(FontRole.Caption, tone.Ink));
+        }
+
+        if (tagLine.Length > 0)
+        {
+            var accent = plus ? VybeChrome.PlusViolet : tone.Accent;
+            frame.Text.DrawWrapped(stack.Take(tagH).Inset(new Edges(pad, 0f, pad, 0f)), tagLine,
+                new TextStyle(FontRole.CaptionStrong, accent));
         }
     }
 

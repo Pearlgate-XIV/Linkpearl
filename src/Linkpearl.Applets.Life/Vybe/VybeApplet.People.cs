@@ -19,55 +19,39 @@ public sealed partial class VybeApplet
 
     private PeopleCard[] findDeck = [];
 
-    private void DrawPeopleDiscovery(in AppletFrame frame, Rect area)
+    private void DrawPeopleDiscovery(in AppletFrame frame, ref Stack stack, bool night)
     {
-        var night = state.Night;
-        var tone = VybeChrome.Tone(night);
         var find = state.PeopleFind;
-        find.Pulse = MathF.Max(0f, find.Pulse - frame.DeltaSeconds);
-        find.PassFade = MathF.Max(0f, find.PassFade - frame.DeltaSeconds);
-        findDeck = PeopleFindBook.Deck(paths);
-
         var mine = PeopleFindBook.Mine(state);
         var home = game.Character.WorldName;
         var picks = PeopleFindBook.Match(findDeck, find, state, home, mine);
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        DrawPeopleHead(frame, stack.Take(frame.Units(28f)), find, tone, night);
-        DrawDiscoverPanes(frame, stack.Take(frame.Units(34f)), night);
+        var chrome = frame.Units(14f);
         if (night)
         {
-            var next = DrawPlusSplit(frame, stack.Take(frame.Units(56f)), "People", state.PeoplePlus, night);
+            var next = DrawPlusSplit(frame, PadX(stack.Take(frame.Units(56f)), chrome), "People", state.PeoplePlus,
+                night);
             if (next != state.PeoplePlus)
             {
                 state.PeoplePlus = next;
                 state.Scroll = 0f;
             }
         }
-        if (state.DiscoverPane != 0)
-        {
-            return;
-        }
-
-        if (find.SearchOpen)
-        {
-            find.Query = frame.TextField.Draw("vybe-people-q", stack.Take(frame.Units(32f)), find.Query,
-                "Search name, world, job");
-        }
-
-        DrawAppliedFilters(frame, ref stack, find, night);
 
         if (picks.Count == 0)
         {
-            DrawPeopleEmpty(frame, stack.Take(frame.Units(120f)), find, night);
+            DrawPeopleEmpty(frame, PadX(stack.Take(frame.Units(120f)), chrome), find, night);
             return;
         }
 
-        var gap = frame.Units(8f);
-        var cardH = frame.Units(312f);
+        var gap = frame.Units(2f);
+        var half = (stack.Remaining.Width - gap) * 0.5f;
+        var photoH = half;
+        var factsH = PeopleTileFactsHeight(frame);
+        var cardH = photoH + factsH;
+        stack.Take(frame.Units(4f));
         for (var index = 0; index < picks.Count; index += 2)
         {
             var row = stack.Take(cardH);
-            var half = (row.Width - gap) * 0.5f;
             DrawPeopleTile(frame, Rect.FromSize(row.Min, new Vector2(half, row.Height)), picks[index], find, mine,
                 home, night);
             if (index + 1 < picks.Count)
@@ -77,40 +61,17 @@ public sealed partial class VybeApplet
                     picks[index + 1], find, mine, home, night);
             }
         }
-
-        _ = tone;
     }
 
-    private void DrawPeopleHead(in AppletFrame frame, Rect area, PeopleFindState find, NightPalette tone, bool night)
-    {
-        if (VybeChrome.Back(frame, area.LeftSlice(frame.Units(28f)), string.Empty, night))
-        {
-            find.SearchOpen = false;
-            find.Query = string.Empty;
-            return;
-        }
+    private static Rect PadX(Rect area, float pad) => area.Inset(new Edges(pad, 0f, pad, 0f));
 
-        VybeChrome.Title(frame, area.Inset(new Edges(frame.Units(32f), 0f, frame.Units(72f), 0f)), "People",
-            night);
-        var tools = area.RightSlice(frame.Units(64f));
-        var search = tools.LeftSlice(frame.Units(28f));
-        var filter = tools.RightSlice(frame.Units(28f));
-        DrawSearchGlyph(frame, search.Center, frame.Units(8f), find.SearchOpen ? tone.Accent : FindInk);
-        DrawFilterGlyph(frame, filter.Center, frame.Units(9f), find.Count() > 0 ? tone.Accent : FindInk);
-        if (frame.Input.ConsumeClick(search))
-        {
-            find.SearchOpen = !find.SearchOpen;
-            if (!find.SearchOpen)
-            {
-                find.Query = string.Empty;
-            }
-        }
-
-        if (frame.Input.ConsumeClick(filter))
-        {
-            state.Peek(NightPage.Filters);
-        }
-    }
+    private static float PeopleTileFactsHeight(in AppletFrame frame) =>
+        frame.Units(8f) +
+        MathF.Max(frame.Units(18f), frame.Text.LineHeight(FontRole.BodyStrong)) +
+        MathF.Max(frame.Units(14f), frame.Text.LineHeight(FontRole.Caption)) +
+        frame.Units(8f) +
+        MathF.Max(frame.Units(15f), frame.Text.LineHeight(FontRole.Caption)) * 6f +
+        frame.Units(10f);
 
     private void DrawAppliedFilters(in AppletFrame frame, ref Stack stack, PeopleFindState find, bool night)
     {
@@ -160,6 +121,11 @@ public sealed partial class VybeApplet
             if (frame.Input.ConsumeClick(cell))
             {
                 find.Drop(tags[index]);
+                if (find.Query.Length == 0)
+                {
+                    BindDiscoverSearch(string.Empty);
+                }
+
                 state.Save(paths);
             }
 
@@ -202,59 +168,66 @@ public sealed partial class VybeApplet
         IReadOnlyCollection<string> mine, string home, bool night)
     {
         var tone = VybeChrome.Tone(night);
-        frame.Paint.Fill(area, FindLift, frame.Units(16f));
-        frame.Paint.Stroke(area, FindLine, frame.Units(1f), frame.Units(16f));
-        var photo = area.TopSlice(frame.Units(148f)).Inset(new Edges(frame.Units(6f), frame.Units(6f), frame.Units(6f),
-            0f));
-        DrawPeopleCover(frame, photo, card, night);
+        var photo = area.TopSlice(area.Width);
+        DrawPeopleCover(frame, photo, card, night, 0f);
         var live = new Vector2(photo.Min.X + frame.Units(10f), photo.Min.Y + frame.Units(10f));
         frame.Paint.FillCircle(live, frame.Units(5.2f), new Vector4(0f, 0f, 0f, 0.45f));
         frame.Paint.FillCircle(live, frame.Units(3.8f),
             card.Online ? VybeChrome.Online : new Vector4(0.52f, 0.52f, 0.56f, 1f));
-        var heart = Rect.FromSize(new Vector2(photo.Max.X - frame.Units(24f), photo.Min.Y + frame.Units(6f)),
-            new Vector2(frame.Units(18f), frame.Units(18f)));
-        var liked = state.LikedPeople.Contains(card.Id);
-        DrawHottHeart(frame, heart, tone.Accent, liked);
-        var copy = area.Inset(new Edges(frame.Units(8f), frame.Units(156f), frame.Units(8f), frame.Units(6f)));
-        var lines = new Stack(copy, StackAxis.Vertical, frame.Units(1.5f));
-        var nameRow = lines.Take(frame.Units(16f));
+        var likes = PersonLikeCount(card.Id);
+        var likeText = likes.ToString(CultureInfo.InvariantCulture);
+        var likeW = frame.Units(22f) + frame.Text.Measure(likeText, FontRole.Caption).X + frame.Units(10f);
+        var heart = Rect.FromSize(
+            new Vector2(photo.Max.X - likeW - frame.Units(6f), photo.Min.Y + frame.Units(8f)),
+            new Vector2(likeW, frame.Units(22f)));
+        DrawHottHeart(frame, heart, state.LikedPeople.Contains(card.Id), likeText, tone);
+        var copy = area.Inset(new Edges(frame.Units(8f), photo.Height + frame.Units(8f), frame.Units(8f),
+            frame.Units(6f)));
+        frame.Paint.Fill(new Rect(new Vector2(area.Min.X, photo.Max.Y), area.Max), FindLift);
+        var lines = new Stack(copy, StackAxis.Vertical, frame.Units(2f));
+        var nameH = MathF.Max(frame.Units(18f), frame.Text.LineHeight(FontRole.BodyStrong));
+        var nameRow = lines.Take(nameH);
         if (card.PlusMember || card.PlusOnly)
         {
-            var tagW = MathF.Min(VybeChrome.PlusTagWidth(frame), nameRow.Width * 0.42f);
+            var tagW = MathF.Min(VybeChrome.PlusTagWidth(frame), nameRow.Width * 0.40f);
             frame.Text.DrawEllipsized(nameRow.Inset(new Edges(0f, 0f, tagW + frame.Units(4f), 0f)), card.Name,
-                new TextStyle(FontRole.CaptionStrong, FindInk));
+                new TextStyle(FontRole.BodyStrong, FindInk));
             VybeChrome.PlusTag(frame, nameRow.RightSlice(tagW));
         }
         else
         {
-            frame.Text.DrawEllipsized(nameRow, card.Name,
-                new TextStyle(FontRole.CaptionStrong, FindInk));
-        }
-        var place = card.World + " • " + card.DataCenter;
-        if (card.Age > 0 && card.DatingOn && state.DatingDiscovery)
-        {
-            place = card.Age.ToString(CultureInfo.InvariantCulture) + " • " + place;
+            frame.Text.DrawEllipsized(nameRow, card.Name, new TextStyle(FontRole.BodyStrong, FindInk));
         }
 
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)), card.Handle + "  " + place,
-            new TextStyle(FontRole.Caption, FindMute));
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)), card.Job + " · " + card.Role,
-            new TextStyle(FontRole.CaptionStrong, FindInk));
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)), string.Join(" • ", Take(card.LookingFor, 3)),
-            new TextStyle(FontRole.Caption, FindMute));
+        frame.Text.DrawEllipsized(lines.Take(MathF.Max(frame.Units(14f), frame.Text.LineHeight(FontRole.Caption))),
+            card.Handle, new TextStyle(FontRole.Caption, FindMute));
+        lines.Take(frame.Units(4f));
+
+        var world = card.World;
+        if (card.DataCenter.Length > 0)
+        {
+            world = world.Length > 0 ? world + " · " + card.DataCenter : card.DataCenter;
+        }
+
+        if (card.Age > 0 && card.DatingOn && state.DatingDiscovery)
+        {
+            world = card.Age.ToString(CultureInfo.InvariantCulture) + " · " + world;
+        }
+
+        DrawPeopleFact(frame, ref lines, "Race", card.Race, FindMute, FindInk);
+        DrawPeopleFact(frame, ref lines, "World", world, FindMute, FindInk);
+        DrawPeopleFact(frame, ref lines, "Job", JoinPair(card.Job, card.Role), FindMute, FindInk);
+        DrawPeopleFact(frame, ref lines, "I am", JoinPair(card.Gender, card.Sexuality), FindMute, FindInk);
+        DrawPeopleFact(frame, ref lines, "Seek", string.Join(" · ", Take(card.LookingFor, 2)), FindMute, FindInk);
         var shared = PeopleFindBook.SharedCount(card.Interests, mine);
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)),
-            shared.ToString(CultureInfo.InvariantCulture) + " shared  ·  " + string.Join(" ", Take(card.Interests, 2)),
-            new TextStyle(FontRole.Caption, tone.Accent));
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)), card.Bio,
-            new TextStyle(FontRole.Caption, FindMute));
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)),
-            card.Online ? "Online now" : card.Activity == "Today" ? "Active today" : "Active this week",
-            new TextStyle(FontRole.Caption, card.Online ? VybeChrome.Online : FindMute));
-        var score = PeopleFindBook.Score(card, find, home, PeopleFindBook.DataCenterOf(home), mine);
-        frame.Text.DrawEllipsized(lines.Take(frame.Units(12f)),
-            score.ToString(CultureInfo.InvariantCulture) + "% match",
-            new TextStyle(FontRole.Caption, tone.Accent));
+        var score = PeopleFindBook.Score(card, find, home, PeopleFindBook.DataCenterOf(home), mine,
+            state.LaneDone ? state.LaneMarks : null);
+        var status = card.Online ? "Online now" : card.Activity == "Today" ? "Active today" : "Active this week";
+        DrawPeopleFact(frame, ref lines, "Match",
+            score.ToString(CultureInfo.InvariantCulture) + "%  ·  " + status +
+            (shared > 0 ? "  ·  " + shared.ToString(CultureInfo.InvariantCulture) + " shared" : string.Empty),
+            FindMute, card.Online ? VybeChrome.Online : tone.Accent);
+
         if (frame.Input.ConsumeClick(heart))
         {
             state.ToggleLikedPerson(card.Id);
@@ -268,6 +241,34 @@ public sealed partial class VybeApplet
         {
             OpenFound(card);
         }
+    }
+
+    private static void DrawPeopleFact(in AppletFrame frame, ref Stack stack, string label, string value,
+        Vector4 mute, Vector4 ink)
+    {
+        var shown = (value ?? string.Empty).Trim();
+        if (shown.Length == 0)
+        {
+            return;
+        }
+
+        var row = stack.Take(MathF.Max(frame.Units(15f), frame.Text.LineHeight(FontRole.Caption)));
+        var labelW = MathF.Min(frame.Units(40f), row.Width * 0.34f);
+        frame.Text.DrawEllipsized(row.LeftSlice(labelW), label, new TextStyle(FontRole.Caption, mute));
+        frame.Text.DrawEllipsized(row.Inset(new Edges(labelW + frame.Units(4f), 0f, 0f, 0f)), shown,
+            new TextStyle(FontRole.CaptionStrong, ink));
+    }
+
+    private static string JoinPair(string left, string right)
+    {
+        left = (left ?? string.Empty).Trim();
+        right = (right ?? string.Empty).Trim();
+        if (left.Length == 0)
+        {
+            return right;
+        }
+
+        return right.Length == 0 ? left : left + " · " + right;
     }
 
     private void DrawPeopleCard(in AppletFrame frame, Rect area, PeopleCard card, PeopleFindState find,
@@ -314,7 +315,8 @@ public sealed partial class VybeApplet
             new TextStyle(FontRole.Caption, card.Online ? VybeChrome.Online : FindMute));
         var homeDc = PeopleFindBook.DataCenterOf(home);
         var why = stack.Take(frame.Units(20f));
-        var score = PeopleFindBook.Score(card, find, home, homeDc, mine);
+        var score = PeopleFindBook.Score(card, find, home, homeDc, mine,
+            state.LaneDone ? state.LaneMarks : null);
         frame.Text.DrawEllipsized(why, "Why you're seeing them  ·  " + score.ToString(CultureInfo.InvariantCulture) +
                                        "% match",
             new TextStyle(FontRole.Caption, tone.Accent));
@@ -326,44 +328,17 @@ public sealed partial class VybeApplet
 
         if (find.WhyOpen && find.WhyId == card.Id)
         {
-            var reasons = PeopleFindBook.Reasons(card, home, homeDc, mine);
+            var reasons = PeopleFindBook.Reasons(card, home, homeDc, mine, find,
+                state.LaneDone ? state.LaneMarks : null);
             frame.Text.DrawEllipsized(stack.Take(frame.Units(28f)), string.Join("  ·  ", reasons),
                 new TextStyle(FontRole.Caption, FindMute));
         }
 
         var actions = stack.Take(frame.Units(36f));
-        var slot = actions.Width / 4f;
-        DrawPeopleAct(frame, Slice(actions, 0, slot), "✕", FindMute, false);
-        DrawPeopleAct(frame, Slice(actions, 1, slot), "★", find.Saved.Contains(card.Id) ? tone.Accent : FindInk,
-            find.Saved.Contains(card.Id));
-        var liked = state.LikedPeople.Contains(card.Id);
-        var heart = Slice(actions, 2, slot);
-        var pulse = find.PulseId == card.Id ? 1f + find.Pulse * 0.18f : 1f;
-        DrawPeopleAct(frame, heart.Inset(heart.Width * (1f - pulse) * 0.5f), liked ? "♥" : "♡",
-            liked ? tone.Accent : FindInk, liked);
-        VybeChrome.Glow(frame, Slice(actions, 3, slot), frame.Units(10f), false, night);
-        frame.Text.DrawIn(Slice(actions, 3, slot), "View",
-            new TextStyle(FontRole.CaptionStrong, FindInk, TextAlign.Center));
-        if (frame.Input.ConsumeClick(Slice(actions, 0, slot)))
-        {
-            find.LastPass = card.Id;
-            find.PassFade = 0.28f;
-            if (!find.Passed.Contains(card.Id))
-            {
-                find.Passed.Add(card.Id);
-            }
-
-            state.Save(paths);
-            return;
-        }
-
-        if (frame.Input.ConsumeClick(Slice(actions, 1, slot)))
-        {
-            PeopleFindState.FlipInt(find.Saved, card.Id);
-            state.Save(paths);
-            return;
-        }
-
+        var likes = PersonLikeCount(card.Id);
+        var likeText = likes.ToString(CultureInfo.InvariantCulture);
+        var heart = actions.LeftSlice(MathF.Min(actions.Width * 0.42f, frame.Units(88f)));
+        DrawHottHeart(frame, heart, state.LikedPeople.Contains(card.Id), likeText, tone);
         if (frame.Input.ConsumeClick(heart))
         {
             state.ToggleLikedPerson(card.Id);
@@ -373,27 +348,23 @@ public sealed partial class VybeApplet
             return;
         }
 
-        if (frame.Input.ConsumeClick(Slice(actions, 3, slot)) || frame.Input.ConsumeClick(photo))
+        if (frame.Input.ConsumeClick(photo) || frame.Input.ConsumeClick(actions))
         {
             OpenFound(card);
         }
     }
 
-    private void DrawPeopleCover(in AppletFrame frame, Rect area, PeopleCard card, bool night)
-    {
-        var person = new ScenePerson(card.Id, card.GateId, card.Name, card.Handle, card.World, card.Bio, card.Online,
-            4, card.PlusOnly, new Vector4(0f, 0f, 0f, 0.42f), card.LookingFor, card.Interests, card.Avatar,
-            PlusMember: card.PlusMember, TimeZoneId: card.TimeZoneId);
-        DrawPersonCover(frame, area, person, night);
-        frame.Paint.FillGradient(area, new Vector4(0f, 0f, 0f, 0.04f), new Vector4(0f, 0f, 0f, 0.55f),
-            GradientAxis.Vertical);
-    }
+    private static ScenePerson PersonFromCard(PeopleCard card) =>
+        new(card.Id, card.GateId, card.Name, card.Handle, card.World, card.Bio, card.Online,
+            4, card.PlusOnly, new Vector4(0.20f, 0.22f, 0.28f, 1f), card.LookingFor, card.Interests,
+            card.Avatar, PlusMember: card.PlusMember, TimeZoneId: card.TimeZoneId);
 
-    private static void DrawPeopleAct(in AppletFrame frame, Rect area, string mark, Vector4 ink, bool on)
+    private void DrawPeopleCover(in AppletFrame frame, Rect area, PeopleCard card, bool night, float radius = -1f)
     {
-        frame.Paint.Fill(area.Inset(frame.Units(2f)), on ? FindLine : FindLift, area.Height * 0.5f);
-        frame.Paint.Stroke(area.Inset(frame.Units(2f)), FindLine, frame.Units(1f), area.Height * 0.5f);
-        frame.Text.DrawIn(area, mark, new TextStyle(FontRole.BodyStrong, ink, TextAlign.Center));
+        var person = PersonFromCard(card);
+        DrawPersonCover(frame, area, person, night, radius);
+        frame.Paint.FillGradient(area, new Vector4(0f, 0f, 0f, 0.04f), new Vector4(0f, 0f, 0f, 0.48f),
+            GradientAxis.Vertical);
     }
 
     private void DrawPeopleFilters(in AppletFrame frame, Rect area)
@@ -411,7 +382,7 @@ public sealed partial class VybeApplet
 
         var count = find.Count();
         frame.Text.DrawIn(head.RightSlice(frame.Units(90f)),
-            count > 0 ? "Filters (" + count.ToString(CultureInfo.InvariantCulture) + ")" : "People Filters",
+            count > 0 ? "Filters (" + count.ToString(CultureInfo.InvariantCulture) + ")" : "Filters",
             new TextStyle(FontRole.CaptionStrong, tone.Accent, TextAlign.Right));
         DrawAppliedFilters(frame, ref stack, find, night);
 
@@ -423,6 +394,7 @@ public sealed partial class VybeApplet
         if (frame.Input.ConsumeClick(top.LeftSlice(top.Width * 0.48f)))
         {
             find.Clear();
+            BindDiscoverSearch(string.Empty);
             state.Save(paths);
             return;
         }
@@ -473,6 +445,7 @@ public sealed partial class VybeApplet
                 }
             });
         DrawChipBlock(frame, ref stack, "Looking For", PeopleFindBook.LookingFor, find.LookingFor, night);
+        DrawChipBlock(frame, ref stack, "Race", SceneBook.Races, find.Races, night);
         DrawChipBlock(frame, ref stack, "Location", PeopleFindBook.DataCenters, find.DataCenters, night);
         DrawChipBlock(frame, ref stack, "World", PeopleFindBook.Worlds, find.Worlds, night);
         DrawChipBlock(frame, ref stack, "Interests", Concat(PeopleFindBook.Play, PeopleFindBook.Social,
@@ -498,7 +471,6 @@ public sealed partial class VybeApplet
 
         DrawChipBlock(frame, ref stack, "Connection", PeopleFindBook.Connection, find.Connection, night);
         DrawChipBlock(frame, ref stack, "Nearby", PeopleFindBook.Nearby, find.Nearby, night);
-        DrawChipBlock(frame, ref stack, "Race", PeopleFindBook.Races, find.Races, night);
         DrawChipBlock(frame, ref stack, "Role", PeopleFindBook.Roles, find.Roles, night);
         DrawChipBlock(frame, ref stack, "Job", PeopleFindBook.Jobs, find.Jobs, night);
         DrawChipBlock(frame, ref stack, "Roleplay", PeopleFindBook.RpInterest, find.RpInterest, night);
@@ -521,7 +493,33 @@ public sealed partial class VybeApplet
             DrawChipBlock(frame, ref stack, "Relationship Status", PeopleFindBook.Relationship, find.Status, night);
         }
 
+        if (night)
+        {
+            DrawLanePriorities(frame, ref stack, find, night);
+        }
+
         DrawFilterFoot(frame, stack.Take(frame.Units(36f)), find, night);
+    }
+
+    private void DrawLanePriorities(in AppletFrame frame, ref Stack stack, PeopleFindState find, bool night)
+    {
+        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "SEARCH PRIORITIES", night);
+        VybeChrome.Mute(frame, stack.Take(frame.Units(32f)),
+            "Set how strongly you want each role. 0% ignores that lane. Match % uses these sliders.", night);
+        var want = VybeLaneMap.Fit(find.LaneWant);
+        for (var index = 0; index < VybeLaneMap.Lanes.Length; index++)
+        {
+            var lane = index;
+            var row = stack.Take(frame.Units(46f));
+            if (VybeLaneMap.DrawWant(frame, row, VybeLaneMap.Lanes[lane], want[lane], night, laneDrag, value =>
+                {
+                    want[lane] = value;
+                    find.LaneWant = want;
+                }, out laneDrag))
+            {
+                state.Save(paths);
+            }
+        }
     }
 
     private void DrawFilterFoot(in AppletFrame frame, Rect area, PeopleFindState find, bool night)
@@ -610,9 +608,6 @@ public sealed partial class VybeApplet
 
         return Math.Clamp(drag, 0f, max);
     }
-
-    private static Rect Slice(Rect area, int index, float width) =>
-        Rect.FromSize(new Vector2(area.Min.X + width * index, area.Min.Y), new Vector2(width, area.Height));
 
     private static string[] Take(string[] values, int count)
     {

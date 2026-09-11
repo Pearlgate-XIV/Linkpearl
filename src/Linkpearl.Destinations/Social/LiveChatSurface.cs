@@ -32,15 +32,17 @@ internal sealed class LiveChatSurface
     private FeedMenu? menu;
 
     private readonly IGifDesk gifs;
+    private readonly ChatMarks marks;
 
     public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell,
-        IGifDesk gifs)
+        IGifDesk gifs, ChatMarks marks)
     {
         this.talk = talk;
         this.display = display;
         this.chat = chat;
         this.openTell = openTell;
         this.gifs = gifs;
+        this.marks = marks;
     }
 
     public bool HasMenu => menu is not null;
@@ -63,7 +65,8 @@ internal sealed class LiveChatSurface
         var partyReady = talk.Find(TalkIds.Party)?.CanSend == true;
         var area = frame.Content.Inset(new Edges(frame.Units(4f), 0f, frame.Units(4f), frame.Units(2f)));
         var sendBar = area.BottomSlice(frame.Units(38f));
-        var composer = new Rect(new Vector2(area.Min.X, sendBar.Min.Y - frame.Units(52f)),
+        var replyH = marks.ComposerHeight(frame, TalkIds.Live);
+        var composer = new Rect(new Vector2(area.Min.X, sendBar.Min.Y - frame.Units(52f) - replyH),
             new Vector2(area.Max.X, sendBar.Min.Y - frame.Units(8f)));
         var filters = new Rect(area.Min, new Vector2(area.Max.X, area.Min.Y + frame.Units(36f)));
         var log = new Rect(new Vector2(area.Min.X, filters.Max.Y + frame.Units(8f)),
@@ -73,6 +76,8 @@ internal sealed class LiveChatSurface
         DrawComposer(frame, composer, thread, partyReady);
         DrawChannels(frame, sendBar, partyReady);
         DrawLineMenu(frame, frame.Content);
+        marks.DrawMenu(frame, frame.Content, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
+            frame.Theme.Palette.Accent, frame.Theme.Palette.SurfaceRaised);
 
         return frame.Content.Height;
     }
@@ -158,6 +163,13 @@ internal sealed class LiveChatSurface
 
     private void DrawComposer(in AppletFrame frame, Rect composer, TalkThread? thread, bool partyReady)
     {
+        var replyH = marks.ComposerHeight(frame, TalkIds.Live);
+        if (replyH > 0f && marks.DrawReply(frame, composer.TopSlice(replyH), TalkIds.Live, frame.Theme.Palette.Ink,
+                frame.Theme.Palette.InkMuted, frame.Theme.Palette.SurfaceRaised))
+        {
+            composer = composer.Inset(new Edges(0f, replyH + frame.Units(4f), 0f, 0f));
+        }
+
         var live = frame.TextField.Owns("feed-draft");
         var radius = composer.Height * 0.5f;
         frame.Paint.Fill(composer, frame.Theme.Palette.SurfaceOverlay with { W = live ? 0.88f : 0.72f }, radius);
@@ -202,7 +214,19 @@ internal sealed class LiveChatSurface
         {
             var outgoing = draft.Trim();
             draft = string.Empty;
-            talk.Send(sendId, outgoing);
+            var sent = marks.Seal(TalkIds.Live, outgoing);
+            talk.Send(sendId, sent);
+            var lines = talk.Lines(TalkIds.Live);
+            if (lines.Count > 0)
+            {
+                var last = lines[^1];
+                marks.CatchSent(TalkIds.Live, "me", last.Mine ? last.At.ToString("O") : string.Empty, sent);
+            }
+            else
+            {
+                marks.CatchSent(TalkIds.Live, "me", string.Empty, sent);
+            }
+
             stickBottom = true;
             frame.TextField.Focus("feed-draft");
         }
@@ -298,21 +322,26 @@ internal sealed class LiveChatSurface
         }
 
         frame.Paint.PushClip(viewport);
-        var cursor = viewport.Min.Y - threadOffset;
-        for (var index = 0; index < lines.Count; index++)
+        try
         {
-            var height = heights[index];
-            var row = new Rect(new Vector2(viewport.Min.X, cursor),
-                new Vector2(viewport.Max.X, cursor + height));
-            if (row.Max.Y >= viewport.Min.Y && row.Min.Y <= viewport.Max.Y)
+            var cursor = viewport.Min.Y - threadOffset;
+            for (var index = 0; index < lines.Count; index++)
             {
-                DrawLine(frame, row, lines[index]);
+                var height = heights[index];
+                var row = new Rect(new Vector2(viewport.Min.X, cursor),
+                    new Vector2(viewport.Max.X, cursor + height));
+                if (row.Max.Y >= viewport.Min.Y && row.Min.Y <= viewport.Max.Y)
+                {
+                    DrawLine(frame, row, lines[index]);
+                }
+
+                cursor += height + gap;
             }
-
-            cursor += height + gap;
         }
-
-        frame.Paint.PopClip();
+        finally
+        {
+            frame.Paint.PopClip();
+        }
     }
 
     private void DrawEmpty(in AppletFrame frame, Rect viewport, TalkThread? thread, bool partyReady)
@@ -353,8 +382,10 @@ internal sealed class LiveChatSurface
         return list;
     }
 
-    private static float MeasureLine(in AppletFrame frame, float width, TalkLine line) =>
-        ChatBits.NamedRowHeight(frame, width, line.Body);
+    private float MeasureLine(in AppletFrame frame, float width, TalkLine line) =>
+        ChatBits.NamedRowHeight(frame, width, line.Body,
+            marks.Cite(LineKey(line), TalkIds.Live, line.Body, line.Mine)) +
+        marks.Band(frame, LineKey(line));
 
     private void DrawLine(in AppletFrame frame, Rect row, TalkLine line)
     {
@@ -375,16 +406,33 @@ internal sealed class LiveChatSurface
         var top = bubble.Inset(new Edges(0f, frame.Units(16f), 0f, 0f));
         frame.Paint.Fill(top, ChannelWash(line.Tag), radius);
         frame.Paint.Stroke(top, lineColor, frame.Units(1.5f), radius);
-        var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f), frame.Units(8f)));
+        var key = LineKey(line);
+        var band = marks.Band(frame, key);
+        var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f),
+            frame.Units(8f) + band));
         frame.Paint.PushClip(copy);
-        ChatBits.Draw(frame, copy, line.Body, lineColor, lineColor with { W = 0.72f }, null, gifs);
-        frame.Paint.PopClip();
-        if (menu is null && !line.Mine && line.Sender.Length > 0 &&
-            frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
+        try
         {
-            menu = new FeedMenu(line.Sender, line.World, frame.Input.Pointer);
+            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, lineColor, lineColor with { W = 0.72f }, null, gifs,
+                marks.Cite(key, TalkIds.Live, line.Body ?? string.Empty, line.Mine));
+        }
+        finally
+        {
+            frame.Paint.PopClip();
+        }
+        if (band > 0f)
+        {
+            marks.DrawBand(frame, top.BottomSlice(band).Inset(new Edges(frame.Units(8f), 0f)), key);
+        }
+
+        if (menu is null && !marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
+        {
+            menu = new FeedMenu(line.Sender, line.World, frame.Input.Pointer, key, line.Body, line.Mine);
         }
     }
+
+    private static string LineKey(TalkLine line) =>
+        ChatMarks.Key(TalkIds.Live, line.Mine ? "me" : line.Sender, line.At.ToString("O"), line.Body);
 
     private void DrawLineMenu(in AppletFrame frame, Rect bounds)
     {
@@ -393,7 +441,9 @@ internal sealed class LiveChatSurface
             return;
         }
 
-        var labels = new[] { "Send tell", "Invite to party", "Add friend" };
+        var labels = open.Mine || open.Name.Length == 0
+            ? new[] { "React", "Reply" }
+            : new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend" };
         var width = frame.Units(176f);
         var rowH = frame.Units(34f);
         var height = rowH * labels.Length + frame.Units(8f);
@@ -435,6 +485,18 @@ internal sealed class LiveChatSurface
     private void RunLineMenu(string label, FeedMenu open)
     {
         menu = null;
+        if (label == "React")
+        {
+            marks.BeginReact(open.Key);
+            return;
+        }
+
+        if (label == "Reply")
+        {
+            marks.BeginReply(TalkIds.Live, open.Mine ? "You" : open.Name, open.Body);
+            return;
+        }
+
         if (label == "Send tell")
         {
             openTell(open.Name, open.World);
@@ -450,7 +512,7 @@ internal sealed class LiveChatSurface
         talk.RequestFriend(open.Name, open.World);
     }
 
-    private readonly record struct FeedMenu(string Name, string World, Vector2 At);
+    private readonly record struct FeedMenu(string Name, string World, Vector2 At, string Key, string Body, bool Mine);
 
     private static string TagOf(string threadId) => threadId switch
     {

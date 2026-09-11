@@ -8,7 +8,7 @@ namespace Linkpearl.Host.Composition;
 
 public sealed class HandsetConfig : IPluginConfiguration
 {
-    public const int FreshBootMark = 2;
+    public const int FreshBootMark = 3;
 
     public int Version { get; set; } = 1;
 
@@ -33,6 +33,8 @@ public sealed class HandsetConfig : IPluginConfiguration
     public string IcecastSourcePassword { get; set; } = string.Empty;
 
     public string GiphyApiKey { get; set; } = string.Empty;
+
+    public string StreamDeskMode { get; set; } = "pearlgate";
 
     public bool HandsetOpen { get; set; }
 
@@ -236,6 +238,8 @@ public sealed class HandsetConfig : IPluginConfiguration
         IcecastSourceUser = string.IsNullOrWhiteSpace(IcecastSourceUser) ? "source" : IcecastSourceUser.Trim();
         IcecastSourcePassword = IcecastSourcePassword ?? string.Empty;
         GiphyApiKey = GiphyApiKey?.Trim() ?? string.Empty;
+        var streamMode = (StreamDeskMode ?? "pearlgate").Trim().ToLowerInvariant();
+        StreamDeskMode = streamMode is "mock" or "pearlgate" ? streamMode : "pearlgate";
         WallpaperId = string.IsNullOrWhiteSpace(WallpaperId) ? WallpaperCatalog.DefaultId : WallpaperId.Trim();
         CustomPlateFile = Path.GetFileName(CustomPlateFile ?? string.Empty);
         var plates = CustomPlateFiles ?? [];

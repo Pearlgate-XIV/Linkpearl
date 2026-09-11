@@ -253,6 +253,14 @@ public sealed class UniversalisMarket : IUniversalisMarket
         }
 
         var ids = string.Join(',', itemIds.Take(40));
+        MarketWorld[] worldSnap;
+        MarketDataCenter[] centerSnap;
+        lock (gate)
+        {
+            worldSnap = worlds;
+            centerSnap = centers;
+        }
+
         try
         {
             var body = await GetJson<AggDto>("https://universalis.app/api/v2/aggregated/" +
@@ -262,10 +270,10 @@ public sealed class UniversalisMarket : IUniversalisMarket
             {
                 foreach (var row in body?.Results ?? [])
                 {
-                    var price = FloorOf(row.Nq);
+                    var price = FloorOf(row.Nq, place, worldSnap, centerSnap);
                     if (price <= 0)
                     {
-                        price = FloorOf(row.Hq);
+                        price = FloorOf(row.Hq, place, worldSnap, centerSnap);
                     }
                     if (price > 0)
                     {
@@ -279,7 +287,8 @@ public sealed class UniversalisMarket : IUniversalisMarket
         }
     }
 
-    private static int FloorOf(AggQuality? quality)
+    private static int FloorOf(AggQuality? quality, string place, IReadOnlyList<MarketWorld> worlds,
+        IReadOnlyList<MarketDataCenter> centers)
     {
         var listing = quality?.MinListing;
         if (listing is null)
@@ -287,17 +296,36 @@ public sealed class UniversalisMarket : IUniversalisMarket
             return 0;
         }
 
-        if (listing.Dc?.Price > 0)
+        var world = listing.World?.Price ?? 0;
+        var dc = listing.Dc?.Price ?? 0;
+        var region = listing.Region?.Price ?? 0;
+        if (world > 0 && worlds.Any(row => string.Equals(row.Name, place, StringComparison.OrdinalIgnoreCase)))
         {
-            return listing.Dc.Price;
+            return world;
         }
 
-        if (listing.World?.Price > 0)
+        if (dc > 0 && centers.Any(row => string.Equals(row.Name, place, StringComparison.OrdinalIgnoreCase)))
         {
-            return listing.World.Price;
+            return dc;
         }
 
-        return listing.Region?.Price ?? 0;
+        if (region > 0 &&
+            centers.Any(row => string.Equals(row.Region, place, StringComparison.OrdinalIgnoreCase)))
+        {
+            return region;
+        }
+
+        if (world > 0)
+        {
+            return world;
+        }
+
+        if (dc > 0)
+        {
+            return dc;
+        }
+
+        return region;
     }
 
     private async Task OpenItemAsync(int itemId, string name, MarketScopeKind kind, string scope)
@@ -317,7 +345,7 @@ public sealed class UniversalisMarket : IUniversalisMarket
             }
 
             var currentUrl = "https://universalis.app/api/v2/" + Uri.EscapeDataString(place) + "/" + itemId +
-                             "?listings=48&entries=8";
+                             "?listings=48&entries=20";
             var shown = await GetJson<ShownDto>(currentUrl).ConfigureAwait(false);
             MarketTaxRate[] taxes = [];
             if (kind == MarketScopeKind.World && place.Length > 0)

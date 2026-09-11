@@ -69,6 +69,11 @@ internal enum NightPage : byte
     AuthLogin = 32,
     AuthCreate = 33,
     StoryComments = 34,
+    Club = 35,
+    ClubCreate = 36,
+    ClubEvent = 37,
+    LaneSurvey = 38,
+    PostComments = 39,
 }
 
 internal enum FilterPole : byte
@@ -164,6 +169,8 @@ internal sealed class VybeState
 
     public string Pronouns { get; set; } = string.Empty;
 
+    public string Race { get; set; } = string.Empty;
+
     public string About { get; set; } = string.Empty;
 
     public string Caption { get; set; } = string.Empty;
@@ -249,6 +256,9 @@ internal sealed class VybeState
 
     public string SharePostId { get; set; } = string.Empty;
 
+    [JsonIgnore]
+    public string DropPostId { get; set; } = string.Empty;
+
     public string ViewMedia { get; set; } = string.Empty;
 
     public string StoryMedia { get; set; } = string.Empty;
@@ -307,6 +317,12 @@ internal sealed class VybeState
     [JsonIgnore]
     public bool DiscoverPostPlus { get; set; }
 
+    [JsonIgnore]
+    public bool DiscoverHashPlus { get; set; }
+
+    [JsonIgnore]
+    public string HashQuery { get; set; } = string.Empty;
+
     public void HidePlusLanes()
     {
         if (FeedPick == FeedPick.Plus)
@@ -317,13 +333,50 @@ internal sealed class VybeState
         PeoplePlus = false;
         GalleryPlus = false;
         DiscoverPostPlus = false;
+        DiscoverHashPlus = false;
         if (GroupLane == GroupLane.Plus)
         {
             GroupLane = GroupLane.Suggested;
         }
+
+        if (ActingAsClubId.Length > 0 && VybeClubs.TryFind(this, ActingAsClubId, out var club) && club.PlusOnly)
+        {
+            ActingAsClubId = string.Empty;
+        }
     }
 
     public HashSet<string> JoinedGroups { get; } = new(StringComparer.Ordinal);
+
+    public List<VybeClub> Clubs { get; } = new();
+
+    public string ActingAsClubId { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string ClubKey { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public int ClubPane { get; set; }
+
+    [JsonIgnore]
+    public string DraftClubName { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string DraftClubAbout { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string DraftClubFace { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool DraftClubPlus { get; set; }
+
+    [JsonIgnore]
+    public bool PickingClubFace { get; set; }
+
+    [JsonIgnore]
+    public string DraftEventTitle { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public int DraftEventWhen { get; set; }
 
     [JsonIgnore]
     public int HottIndex { get; set; }
@@ -333,6 +386,9 @@ internal sealed class VybeState
 
     [JsonIgnore]
     public float HottPlusDrag { get; set; }
+
+    [JsonIgnore]
+    public float StoryDrag { get; set; }
 
     public int ProfilePane { get; set; }
 
@@ -386,11 +442,15 @@ internal sealed class VybeState
 
     public HashSet<int> LikedPosts { get; } = new();
 
+    public HashSet<string> Hearts { get; } = new(StringComparer.Ordinal);
+
     public HashSet<int> LikedPeople { get; } = new();
 
     public HashSet<int> SavedPosts { get; } = new();
 
     public HashSet<string> KeptPosts { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> HiddenPearls { get; } = new(StringComparer.Ordinal);
 
     public HashSet<string> KeptShots { get; } = new(StringComparer.Ordinal);
 
@@ -453,6 +513,9 @@ internal sealed class VybeState
 
     public List<PearlComment> OwnStoryComments { get; } = new();
 
+    [JsonIgnore]
+    public Dictionary<string, List<PearlComment>> PostThreads { get; } = new(StringComparer.Ordinal);
+
     public List<StoryThread> GuestStoryThreads { get; } = new();
 
     public List<PearlPost> StoryReposts { get; } = new();
@@ -482,6 +545,45 @@ internal sealed class VybeState
         }
 
         return new List<PearlComment>();
+    }
+
+    public List<PearlComment> PostCommentsFor(string postId)
+    {
+        var key = (postId ?? string.Empty).Trim();
+        if (key.Length == 0)
+        {
+            return [];
+        }
+
+        if (!PostThreads.TryGetValue(key, out var lines))
+        {
+            lines = new List<PearlComment>();
+            PostThreads[key] = lines;
+        }
+
+        return lines;
+    }
+
+    public void AddPostComment(string postId, string author, string body)
+    {
+        var key = (postId ?? string.Empty).Trim();
+        var text = (body ?? string.Empty).Trim();
+        if (key.Length == 0 || text.Length == 0)
+        {
+            return;
+        }
+
+        var bag = PostCommentsFor(key);
+        for (var index = 0; index < bag.Count; index++)
+        {
+            if (string.Equals(bag[index].Author, author, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals((bag[index].Body ?? string.Empty).Trim(), text, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        bag.Add(new PearlComment(author, text, "now", true));
     }
 
     public void AddStoryComment(int personId, string author, string body)
@@ -572,6 +674,22 @@ internal sealed class VybeState
 
     public bool DatingDiscovery { get; set; }
 
+    public bool LaneDone { get; set; }
+
+    public int[] LaneMarks { get; set; } = [];
+
+    [JsonIgnore]
+    public int LaneAsk { get; set; }
+
+    [JsonIgnore]
+    public int[] LanePicks { get; set; } = [];
+
+    [JsonIgnore]
+    public bool LaneMapOpen { get; set; }
+
+    [JsonIgnore]
+    public string LaneMapKey { get; set; } = string.Empty;
+
     public PeopleFindState PeopleFindVybe { get; set; } = new();
 
     public PeopleFindState PeopleFindPlus { get; set; } = new();
@@ -625,6 +743,7 @@ internal sealed class VybeState
                     state.BannerFocusY = dto.BannerFocusX == 0f && dto.BannerFocusY == 0f ? 0.5f : dto.BannerFocusY;
                     state.Handle = dto.Handle ?? string.Empty;
                     state.Pronouns = dto.Pronouns ?? string.Empty;
+                    state.Race = SceneBook.NamedRace(0, dto.Race ?? string.Empty);
                     state.About = dto.About ?? string.Empty;
                     state.OwnStory = dto.OwnStory ?? string.Empty;
                     state.StoryMedia = dto.StoryMedia ?? state.StoryMedia;
@@ -669,13 +788,24 @@ internal sealed class VybeState
                     AbsorbBlockedNames(state.BlockedLabels, dto.Blocked, dto.BlockedNames);
                     AbsorbSet(state.ViewedStories, dto.ViewedStories);
                     AbsorbSet(state.LikedPeople, dto.LikedPeople);
+                    AbsorbKeys(state.Hearts, dto.Hearts);
                     AbsorbKeys(state.StarredChats, dto.StarredChats);
                     AbsorbKeys(state.HiddenChats, dto.HiddenChats);
                     AbsorbKeys(state.JoinedGroups, dto.JoinedGroups);
+                    if (dto.Clubs is { Length: > 0 })
+                    {
+                        state.Clubs.Clear();
+                        state.Clubs.AddRange(dto.Clubs);
+                    }
+
+                    state.ActingAsClubId = dto.ActingAsClubId ?? string.Empty;
                     AbsorbKeys(state.KeptPosts, dto.KeptPosts);
+                    AbsorbKeys(state.HiddenPearls, dto.HiddenPearls);
                     AbsorbKeys(state.KeptShots, dto.KeptShots);
                     state.NearbyDiscovery = dto.NearbyDiscovery;
                     state.DatingDiscovery = dto.DatingDiscovery;
+                    state.LaneDone = dto.LaneDone;
+                    state.LaneMarks = VybeLaneMap.Fit(dto.LaneMarks);
                     if (dto.PeopleFindVybe is not null)
                     {
                         state.PeopleFindVybe = dto.PeopleFindVybe;
@@ -784,6 +914,7 @@ internal sealed class VybeState
                 BannerFocusY = BannerFocusY,
                 Handle = Handle,
                 Pronouns = Pronouns,
+                Race = Race,
                 About = About,
                 OwnStory = OwnStory,
                 StoryMedia = StoryMedia,
@@ -806,13 +937,19 @@ internal sealed class VybeState
                 BlockedNames = Blocked.Select(id => BlockedLabels.GetValueOrDefault(id, string.Empty)).ToArray(),
                 ViewedStories = ViewedStories.ToArray(),
                 LikedPeople = LikedPeople.ToArray(),
+                Hearts = Hearts.ToArray(),
                 StarredChats = StarredChats.ToArray(),
                 HiddenChats = HiddenChats.ToArray(),
                 JoinedGroups = JoinedGroups.ToArray(),
+                Clubs = Clubs.ToArray(),
+                ActingAsClubId = ActingAsClubId,
                 KeptPosts = KeptPosts.ToArray(),
+                HiddenPearls = HiddenPearls.ToArray(),
                 KeptShots = KeptShots.ToArray(),
                 NearbyDiscovery = NearbyDiscovery,
                 DatingDiscovery = DatingDiscovery,
+                LaneDone = LaneDone,
+                LaneMarks = VybeLaneMap.Fit(LaneMarks),
                 PeopleFindVybe = PeopleFindVybe,
                 PeopleFindPlus = PeopleFindPlus,
                 Filters = Filters.Select(pair => new FilterSave { Tag = pair.Key, Pole = (int)pair.Value }).ToArray(),
@@ -870,6 +1007,7 @@ internal sealed class VybeState
         Honorific = string.Empty;
         Handle = string.Empty;
         Pronouns = string.Empty;
+        Race = string.Empty;
         About = string.Empty;
         ProfileFacePath = string.Empty;
         ProfileBannerPath = string.Empty;
@@ -1097,6 +1235,11 @@ internal sealed class VybeState
 
     public bool Passes(ScenePerson person)
     {
+        if (VybeChrome.IsLalafell(person.Race))
+        {
+            return false;
+        }
+
         if (Blocked.Contains(person.Id))
         {
             return false;
@@ -1258,6 +1401,11 @@ internal sealed class VybeState
         var seen = new HashSet<int>();
         foreach (var person in snap.People)
         {
+            if (VybeChrome.IsLalafell(person.Race))
+            {
+                continue;
+            }
+
             var id = StableId(person.Id);
             if (!seen.Add(id))
             {
@@ -1270,7 +1418,8 @@ internal sealed class VybeState
             Roster.Add(new ScenePerson(id, person.Id, person.DisplayName.Length > 0 ? person.DisplayName : "Someone",
                 handle, person.World.Length > 0 ? person.World : person.PhoneNumber, string.Empty, person.IsMutual, 0,
                 false, WashOf(id),
-                Array.Empty<string>(), Array.Empty<string>(), person.AvatarUrl, TimeZoneId: person.TimeZoneId));
+                Array.Empty<string>(), Array.Empty<string>(), person.AvatarUrl, TimeZoneId: person.TimeZoneId,
+                Race: SceneBook.NamedRace(0, person.Race)));
             if (person.IsMutual)
             {
                 Connected.Add(id);
@@ -1469,6 +1618,35 @@ internal sealed class VybeState
         return true;
     }
 
+    public void FlipHeart(string postId)
+    {
+        if (postId.Length == 0)
+        {
+            return;
+        }
+
+        if (!Hearts.Add(postId))
+        {
+            Hearts.Remove(postId);
+        }
+    }
+
+    public bool PostHearted(PearlPost post) => post.Liked ^ Hearts.Contains(post.Id);
+
+    public bool PostHearted(string postId, bool baseline) =>
+        postId.Length > 0 && (baseline ^ Hearts.Contains(postId));
+
+    public int PostHearts(PearlPost post)
+    {
+        var liked = PostHearted(post);
+        if (liked == post.Liked)
+        {
+            return post.Likes;
+        }
+
+        return liked ? post.Likes + 1 : Math.Max(0, post.Likes - 1);
+    }
+
     public void FollowPerson(ScenePerson person, IPearlHub pearl, bool on)
     {
         if (on)
@@ -1660,6 +1838,8 @@ internal sealed class VybeState
 
         public string? Pronouns { get; set; }
 
+        public string? Race { get; set; }
+
         public string? About { get; set; }
 
         public string? OwnStory { get; set; }
@@ -1714,13 +1894,21 @@ internal sealed class VybeState
 
         public int[]? LikedPeople { get; set; }
 
+        public string[]? Hearts { get; set; }
+
         public string[]? StarredChats { get; set; }
 
         public string[]? HiddenChats { get; set; }
 
         public string[]? JoinedGroups { get; set; }
 
+        public VybeClub[]? Clubs { get; set; }
+
+        public string? ActingAsClubId { get; set; }
+
         public string[]? KeptPosts { get; set; }
+
+        public string[]? HiddenPearls { get; set; }
 
         public string[]? KeptShots { get; set; }
 
@@ -1735,6 +1923,10 @@ internal sealed class VybeState
         public bool NearbyDiscovery { get; set; }
 
         public bool DatingDiscovery { get; set; }
+
+        public bool LaneDone { get; set; }
+
+        public int[]? LaneMarks { get; set; }
 
         public PeopleFindState? PeopleFindVybe { get; set; }
 
@@ -1825,7 +2017,8 @@ internal sealed class StoryThread
 internal readonly record struct ScenePerson(
     int Id, string GateId, string Name, string Handle, string World, string Line, bool Online, int Photos, bool NightOnly,
     Vector4 Wash, string[] Intents, string[] Tags, string AvatarUrl = "", string Gender = "", string Sexuality = "",
-    string Relationship = "", bool? DmsOpen = null, bool PlusMember = false, string TimeZoneId = "");
+    string Relationship = "", bool? DmsOpen = null, bool PlusMember = false, string TimeZoneId = "",
+    string Race = "");
 
 internal readonly record struct ScenePost(
     int Id, string Author, int AuthorId, string When, string Body, string Place, bool ConnectionsOnly, int Likes,
@@ -1850,6 +2043,45 @@ internal static class SceneBook
         "Friends", "Dating", "GPose", "Collab", "Raiding", "Roulettes", "Venues & Clubbing",
         "Housing & Decoration", "Roleplaying", "Wandering",
     };
+
+    public static readonly string[] Races =
+    {
+        "Hyur", "Miqo'te", "Elezen", "Roegadyn", "Au Ra", "Viera", "Hrothgar",
+    };
+
+    public static string NamedRace(byte raceId, string raceName)
+    {
+        if (VybeChrome.IsLalafell(raceId, raceName))
+        {
+            return string.Empty;
+        }
+
+        if (raceId is >= 1 and <= 8)
+        {
+            return raceId switch
+            {
+                1 => "Hyur",
+                2 => "Elezen",
+                4 => "Miqo'te",
+                5 => "Roegadyn",
+                6 => "Au Ra",
+                7 => "Hrothgar",
+                8 => "Viera",
+                _ => string.Empty,
+            };
+        }
+
+        var name = (raceName ?? string.Empty).Trim();
+        for (var index = 0; index < Races.Length; index++)
+        {
+            if (name.Contains(Races[index], StringComparison.OrdinalIgnoreCase))
+            {
+                return Races[index];
+            }
+        }
+
+        return string.Empty;
+    }
 
     public static readonly string[] Genders =
     {

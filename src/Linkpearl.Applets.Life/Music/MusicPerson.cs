@@ -16,7 +16,10 @@ internal readonly record struct MusicPerson(
     string StreamUrl,
     int Listeners,
     bool Mine,
-    string TimeZoneId = "");
+    string TimeZoneId = "",
+    string TwitchLogin = "",
+    int Viewers = 0,
+    string WatchUrl = "");
 
 internal static class MusicRoster
 {
@@ -56,7 +59,10 @@ internal static class MusicRoster
             station.ListenUrl,
             station.Listeners,
             false,
-            WorldZones.PickFor("live:" + station.Id));
+            WorldZones.PickFor("live:" + station.Id),
+            station.TwitchLogin,
+            station.Viewers,
+            station.WatchUrl);
 
     public static MusicPerson FromPearl(PearlPerson person) =>
         new(
@@ -130,7 +136,8 @@ internal static class MusicRoster
                 row.Name.Contains(text, StringComparison.OrdinalIgnoreCase) ||
                 row.Handle.Contains(text, StringComparison.OrdinalIgnoreCase) ||
                 row.Station.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                row.Role.Contains(text, StringComparison.OrdinalIgnoreCase))
+                row.Role.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                row.TwitchLogin.Contains(text, StringComparison.OrdinalIgnoreCase))
             .ToArray();
     }
 

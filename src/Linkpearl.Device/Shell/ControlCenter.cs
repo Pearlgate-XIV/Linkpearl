@@ -85,7 +85,7 @@ public sealed class ControlCenter
     }
 
     public ControlCenterResult Draw(in AppletFrame frame, Rect screen, DisplayPreferences display,
-        PearlSnapshot snapshot, ITalk talk, IClock clock, IWifeSync wife, IGameSession game,
+        PearlSnapshot snapshot, IPearlHub pearl, ITalk talk, IClock clock, IWifeSync wife, IGameSession game,
         bool allowStrip = true)
     {
         var scale = frame.Scale;
@@ -135,7 +135,7 @@ public sealed class ControlCenter
             var pending = new Pending();
 
             DrawClockRow(frame, live, stack.Take(scale * 36f), scale, clock, pending);
-            DrawHeroPair(paint, text, live, stack.Take(scale * 56f), scale, snapshot, wife, pending,
+            DrawHeroPair(paint, text, live, stack.Take(scale * 56f), scale, snapshot, pearl, wife, pending,
                 ShadeGlyph(frame, "wifi.png"));
             DrawRoundPanel(frame, live, stack.Take(scale * 152f), scale, display, game, pending);
             ShadeSlider.Draw(paint, live, theme, stack.Take(scale * 46f), display.Brightness, ref draggingLight,
@@ -191,18 +191,21 @@ public sealed class ControlCenter
     }
 
     private static void DrawHeroPair(IPaintSurface paint, ITextPainter text, IInputProbe input, Rect area, float scale,
-        PearlSnapshot snapshot, IWifeSync wife, Pending pending, ITextureHandle? wifiIcon)
+        PearlSnapshot snapshot, IPearlHub pearl, IWifeSync wife, Pending pending, ITextureHandle? wifiIcon)
     {
         var gap = scale * 8f;
         var half = (area.Width - gap) * 0.5f;
         var left = Rect.FromSize(area.Min, new Vector2(half, area.Height));
         var right = Rect.FromSize(new Vector2(left.Max.X + gap, area.Min.Y), new Vector2(half, area.Height));
         DrawHero(paint, text, input, left, scale, Glyph.Burst, "Pearlgate",
-            snapshot.SignedIn ? NonEmpty(snapshot.MeWorld, "Signed in") : "Offline", snapshot.SignedIn,
-            () => pending.Result = pending.Result with { Tab = DestinationTab.You });
+            GateLine(snapshot), snapshot.SignedIn, () => ToggleGate(snapshot, pearl));
         var wifeOn = wife.IsPresent && wife.IsOn;
         DrawHero(paint, text, input, right, scale, Glyph.Wifi, "WIFI",
-            !wife.IsPresent ? "No plugin" : wifeOn ? "Connected" : "Off", wifeOn, () =>
+            !wife.IsPresent
+                ? PhoneLanguages.T("shell.noplugin")
+                : wifeOn
+                    ? PhoneLanguages.T("shell.connected")
+                    : PhoneLanguages.T("shell.off"), wifeOn, () =>
             {
                 if (wife.IsPresent)
                 {
@@ -218,13 +221,13 @@ public sealed class ControlCenter
         var inner = area.Inset(new Edges(scale * 8f, scale * 10f, scale * 8f, scale * 16f));
         var cellW = inner.Width / 4f;
         var cellH = inner.Height / 2f;
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 0), scale, Glyph.Moon, "Quiet",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 0), scale, Glyph.Moon, PhoneLanguages.T("shell.quiet"),
             display.Quiet, () => display.Quiet = !display.Quiet);
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 0), scale, Glyph.Bell, "Duties",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 0), scale, Glyph.Bell, PhoneLanguages.T("shell.duties"),
             display.QuietWhenBusy, () => display.QuietWhenBusy = !display.QuietWhenBusy);
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 0), scale, Glyph.Mini, "Mini",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 0), scale, Glyph.Mini, PhoneLanguages.T("shell.mini"),
             false, () => pending.Result = pending.Result with { Pocket = true });
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 0), scale, Glyph.Camera, "GPose",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 0), scale, Glyph.Camera, PhoneLanguages.T("shell.gpose"),
             game.IsInGpose, () =>
             {
                 if (!game.IsInGpose)
@@ -235,13 +238,13 @@ public sealed class ControlCenter
                 game.CuePocket();
                 pending.Result = pending.Result with { Pocket = true };
             });
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 1), scale, Glyph.Glow, "Icons",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 0, 1), scale, Glyph.Glow, PhoneLanguages.T("shell.icons"),
             display.ShowMarks, () => display.ShowMarks = !display.ShowMarks);
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 1), scale, Glyph.Globe, "World",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 1, 1), scale, Glyph.Globe, PhoneLanguages.T("shell.world"),
             display.ShowWorld, () => display.ShowWorld = !display.ShowWorld);
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 1), scale, Glyph.Friend, "Portraits",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 2, 1), scale, Glyph.Friend, PhoneLanguages.T("shell.portraits"),
             display.StayInPortraits, () => display.StayInPortraits = !display.StayInPortraits);
-        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 1), scale, Glyph.Film, "Scenes",
+        DrawRound(frame, input, CellBox(inner, cellW, cellH, 3, 1), scale, Glyph.Film, PhoneLanguages.T("shell.scenes"),
             display.TuckForCutscenes, () => display.TuckForCutscenes = !display.TuckForCutscenes);
         DrawGrip(frame.Paint, area.BottomSlice(scale * 12f), Muted);
     }
@@ -298,9 +301,9 @@ public sealed class ControlCenter
         }
 
         var head = area.TopSlice(scale * 18f);
-        frame.Text.DrawIn(head, "Notifications", new TextStyle(FontRole.CaptionStrong, InkOff));
+        frame.Text.DrawIn(head, PhoneLanguages.T("shell.notifications"), new TextStyle(FontRole.CaptionStrong, InkOff));
         var clear = head.RightSlice(scale * 64f);
-        frame.Text.DrawIn(clear, "Clear all", new TextStyle(FontRole.Caption, Muted, TextAlign.Right));
+        frame.Text.DrawIn(clear, PhoneLanguages.T("shell.clear"), new TextStyle(FontRole.Caption, Muted, TextAlign.Right));
         if (input.ConsumeClick(clear))
         {
             ledger.Clear(snapshot, talk);
@@ -329,7 +332,7 @@ public sealed class ControlCenter
 
         if (drawn == 0)
         {
-            frame.Text.DrawIn(list.TopSlice(scale * 20f), "Nothing waiting.",
+            frame.Text.DrawIn(list.TopSlice(scale * 20f), PhoneLanguages.T("shell.empty"),
                 new TextStyle(FontRole.Caption, Muted));
         }
     }
@@ -567,6 +570,39 @@ public sealed class ControlCenter
             new Vector2(list.Width, height));
 
     private static string NonEmpty(string value, string fallback) => value.Length > 0 ? value : fallback;
+
+    private static string GateLine(PearlSnapshot snapshot)
+    {
+        if (snapshot.Busy)
+        {
+            return PhoneLanguages.T("shell.signing");
+        }
+
+        if (snapshot.SignedIn)
+        {
+            return NonEmpty(snapshot.MeWorld, PhoneLanguages.T("shell.signed"));
+        }
+
+        return snapshot.ChallengeCode.Length > 0
+            ? PhoneLanguages.T("shell.entercode")
+            : PhoneLanguages.T("shell.offline");
+    }
+
+    private static void ToggleGate(PearlSnapshot snapshot, IPearlHub pearl)
+    {
+        if (snapshot.Busy)
+        {
+            return;
+        }
+
+        if (snapshot.SignedIn)
+        {
+            pearl.SignOut();
+            return;
+        }
+
+        pearl.BeginSignIn();
+    }
 
     private sealed class Pending
     {

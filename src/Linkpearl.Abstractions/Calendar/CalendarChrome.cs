@@ -55,9 +55,17 @@ public static class CalendarChrome
         _ = bells;
     }
 
+    private static readonly Vector4[] EventInks =
+    [
+        new(1.00f, 0.46f, 0.42f, 1f),
+        new(0.28f, 0.86f, 0.98f, 1f),
+        new(1.00f, 0.78f, 0.28f, 1f),
+        new(0.72f, 0.48f, 1.00f, 1f),
+    ];
+
     public static float App(in AppletFrame frame, Rect page, DateTimeOffset now, DateTime month, DateTime selected,
-        IReadOnlyList<int> markedDays, IReadOnlyList<CalendarDayLine> dayLines, EorzeaTime bells,
-        out CalendarAppHit hit)
+        IReadOnlyList<byte> dayDots, IReadOnlyList<byte> weekDots, IReadOnlyList<CalendarDayLine> dayLines,
+        EorzeaTime bells, out CalendarAppHit hit)
     {
         hit = default;
         var night = Night(now);
@@ -70,14 +78,14 @@ public static class CalendarChrome
         DrawToolbar(frame, stack.Take(frame.Units(36f)), month, now, ink, accent, ref monthStep, ref jumpToday);
         hit.MonthStep = monthStep;
         hit.JumpToday = jumpToday;
-        DrawWeek(frame, stack.Take(frame.Units(28f)), now, selected, ink, hush, accent, out var weekDay);
+        DrawWeek(frame, stack.Take(frame.Units(32f)), now, selected, ink, hush, accent, weekDots, out var weekDay);
         if (weekDay is { } fromWeek)
         {
             hit.PickedDay = fromWeek;
         }
 
         var rows = MonthRows(month);
-        DrawMonth(frame, stack.Take(frame.Units(28f + rows * 36f)), now, month, selected, markedDays, ink, hush,
+        DrawMonth(frame, stack.Take(frame.Units(28f + rows * 40f)), now, month, selected, dayDots, ink, hush,
             accent, compact: false, pickDays: true, out var monthDay);
         if (monthDay is { } fromMonth)
         {
@@ -192,10 +200,10 @@ public static class CalendarChrome
 
     private static void DrawWeek(in AppletFrame frame, Rect row, DateTimeOffset now, Vector4 ink, Vector4 hush,
         Vector4 accent) =>
-        DrawWeek(frame, row, now, now.Date, ink, hush, accent, out _);
+        DrawWeek(frame, row, now, now.Date, ink, hush, accent, Array.Empty<byte>(), out _);
 
     private static void DrawWeek(in AppletFrame frame, Rect row, DateTimeOffset now, DateTime selected, Vector4 ink,
-        Vector4 hush, Vector4 accent, out DateTime? picked)
+        Vector4 hush, Vector4 accent, IReadOnlyList<byte> dayDots, out DateTime? picked)
     {
         picked = null;
         var start = now.Date.AddDays(-(int)now.DayOfWeek);
@@ -210,10 +218,11 @@ public static class CalendarChrome
             var chosen = day.Date == selected.Date;
             var label = day.ToString("ddd", CultureInfo.CurrentCulture);
             var mark = label.Length > 0 ? label[..1] : "?";
+            var marks = index < dayDots.Count ? Math.Min(4, (int)dayDots[index]) : 0;
             var stack = new Stack(cell, StackAxis.Vertical, 0f);
-            frame.Text.DrawIn(stack.Take(frame.Units(11f)), mark,
+            frame.Text.DrawIn(stack.Take(frame.Units(10f)), mark,
                 new TextStyle(FontRole.Caption, hush, TextAlign.Center, 1f, 0.78f));
-            var number = stack.TakeRemaining();
+            var number = stack.Take(MathF.Max(frame.Units(14f), cell.Height - frame.Units(16f)));
             var radius = MathF.Min(number.Width, number.Height) * 0.42f;
             if (today)
             {
@@ -226,6 +235,7 @@ public static class CalendarChrome
 
             frame.Text.DrawIn(number, day.Day.ToString(CultureInfo.InvariantCulture),
                 new TextStyle(FontRole.CaptionStrong, today ? new Vector4(1f, 1f, 1f, 0.96f) : ink, TextAlign.Center));
+            DrawEventDots(frame, cell, marks, today);
             if (frame.Input.ConsumeClick(cell))
             {
                 picked = day.Date;
@@ -235,10 +245,10 @@ public static class CalendarChrome
 
     private static void DrawMonth(in AppletFrame frame, Rect area, DateTimeOffset now, DateTime month, Vector4 ink,
         Vector4 hush, Vector4 accent, bool compact) =>
-        DrawMonth(frame, area, now, month, now.Date, [], ink, hush, accent, compact, false, out _);
+        DrawMonth(frame, area, now, month, now.Date, Array.Empty<byte>(), ink, hush, accent, compact, false, out _);
 
     private static void DrawMonth(in AppletFrame frame, Rect area, DateTimeOffset now, DateTime month,
-        DateTime selected, IReadOnlyList<int> markedDays, Vector4 ink, Vector4 hush, Vector4 accent, bool compact,
+        DateTime selected, IReadOnlyList<byte> dayDots, Vector4 ink, Vector4 hush, Vector4 accent, bool compact,
         bool pickDays, out DateTime? picked)
     {
         picked = null;
@@ -288,25 +298,22 @@ public static class CalendarChrome
                 new Vector2(cellW, cellH));
             var today = day == now.Day && month.Month == now.Month && month.Year == now.Year;
             var chosen = day == selected.Day && month.Month == selected.Month && month.Year == selected.Year;
-            var marked = HasDay(markedDays, day);
-            var radius = MathF.Min(cell.Width, cell.Height) * 0.36f;
+            var marks = DotsFor(dayDots, day);
+            var radius = MathF.Min(cell.Width, cell.Height) * 0.32f;
+            var number = marks > 0 ? cell.Inset(new Edges(0f, 0f, 0f, frame.Units(8f))) : cell;
             if (today)
             {
-                frame.Paint.FillCircle(cell.Center, radius, accent);
+                frame.Paint.FillCircle(number.Center, radius, accent);
             }
             else if (chosen)
             {
-                frame.Paint.StrokeCircle(cell.Center, radius, accent, MathF.Max(1.4f, frame.Units(1.6f)));
+                frame.Paint.StrokeCircle(number.Center, radius, accent, MathF.Max(1.4f, frame.Units(1.6f)));
             }
 
-            frame.Text.DrawIn(cell, day.ToString(CultureInfo.InvariantCulture),
+            frame.Text.DrawIn(number, day.ToString(CultureInfo.InvariantCulture),
                 new TextStyle(compact ? FontRole.Caption : FontRole.CaptionStrong,
                     today ? new Vector4(1f, 1f, 1f, 0.96f) : ink, TextAlign.Center, 1f, compact ? 0.86f : 1f));
-            if (marked)
-            {
-                frame.Paint.FillCircle(new Vector2(cell.Center.X, cell.Max.Y - frame.Units(4f)),
-                    MathF.Max(1.6f, frame.Units(2.2f)), today ? new Vector4(1f, 1f, 1f, 0.92f) : accent);
-            }
+            DrawEventDots(frame, cell, marks, today);
 
             if (pickDays && frame.Input.ConsumeClick(cell))
             {
@@ -383,17 +390,38 @@ public static class CalendarChrome
             new TextStyle(FontRole.CaptionStrong, accent, TextAlign.Center, 1f, 0.9f));
     }
 
-    private static bool HasDay(IReadOnlyList<int> days, int day)
+    private static int DotsFor(IReadOnlyList<byte> dayDots, int day)
     {
-        for (var index = 0; index < days.Count; index++)
+        if (day <= 0 || day >= dayDots.Count)
         {
-            if (days[index] == day)
-            {
-                return true;
-            }
+            return 0;
         }
 
-        return false;
+        return Math.Min(4, (int)dayDots[day]);
+    }
+
+    private static void DrawEventDots(in AppletFrame frame, Rect cell, int count, bool today)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+
+        var radius = MathF.Max(1.6f, frame.Units(2.1f));
+        var gap = frame.Units(3.2f);
+        var span = count * radius * 2f + (count - 1) * gap;
+        var x = cell.Center.X - span * 0.5f + radius;
+        var y = cell.Max.Y - frame.Units(4.5f);
+        for (var index = 0; index < count; index++)
+        {
+            var ink = EventInks[index];
+            if (today)
+            {
+                ink = Vector4.Lerp(ink, Vector4.One, 0.28f);
+            }
+
+            frame.Paint.FillCircle(new Vector2(x + index * (radius * 2f + gap), y), radius, ink);
+        }
     }
 
     private static void Wash(in AppletFrame frame, Rect area, bool night, float radius)

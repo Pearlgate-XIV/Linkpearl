@@ -1,6 +1,5 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Media;
 using Linkpearl.Painting;
 using Linkpearl.Time;
 
@@ -42,9 +41,11 @@ public static class SkyChrome
     public static bool Snow(string? weather) =>
         Has(weather, "snow") || Has(weather, "blizzard") || Has(weather, "sleet");
 
+    public static bool HasStorm(string? weather) =>
+        Has(weather, "thunder") || Has(weather, "storm") || Has(weather, "lightning");
+
     public static bool Rain(string? weather) =>
-        !Snow(weather) && (Has(weather, "rain") || Has(weather, "shower") || Has(weather, "thunder") ||
-            Has(weather, "storm"));
+        !Snow(weather) && (Has(weather, "rain") || Has(weather, "shower") || HasStorm(weather));
 
     public static bool Wet(string? weather) => Rain(weather) || Snow(weather);
 
@@ -181,37 +182,7 @@ public static class SkyChrome
 
     public static void Hero(in AppletFrame frame, Rect area, string? condition, bool night)
     {
-        if (area.IsEmpty)
-        {
-            return;
-        }
-
-        var size = MathF.Min(area.Width, area.Height);
-        var center = area.Center;
-        var radius = size * 0.28f;
-        if (night)
-        {
-            frame.Paint.Glow(Rect.FromSize(center - new Vector2(radius * 1.8f), new Vector2(radius * 3.6f)),
-                new Vector4(0.82f, 0.88f, 1f, 0.22f), radius * 1.6f, radius);
-            frame.Paint.FillCircle(center, radius, new Vector4(0.94f, 0.95f, 1f, 0.94f));
-            frame.Paint.FillCircle(center + new Vector2(radius * 0.38f, -radius * 0.18f), radius * 0.86f,
-                new Vector4(0.08f, 0.10f, 0.22f, 0.92f));
-        }
-        else
-        {
-            frame.Paint.Glow(Rect.FromSize(center - new Vector2(radius * 2.2f), new Vector2(radius * 4.4f)),
-                new Vector4(1f, 0.86f, 0.38f, 0.36f), radius * 2f, radius * 1.5f);
-            frame.Paint.FillCircle(center, radius, new Vector4(1f, 0.90f, 0.42f, 1f));
-            frame.Paint.FillCircle(center, radius * 0.62f, new Vector4(1f, 0.96f, 0.70f, 1f));
-        }
-
-        if (Overcast(condition) || Wet(condition))
-        {
-            Puff(frame.Paint, center + new Vector2(-radius * 0.55f, radius * 0.55f), radius * 0.72f,
-                new Vector4(1f, 1f, 1f, night ? 0.55f : 0.82f));
-            Puff(frame.Paint, center + new Vector2(radius * 0.62f, radius * 0.42f), radius * 0.58f,
-                new Vector4(0.92f, 0.94f, 0.98f, night ? 0.42f : 0.70f));
-        }
+        SkyMarks.Draw(frame.Paint, area, condition, night);
     }
 
     public static void Pin(IPaintSurface paint, Rect area, Vector4 ink)
@@ -247,57 +218,14 @@ public static class SkyChrome
 
     public static void Icon(in AppletFrame frame, Rect area, string? name, uint iconId, EorzeaTime bells)
     {
-        if (iconId != 0)
-        {
-            var texture = frame.Textures.GameIcon(iconId);
-            if (texture is { IsReady: true })
-            {
-                frame.Paint.Image(texture, CoverFit.Contained(texture.Size, area), Vector4.One);
-                return;
-            }
-        }
-
-        DrawMark(frame.Paint, area, name, bells);
+        _ = iconId;
+        SkyMarks.Draw(frame.Paint, area, name, IsNight(bells));
     }
 
     public static string ClockLabel(int hour)
     {
         var wrapped = ((hour % 24) + 24) % 24;
         return wrapped.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
-    }
-
-    private static void DrawMark(IPaintSurface paint, Rect area, string? name, EorzeaTime bells)
-    {
-        var size = MathF.Min(area.Width, area.Height) * 0.42f;
-        var center = area.Center;
-        var stroke = MathF.Max(1.4f, size * 0.14f);
-        var ink = new Vector4(1f, 1f, 1f, 0.92f);
-        if (Wet(name))
-        {
-            paint.StrokeCircle(center + new Vector2(-size * 0.10f, -size * 0.18f), size * 0.42f, ink, stroke);
-            paint.Line(center + new Vector2(-size * 0.28f, size * 0.22f),
-                center + new Vector2(-size * 0.12f, size * 0.52f), ink, stroke);
-            paint.Line(center + new Vector2(0.06f * size, size * 0.18f),
-                center + new Vector2(0.22f * size, size * 0.52f), ink, stroke);
-            return;
-        }
-
-        if (Overcast(name))
-        {
-            paint.StrokeCircle(center + new Vector2(-size * 0.16f, 0f), size * 0.36f, ink, stroke);
-            paint.StrokeCircle(center + new Vector2(size * 0.22f, size * 0.04f), size * 0.42f, ink, stroke);
-            return;
-        }
-
-        if (IsNight(bells))
-        {
-            paint.FillCircle(center, size * 0.46f, ink);
-            paint.FillCircle(center + new Vector2(size * 0.22f, -size * 0.10f), size * 0.40f,
-                new Vector4(0.12f, 0.14f, 0.22f, 0.95f));
-            return;
-        }
-
-        paint.FillCircle(center, size * 0.36f, ink);
     }
 
     private static void DrawClouds(IPaintSurface paint, Rect art, bool night, float time)
@@ -354,6 +282,6 @@ public static class SkyChrome
 
     private static float Fract(float value) => value - MathF.Floor(value);
 
-    private static bool Has(string? haystack, string needle) =>
+    public static bool Has(string? haystack, string needle) =>
         !string.IsNullOrEmpty(haystack) && haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
 }

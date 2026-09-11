@@ -2,6 +2,8 @@ namespace Linkpearl.Audio;
 
 public interface IStationMarks
 {
+    bool HasAccount { get; }
+
     bool Liked(string id);
 
     int LikeCount(HandsetTune now);

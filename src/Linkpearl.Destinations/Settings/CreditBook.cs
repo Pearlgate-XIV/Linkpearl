@@ -37,10 +37,10 @@ public static class CreditBook
 {
     public static readonly CreditPerson[] People =
     [
-        new("alyx", "A'lyx Nightingale", "", "", "UI/UX design & Development"),
-        new("sibyl", "Sibyl Cenotaph", "", "", "Moderation | Management | Concept development"),
-        new("roxanne", "Roxanne Delyre", "", "", "System & Security Development | Concept Development"),
-        new("lucia", "Lucia Mae", "", "", "Moderation"),
+        new("alyx", "⸸ Vᴀʟᴇ ⸸", "", "", "Project Lead | UI/UX Design & Development"),
+        new("sibyl", "Caffeinektn", "", "", "Moderation | Management | Concept development"),
+        new("roxanne", "Sleepy", "", "", "Project Lead | System & Security Development"),
+        new("lucia", "Luci", "", "", "Moderation"),
         new("aetheros", "AetherOS", "", "", "General Contribution | Inspiration", CreditKind.Plugin,
             "https://puni.sh/directory/aetherlove",
             "https://github.com/FFXIV-Aetherlove/Aetherlove",
@@ -51,6 +51,16 @@ public static class CreditBook
             "https://github.com/jfraygit/EchoXIV/tree/main/EchoMix",
             "https://raw.githubusercontent.com/jfraygit/EchoXIV/main/icons/echomix-icon.png",
             "Icons/credits/echomix.png"),
+        new("ffxivvenues", "FFXIV Venues", "", "", "Nightlife directory", CreditKind.Plugin,
+            "https://ffxivvenues.com",
+            "https://github.com/FFXIVVenues",
+            "https://github.com/FFXIVVenues.png",
+            "Icons/credits/ffxivvenues.png"),
+        new("rolladeck", "XIV Rolladeck", "", "", "Community Twitch DJ directory", CreditKind.Plugin,
+            "https://xivrolladeck.com",
+            "https://github.com/XIVRolladeck",
+            "https://github.com/XIVRolladeck.png",
+            "Icons/credits/rolladeck.png"),
     ];
 
     public static ShownCredit[] Resolve(PearlSnapshot snapshot, string characterName = "")
@@ -77,8 +87,7 @@ public static class CreditBook
 
         if (IsMe(person, snapshot, characterName))
         {
-            var mine = LiveName(characterName, snapshot.MeName, person.FallbackName);
-            return Show(person, mine, string.Empty, snapshot.MeAvatarUrl,
+            return Show(person, person.FallbackName, string.Empty, snapshot.MeAvatarUrl,
                 snapshot.MeId.Length > 0 ? snapshot.MeId : person.GateId, true);
         }
 
@@ -90,8 +99,7 @@ public static class CreditBook
                 continue;
             }
 
-            return Show(person, Prefer(peer.DisplayName, person.FallbackName), peer.Handle, peer.AvatarUrl, peer.Id,
-                true);
+            return Show(person, person.FallbackName, peer.Handle, peer.AvatarUrl, peer.Id, true);
         }
 
         for (var index = 0; index < snapshot.SearchHits.Length; index++)
@@ -102,7 +110,7 @@ public static class CreditBook
                 continue;
             }
 
-            return Show(person, Prefer(hit.Title, person.FallbackName), string.Empty, string.Empty, hit.Id, true);
+            return Show(person, person.FallbackName, string.Empty, string.Empty, hit.Id, true);
         }
 
         return Show(person, person.FallbackName, person.Handle, string.Empty, person.GateId, false);
@@ -110,8 +118,9 @@ public static class CreditBook
 
     private static ShownCredit Show(CreditPerson person, string name, string handle, string avatar, string profileId,
         bool fromProfile) =>
-        new(person.Id, name, handle, person.Work, avatar, profileId, fromProfile, person.Kind, person.PluginPage,
-            person.GitHubPage, person.IconAsset);
+        new(person.Id, name, handle, person.Work,
+            string.Equals(person.Id, "alyx", StringComparison.Ordinal) ? string.Empty : avatar,
+            profileId, fromProfile, person.Kind, person.PluginPage, person.GitHubPage, person.IconAsset);
 
     private static bool IsMe(CreditPerson person, PearlSnapshot snapshot, string characterName) =>
         snapshot.SignedIn &&
@@ -121,7 +130,8 @@ public static class CreditBook
     private static bool Matches(CreditPerson person, string id, string handle, string name) =>
         person.GateId.Length > 0 && SameId(person.GateId, id) ||
         person.Handle.Length > 0 && SameHandle(person.Handle, handle) ||
-        SameGlyph(person.FallbackName, name);
+        SameGlyph(person.FallbackName, name) ||
+        SameGlyph(person.Id, name);
 
     private static bool SameId(string left, string right) =>
         left.Length > 0 && right.Length > 0 &&
@@ -140,18 +150,6 @@ public static class CreditBook
         var b = Fold(right);
         return a.Length > 0 && b.Length > 0 && (a == b || a.Contains(b, StringComparison.Ordinal) ||
                                                b.Contains(a, StringComparison.Ordinal));
-    }
-
-    private static string Prefer(string live, string fallback)
-    {
-        var shown = live.Trim();
-        return shown.Length > 0 ? shown : fallback.Trim();
-    }
-
-    private static string LiveName(string character, string pearl, string fallback)
-    {
-        var inGame = character.Trim();
-        return inGame.Length > 0 ? inGame : Prefer(pearl, fallback);
     }
 
     private static string StripAt(string value)

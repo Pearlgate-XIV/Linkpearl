@@ -51,7 +51,9 @@ internal static class VybeGroups
     public static string Face(HostPaths paths, string file) =>
         paths.Asset(Path.Combine("Icons", "vybe-demo", file));
 
-    public static PearlPost[] Posts(HostPaths paths) =>
+    public static PearlPost[] Posts(HostPaths paths) => [];
+
+    private static PearlPost[] DemoPosts(HostPaths paths) =>
     [
         Group(paths, "food", "1", "demo:luna", "Luna", "sunset.png",
             "Midnight noodles after the market. Who's grabbing a bowl? #Food", "3h", true, 64, 11, 6),
@@ -94,6 +96,28 @@ internal static class VybeGroups
         return false;
     }
 
+    public static bool TryGroup(PearlPost post, VybeState state, out SceneGroup group)
+    {
+        if (TryGroup(post, out group))
+        {
+            return true;
+        }
+
+        if (!post.AuthorHandle.StartsWith("group:", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var found = VybeClubs.SceneOf(state, post.AuthorHandle[6..]);
+        if (found is not { } club)
+        {
+            return false;
+        }
+
+        group = club;
+        return true;
+    }
+
     private static PearlPost Group(HostPaths paths, string groupId, string key, string authorId, string author,
         string file, string body, string when, bool liked, int likes, int comments, int reposts)
     {
@@ -130,18 +154,23 @@ internal static class VybeGroups
     public static IReadOnlyList<SceneGroup> Shown(VybeState state)
     {
         var hits = new List<SceneGroup>();
-        var needle = state.GroupQuery.Trim();
+        var needle = state.Search.Trim().Length > 0 ? state.Search.Trim() : state.GroupQuery.Trim();
+        var find = state.PeopleFind;
         for (var index = 0; index < Catalog.Length; index++)
         {
             var group = Catalog[index];
-            if (!Fits(state, group))
+            if (!Fits(state, group, owned: false) || !PeopleFindBook.FitsGroup(group, find, needle))
             {
                 continue;
             }
 
-            if (needle.Length > 0 &&
-                !group.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) &&
-                !group.Tag.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            hits.Add(group);
+        }
+
+        for (var index = 0; index < state.Clubs.Count; index++)
+        {
+            var group = VybeClubs.Scene(state.Clubs[index]);
+            if (!Fits(state, group, owned: true) || !PeopleFindBook.FitsGroup(group, find, needle))
             {
                 continue;
             }
@@ -174,11 +203,12 @@ internal static class VybeGroups
         state.JoinedGroups.Add("food");
     }
 
-    private static bool Fits(VybeState state, SceneGroup group)
+    private static bool Fits(VybeState state, SceneGroup group, bool owned)
     {
         if (group.PlusOnly)
         {
-            return state.Night && state.GroupLane == GroupLane.Plus;
+            return state.Night && (state.GroupLane == GroupLane.Plus ||
+                                   (state.GroupLane == GroupLane.Mine && (owned || Joined(state, group.Id))));
         }
 
         if (state.GroupLane == GroupLane.Plus)
@@ -188,8 +218,8 @@ internal static class VybeGroups
 
         return state.GroupLane switch
         {
-            GroupLane.Mine => Joined(state, group.Id),
-            GroupLane.Suggested => group.Suggested,
+            GroupLane.Mine => owned || Joined(state, group.Id),
+            GroupLane.Suggested => group.Suggested && !owned,
             GroupLane.Nearby => group.Nearby,
             _ => true,
         };

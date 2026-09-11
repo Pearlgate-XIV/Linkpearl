@@ -4,7 +4,7 @@ namespace Linkpearl.Preferences;
 
 public readonly record struct PhoneLanguage(string Id, string Culture, string Native, string English);
 
-public static class PhoneLanguages
+public static partial class PhoneLanguages
 {
     public const string DefaultId = "en-US";
 
@@ -88,19 +88,35 @@ public static class PhoneLanguages
 
     public static string T(string key)
     {
-        if (Pack.TryGetValue(key, out var rows) &&
-            rows.TryGetValue(Family(CurrentId), out var text) &&
-            text.Length > 0)
+        if (TryRow(Pack, key, out var text) || TryRow(Ui, key, out text))
         {
             return text;
         }
 
-        if (Pack.TryGetValue(key, out rows) && rows.TryGetValue("en", out var english))
+        return key;
+    }
+
+    private static bool TryRow(Dictionary<string, Dictionary<string, string>> pack, string key, out string text)
+    {
+        text = string.Empty;
+        if (!pack.TryGetValue(key, out var rows))
         {
-            return english;
+            return false;
         }
 
-        return key;
+        if (rows.TryGetValue(Family(CurrentId), out var localized) && localized.Length > 0)
+        {
+            text = localized;
+            return true;
+        }
+
+        if (rows.TryGetValue("en", out var english) && english.Length > 0)
+        {
+            text = english;
+            return true;
+        }
+
+        return false;
     }
 
     public static string App(string id, string fallback = "")
@@ -282,6 +298,9 @@ public static class PhoneLanguages
             ["app.market"] = Lang(("en", "Market"), ("ja", "マーケット"), ("de", "Markt"), ("fr", "Marché"),
                 ("es", "Mercado"), ("pt", "Mercado"), ("it", "Mercato"), ("zh-CN", "市场"), ("zh-TW", "市場"),
                 ("ko", "마켓"), ("ru", "Рынок")),
+            ["app.venues"] = Lang(("en", "Venues"), ("ja", "会場"), ("de", "Venues"), ("fr", "Lieux"),
+                ("es", "Locales"), ("pt", "Locais"), ("it", "Locali"), ("zh-CN", "会场"), ("zh-TW", "會場"),
+                ("ko", "베뉴"), ("ru", "Заведения")),
             ["app.appstore"] = Lang(("en", "App Store"), ("ja", "App Store"), ("de", "App Store"),
                 ("fr", "App Store"), ("es", "App Store"), ("pt", "App Store"), ("it", "App Store"),
                 ("zh-CN", "应用商店"), ("zh-TW", "App Store"), ("ko", "App Store"), ("ru", "Магазин")),

@@ -71,6 +71,8 @@ public sealed class HandsetHost : IDisposable
     private readonly PearlCommunityRadio communityRadio;
     private readonly WasapiBroadcastSense broadcastSense;
     private readonly IcecastBroadcastPush broadcastPush;
+    private readonly EchoMixBoothHost echoMix;
+    private readonly IStreamDesk streamDesk;
     private readonly bool isDevelopment;
     private int lastUnread;
     private bool poweringOff;
@@ -78,7 +80,7 @@ public sealed class HandsetHost : IDisposable
     public HandsetHost(IDalamudPluginInterface pluginInterface, IFramework framework, IClientState clientState,
         IObjectTable objectTable, ICondition condition, IDutyState dutyState, IPluginLog pluginLog,
         ITextureProvider textureProvider, IDataManager dataManager, IChatGui chatGui, IPartyList partyList,
-        IKeyState keys, ICommandManager commands, ITargetManager targets)
+        IKeyState keys, ICommandManager commands, ITargetManager targets, IGameConfig gameConfig)
     {
         this.pluginInterface = pluginInterface;
         this.framework = framework;
@@ -109,6 +111,8 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IGameSession>(session);
         services.AddSingleton<ILifestream>(new FfxivLifestream(pluginInterface, dataManager));
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
+        services.AddSingleton<ISkyDesk>(new FfxivSkyDesk(pluginInterface, dataManager, session, clock, clock));
+        services.AddSingleton(new ChatMarks(paths));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
@@ -164,8 +168,17 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IPublicRadio>(publicRadio);
         services.AddSingleton<ICommunityRadio>(communityRadio);
         services.AddSingleton<IUniversalisMarket>(new UniversalisMarket());
+        services.AddSingleton<IVenuesDesk>(new VenuesDesk(paths));
+        IStreamDesk accounts = string.Equals(config.StreamDeskMode, "mock", StringComparison.OrdinalIgnoreCase) &&
+                               isDevelopment
+            ? new MockStreamDesk()
+            : new PearlgateStreamDesk(() => config.SessionToken, paths);
+        streamDesk = new StreamDesk(accounts, new RolladeckDesk(paths));
+        services.AddSingleton<IStreamDesk>(streamDesk);
         services.AddSingleton<IBroadcastSense>(broadcastSense);
         services.AddSingleton<IBroadcastPush>(broadcastPush);
+        var echoGate = new EchoMixBoothGate();
+        services.AddSingleton<IEchoMixBooth>(echoGate);
 
         var textures = new DalamudTextureSource(textureProvider);
         services.AddSingleton<ITextureSource>(textures);
@@ -199,7 +212,7 @@ public sealed class HandsetHost : IDisposable
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
-            provider.GetRequiredService<IGifDesk>());
+            provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>());
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));
@@ -217,7 +230,7 @@ public sealed class HandsetHost : IDisposable
         IReadOnlyList<IDestinationScreen> destinations = new IDestinationScreen[]
         {
             new HomeDestination(clock, session, pearl, talk, hub, preferences, paths, textures, badges, files,
-                weather, notices, isDevelopment, profiles),
+                weather, provider.GetRequiredService<ISkyDesk>(), notices, isDevelopment, profiles),
             social,
             new ExploreDestination(pearl, session),
             new YouDestination(session, pearl, badges, paths, textures, files, preferences, isDevelopment, profiles),
@@ -228,7 +241,7 @@ public sealed class HandsetHost : IDisposable
         this.textField = textField;
         var wife = new WifeSyncBridge(pluginInterface, commands);
         var shell = new HandsetShell(destinations, clock, session, preferences, textField, pearl, hub, router, talk,
-            apps, wife, notices, weather, isDevelopment, badges, audio, publicRadio,
+            apps, wife, notices, weather, provider.GetRequiredService<ISkyDesk>(), isDevelopment, badges, audio, publicRadio,
             provider.GetRequiredService<IStationMarks>());
         var screenField = new ScreenField(textures, paths, preferences, clock);
 
@@ -239,6 +252,9 @@ public sealed class HandsetHost : IDisposable
             session, textures, paths, RememberShape, RememberOpen, RememberMinimized, placement, RememberPlacement,
             RequestPowerOff);
         shapePreference.Changed += OnShapeChanged;
+        echoMix = new EchoMixBoothHost(pluginInterface, pluginLog, gameConfig, framework, objectTable,
+            textureProvider, clientState, provider.GetRequiredService<IEchoMixStation>());
+        echoGate.Attach(echoMix);
         windowSystem.AddWindow(window);
         windowSystem.AddWindow(fileGlass);
 
@@ -293,11 +309,13 @@ public sealed class HandsetHost : IDisposable
 
         lastUnread = unread;
         popouts.Pulse();
+        echoMix.SyncStation();
     }
 
     private void OnUiDraw()
     {
         windowSystem.Draw();
+        echoMix.Draw();
         if (window.IsOpen && !window.IsMinimized && textField.Capturing)
         {
             keys.ClearAll();
@@ -339,11 +357,13 @@ public sealed class HandsetHost : IDisposable
         pluginInterface.UiBuilder.Draw -= OnUiDraw;
         pluginInterface.UiBuilder.OpenMainUi -= ToggleHandset;
         popouts.Dispose();
+        echoMix.Dispose();
         audio.Dispose();
         broadcastPush.Dispose();
         broadcastSense.Dispose();
         publicRadio.Dispose();
         communityRadio.Dispose();
+        streamDesk.Dispose();
         windowSystem.RemoveAllWindows();
         fonts.Dispose();
         talk.Dispose();

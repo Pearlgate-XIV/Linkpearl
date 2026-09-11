@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <PropertyGroup>
+    <RootNamespace>EchoMix.Plugin</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\vendor\EchoMix\EchoMix.Plugin\**\*.cs"
+             Exclude="..\..\vendor\EchoMix\EchoMix.Plugin\Plugin.cs;..\..\vendor\EchoMix\EchoMix.Plugin\Ipc\EchoMixIpcProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\vendor\EchoMix\EchoMix.Shared\EchoMix.Shared.csproj" />
+    <ProjectReference Include="..\..\vendor\EchoMix\EchoMix.AudioHost\EchoMix.AudioHost.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false"
+                      SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+</Project>

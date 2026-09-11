@@ -1,0 +1,14 @@
+EchoMix in Linkpearl
+====================
+
+The Music profile MIX button hosts EchoMix by jfraygit
+(https://github.com/jfraygit/EchoXIV, EchoMix/), used with the author's
+permission. Source lives under vendor/EchoMix and is compiled into
+Linkpearl.EchoMix plus EchoMix.AudioHost.exe.
+
+EchoMix is licensed under GNU AGPL-3.0-or-later. Linkpearl is also
+AGPL-3.0-or-later.
+
+Going live from EchoMix lists the DJ on Pearlgate / Icecast (the Linkpearl
+station). DJs who prefer outside gear can still capture that mix from
+Music's DJ dashboard instead of mixing inside EchoMix.

@@ -59,7 +59,7 @@ public sealed class HomeSurface
         var capacity = Columns * Rows;
         for (var index = 0; index < apps.Count && slot < capacity; index++)
         {
-            if (IsDocked(apps[index].Manifest.Id))
+            if (IsDocked(apps[index].Manifest.Id) || !apps[index].Allowed)
             {
                 continue;
             }

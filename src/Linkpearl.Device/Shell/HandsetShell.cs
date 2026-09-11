@@ -56,7 +56,7 @@ public sealed class HandsetShell
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
         DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteStack router,
         ITalk talk, IReadOnlyList<IApplet> applets, IWifeSync wife, NoticeLedger notices, IWeatherOracle weather,
-        bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks)
+        ISkyDesk sky, bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks)
     {
         this.clock = clock;
         this.game = game;
@@ -93,7 +93,7 @@ public sealed class HandsetShell
             throw new InvalidOperationException("Studio home needs the Home destination profile.");
         }
 
-        studio = new StudioSurface(clock, game, pearl, talk, hub, weather, preferences, development, badges, notices,
+        studio = new StudioSurface(clock, game, pearl, talk, hub, weather, sky, preferences, development, badges, notices,
             profile, LaunchStudioApplet, (origin, hint) => LaunchStudioApplet("music", origin, hint), audio, radio, marks,
             glass);
     }
@@ -127,6 +127,7 @@ public sealed class HandsetShell
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
         PhoneLanguages.Apply(preferences.LanguageId);
+        router.RevokeDisallowed();
         var scale = outerFrame.Scale;
         var hush = preferences.Hushed(game.IsInDuty || game.IsInCutscene);
         banner.Observe(pearl.Current, talk, clock, notices, hush);
@@ -237,8 +238,14 @@ public sealed class HandsetShell
         if (onDest && (currentTab != DestinationTab.Home || awayFromHomeDash) &&
             BeginPageClip(outerFrame, content, destBody))
         {
-            DrawDestination(outerFrame, destBody, content, overlayOpen, scale);
-            outerFrame.Paint.PopClip();
+            try
+            {
+                DrawDestination(outerFrame, destBody, content, overlayOpen, scale);
+            }
+            finally
+            {
+                outerFrame.Paint.PopClip();
+            }
         }
 
         if (homeDock > 0f)
@@ -288,7 +295,7 @@ public sealed class HandsetShell
 
         search.Draw(outerFrame.Paint, outerFrame.Text, textField, outerFrame.Input, outerFrame.Theme, screen, scale);
         recents.Draw(outerFrame, screen, router, apps, preferences, clock, ResumeRecent);
-        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, talk, clock, wife, game,
+        var controlResult = control.Draw(outerFrame, screen, preferences, pearl.Current, pearl, talk, clock, wife, game,
             allowStrip: !search.IsOpen && !recents.IsOpen);
         if (controlResult.Recents || router.TakeRecents())
         {
@@ -458,7 +465,18 @@ public sealed class HandsetShell
             ? outerFrame.WithContent(scrolled).WithInput(SilentInput.Instance)
             : outerFrame.WithContent(scrolled);
 
-        var contentHeight = current.Compose(composeFrame);
+        float contentHeight;
+        try
+        {
+            contentHeight = current.Compose(composeFrame);
+        }
+        catch (Exception ex)
+        {
+            outerFrame.Text.DrawIn(destArea.Inset(outerFrame.Units(16f)),
+                "This screen hit an error.\n" + ex.GetType().Name + ": " + ex.Message,
+                new TextStyle(FontRole.Caption, outerFrame.Theme.Palette.InkMuted));
+            return;
+        }
         if (current is SettingsDestination settings && settings.TryTakeScrollIntoView(out var focusY))
         {
             scroll.Jump(focusY);
@@ -553,11 +571,11 @@ public sealed class HandsetShell
             {
                 applet.Compose(overlayOpen ? frame.WithContent(appsArea) : outerFrame.WithContent(appsArea));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 AppGround.Paint(outerFrame, appsArea, applet.Manifest.Id);
                 outerFrame.Text.DrawIn(appsArea.Inset(outerFrame.Units(16f)),
-                    "This app hit an error. Back out and open it again.",
+                    "This app hit an error.\n" + ex.GetType().Name + ": " + ex.Message,
                     new TextStyle(FontRole.Caption, outerFrame.Theme.Palette.InkMuted));
             }
 
@@ -1008,6 +1026,11 @@ public sealed class HandsetShell
         if (spec.Kind == AppKind.Shortcut)
         {
             hub.Open(spec.Tab, spec.Pane);
+            return;
+        }
+
+        if (!router.CanOpen(id))
+        {
             return;
         }
 

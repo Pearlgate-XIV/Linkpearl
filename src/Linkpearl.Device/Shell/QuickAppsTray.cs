@@ -66,7 +66,7 @@ public sealed class QuickAppsTray
         var ink = frame.Theme.Palette.Ink with { W = t };
         var muted = frame.Theme.Palette.InkMuted with { W = t };
         var inner = panel.Inset(new Edges(pad, frame.Units(8f), pad, frame.Units(8f)));
-        frame.Text.DrawIn(inner.TopSlice(frame.Units(16f)), "Quick Apps",
+        frame.Text.DrawIn(inner.TopSlice(frame.Units(16f)), PhoneLanguages.T("shell.quickapps"),
             new TextStyle(FontRole.CaptionStrong, gold with { W = t }));
 
         var row = inner.Inset(new Edges(0f, frame.Units(18f), 0f, 0f));

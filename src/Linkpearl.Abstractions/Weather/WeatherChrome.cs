@@ -4,6 +4,7 @@ using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Preferences;
 using Linkpearl.Time;
 
 namespace Linkpearl.Weather;
@@ -12,6 +13,24 @@ public static class WeatherChrome
 {
     public const int HourCells = 6;
     public const int ForecastHours = 24;
+
+    public static IReadOnlyList<WeatherWindow> AlignNow(IReadOnlyList<WeatherWindow> hours, SkyLook look)
+    {
+        if (hours.Count == 0 || look.Name.Length == 0)
+        {
+            return hours;
+        }
+
+        var copy = new WeatherWindow[hours.Count];
+        for (var index = 0; index < hours.Count; index++)
+        {
+            copy[index] = hours[index];
+        }
+
+        var first = copy[0];
+        copy[0] = new WeatherWindow(look.Name, look.IconId != 0 ? look.IconId : first.IconId, first.Starts, first.Ends);
+        return copy;
+    }
 
     public static void Dock(in AppletFrame frame, Rect area, string place, string condition, uint iconId,
         EorzeaTime bells, IReadOnlyList<WeatherWindow> hours)
@@ -36,24 +55,338 @@ public static class WeatherChrome
     public static float App(in AppletFrame frame, Rect page, string place, string condition, uint iconId,
         EorzeaTime bells, IReadOnlyList<WeatherWindow> hours, IReadOnlyList<WeatherWindow> runs, string nextSky)
     {
+        return Forecast(frame, page, place, condition, iconId, bells, hours, runs, nextSky);
+    }
+
+    public static float Forecast(in AppletFrame frame, Rect page, string place, string condition, uint iconId,
+        EorzeaTime bells, IReadOnlyList<WeatherWindow> hours, IReadOnlyList<WeatherWindow> runs, string nextSky)
+    {
         var night = SkyChrome.IsNight(bells);
         var ink = Ink(night);
         var hush = Hush(night);
-        var stack = new Stack(page, StackAxis.Vertical, frame.Units(10f));
-        DrawToolbar(frame, stack.Take(frame.Units(22f)), night);
-        DrawPlace(frame, stack.Take(frame.Units(20f)), place, ink, true);
+        var stack = new Stack(page, StackAxis.Vertical, frame.Units(8f));
+        DrawBack(frame, stack.Take(frame.Units(22f)), ink);
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), place,
+            new TextStyle(FontRole.Title, ink, TextAlign.Center));
         SkyChrome.Hero(frame, stack.Take(frame.Units(108f)), condition, night);
-        DrawHeroTime(frame, stack.Take(frame.Units(64f)), bells, ink, false);
-        frame.Text.DrawIn(stack.Take(frame.Units(20f)), condition,
-            new TextStyle(FontRole.Body, ink, TextAlign.Center));
-        DrawHiLo(frame, stack.Take(frame.Units(18f)), hush, null);
-        DrawHourlyCard(frame, stack.Take(frame.Units(124f)), hours, bells, night, ink, hush);
-        DrawDailyCard(frame, stack.Take(frame.Units(28f + Math.Min(6, runs.Count) * 36f)), runs, bells, night, ink,
-            hush);
-        DrawTiles(frame, stack.Take(frame.Units(168f)), bells, condition, nextSky, night, ink, hush);
-        DrawPager(frame, stack.Take(frame.Units(14f)), night);
+        frame.Text.DrawIn(stack.Take(frame.Units(24f)), condition,
+            new TextStyle(FontRole.Title, ink, TextAlign.Center));
+        if (nextSky.Length > 0)
+        {
+            frame.Text.DrawIn(stack.Take(frame.Units(16f)), nextSky,
+                new TextStyle(FontRole.Caption, hush, TextAlign.Center));
+        }
+
+        DrawNearCard(frame, stack.Take(frame.Units(118f)), hours, night, ink, hush);
+        DrawRunCard(frame, stack.Take(frame.Units(28f + Math.Min(5, Math.Max(1, runs.Count)) * 36f)), runs, bells,
+            night, ink, hush);
         _ = iconId;
         return page.Height - stack.Remaining.Height;
+    }
+
+    public static float Control(in AppletFrame frame, Rect page, EorzeaTime bells, IReadOnlyList<SkyChoice> choices,
+        ISkyDesk sky, bool companion, bool night)
+    {
+        var ink = Ink(night);
+        var hush = Hush(night);
+        var stack = new Stack(page, StackAxis.Vertical, frame.Units(10f));
+        DrawBack(frame, stack.Take(frame.Units(22f)), ink);
+        DrawTimeCard(frame, stack.Take(frame.Units(148f)), bells, sky, night, ink, hush);
+        DrawWeatherGrid(frame, stack.Take(WeatherGridHeight(frame, choices.Count + 1)), choices, sky, night, ink,
+            hush);
+        var reset = stack.Take(frame.Units(40f));
+        Glass(frame, reset, night);
+        frame.Text.DrawIn(reset, PhoneLanguages.T("weather.reset"),
+            new TextStyle(FontRole.BodyStrong, ink, TextAlign.Center));
+        if (frame.Input.ConsumeClick(reset))
+        {
+            sky.Reset();
+        }
+
+        frame.Text.DrawWrapped(stack.Take(frame.Units(48f)),
+            companion ? PhoneLanguages.T("weather.note.companion") : PhoneLanguages.T("weather.note"),
+            new TextStyle(FontRole.Caption, hush, TextAlign.Center));
+        return page.Height - stack.Remaining.Height;
+    }
+
+    public static int Tabs(in AppletFrame frame, Rect area, int selected, bool night)
+    {
+        var ink = Ink(night);
+        var hush = Hush(night);
+        Glass(frame, area, night);
+        var pad = frame.Units(6f);
+        var inner = area.Inset(new Edges(pad, pad, pad, pad));
+        var cell = inner.Width * 0.5f;
+        var next = selected;
+        if (Tab(frame, Rect.FromSize(inner.Min, new Vector2(cell, inner.Height)), PhoneLanguages.T("weather.forecast"),
+                selected == 0, night, ink, hush, forecast: true))
+        {
+            next = 0;
+        }
+
+        if (Tab(frame, Rect.FromSize(new Vector2(inner.Min.X + cell, inner.Min.Y), new Vector2(cell, inner.Height)),
+                PhoneLanguages.T("weather.control"), selected == 1, night, ink, hush, forecast: false))
+        {
+            next = 1;
+        }
+
+        return next;
+    }
+
+    private static void DrawBack(in AppletFrame frame, Rect row, Vector4 ink)
+    {
+        var hit = row.LeftSlice(frame.Units(28f));
+        var c = hit.Center;
+        var s = frame.Units(6f);
+        frame.Paint.Line(c + new Vector2(s * 0.4f, -s), c + new Vector2(-s * 0.6f, 0f), ink, frame.Units(1.8f));
+        frame.Paint.Line(c + new Vector2(-s * 0.6f, 0f), c + new Vector2(s * 0.4f, s), ink, frame.Units(1.8f));
+        if (frame.Input.ConsumeClick(hit))
+        {
+            frame.Router?.Back();
+        }
+    }
+
+    private static void DrawNearCard(in AppletFrame frame, Rect card, IReadOnlyList<WeatherWindow> hours, bool night,
+        Vector4 ink, Vector4 hush)
+    {
+        Glass(frame, card, night);
+        var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(10f)));
+        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(6f));
+        frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.near"),
+            new TextStyle(FontRole.CaptionStrong, hush));
+        var strip = stack.TakeRemaining();
+        var count = Math.Min(5, Math.Max(1, hours.Count));
+        var width = strip.Width / count;
+        var now = DateTimeOffset.UtcNow;
+        for (var index = 0; index < count; index++)
+        {
+            var cell = Rect.FromSize(new Vector2(strip.Min.X + width * index, strip.Min.Y),
+                new Vector2(width, strip.Height));
+            var window = index < hours.Count ? hours[index] : default;
+            var stamp = index == 0
+                ? PhoneLanguages.T("weather.now")
+                : Ago(window.Starts, now);
+            var on = index == 0;
+            if (on)
+            {
+                frame.Paint.Fill(cell.Inset(frame.Units(3f)), night
+                    ? new Vector4(1f, 1f, 1f, 0.10f)
+                    : new Vector4(0.12f, 0.18f, 0.28f, 0.08f), frame.Units(12f));
+            }
+
+            frame.Text.DrawIn(cell.TopSlice(frame.Units(14f)), stamp,
+                new TextStyle(FontRole.Caption, on ? ink : hush, TextAlign.Center, scale: 0.82f));
+            SkyChrome.Icon(frame, cell.Inset(new Edges(frame.Units(6f), frame.Units(16f), frame.Units(6f),
+                frame.Units(2f))), window.Name, window.IconId,
+                window.Starts == default ? default : EorzeaTime.FromUnix(window.Starts.ToUnixTimeSeconds()));
+        }
+    }
+
+    private static void DrawRunCard(in AppletFrame frame, Rect card, IReadOnlyList<WeatherWindow> runs,
+        EorzeaTime bells, bool night, Vector4 ink, Vector4 hush)
+    {
+        Glass(frame, card, night);
+        var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
+        var stack = new Stack(inner, StackAxis.Vertical, 0f);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("weather.forecast.list"),
+            new TextStyle(FontRole.CaptionStrong, hush));
+        var show = Math.Min(runs.Count, 5);
+        if (show == 0)
+        {
+            frame.Text.DrawIn(stack.Take(frame.Units(28f)), "—", new TextStyle(FontRole.Caption, hush));
+            return;
+        }
+
+        for (var index = 0; index < show; index++)
+        {
+            var run = runs[index];
+            var row = stack.Take(frame.Units(36f));
+            var when = index == 0
+                ? PhoneLanguages.T("weather.now")
+                : SkyChrome.ClockLabel(EorzeaTime.FromUnix(run.Starts.ToUnixTimeSeconds()).Hour) + ":00";
+            frame.Text.DrawIn(row.LeftSlice(frame.Units(58f)), when,
+                new TextStyle(FontRole.CaptionStrong, index == 0 ? ink : hush));
+            SkyChrome.Icon(frame,
+                Rect.FromSize(new Vector2(row.Min.X + frame.Units(58f), row.Min.Y + frame.Units(4f)),
+                    new Vector2(frame.Units(28f), row.Height - frame.Units(8f))), run.Name, run.IconId, bells);
+            frame.Text.DrawEllipsized(row.Inset(new Edges(frame.Units(92f), 0f, 0f, 0f)),
+                string.IsNullOrEmpty(run.Name) ? "—" : run.Name, new TextStyle(FontRole.Caption, ink));
+        }
+    }
+
+    private static void DrawTimeCard(in AppletFrame frame, Rect card, EorzeaTime bells, ISkyDesk sky, bool night,
+        Vector4 ink, Vector4 hush)
+    {
+        Glass(frame, card, night);
+        var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(10f)));
+        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(6f));
+        frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.time"),
+            new TextStyle(FontRole.CaptionStrong, hush));
+        var shown = sky.TimeLocked
+            ? new EorzeaTime(sky.LockedMinute / 60, sky.LockedMinute % 60)
+            : bells;
+        var clock = stack.Take(frame.Units(28f));
+        frame.Text.DrawIn(clock.LeftSlice(clock.Width * 0.5f), shown.Format(),
+            new TextStyle(FontRole.Title, ink));
+        frame.Text.DrawIn(clock.RightSlice(clock.Width * 0.5f),
+            sky.TimeLocked ? PhoneLanguages.T("weather.locked") : PhoneLanguages.T("weather.natural"),
+            new TextStyle(FontRole.Caption, hush, TextAlign.Right));
+        var track = stack.Take(frame.Units(28f));
+        DrawMinuteSlide(frame, track, bells, sky, night, ink);
+        var chips = stack.Take(frame.Units(32f));
+        var chipW = chips.Width / 4f;
+        Stamp(frame, Slice(chips, 0, chipW), PhoneLanguages.T("weather.dawn"), 6 * 60, sky, night, ink, hush);
+        Stamp(frame, Slice(chips, 1, chipW), PhoneLanguages.T("weather.noon"), 12 * 60, sky, night, ink, hush);
+        Stamp(frame, Slice(chips, 2, chipW), PhoneLanguages.T("weather.dusk"), 18 * 60, sky, night, ink, hush);
+        Stamp(frame, Slice(chips, 3, chipW), PhoneLanguages.T("weather.midnight"), 0, sky, night, ink, hush);
+    }
+
+    private static void DrawMinuteSlide(in AppletFrame frame, Rect track, EorzeaTime bells, ISkyDesk sky, bool night,
+        Vector4 ink)
+    {
+        var rail = new Rect(new Vector2(track.Min.X, track.Center.Y - frame.Units(2.2f)),
+            new Vector2(track.Max.X, track.Center.Y + frame.Units(2.2f)));
+        frame.Paint.Fill(rail, night ? new Vector4(1f, 1f, 1f, 0.20f) : new Vector4(0.12f, 0.16f, 0.22f, 0.22f),
+            rail.Height);
+        var minute = sky.TimeLocked ? sky.LockedMinute : bells.Hour * 60 + bells.Minute;
+        var t = Math.Clamp(minute / 1439f, 0f, 1f);
+        var knob = new Vector2(track.Min.X + track.Width * t, track.Center.Y);
+        frame.Paint.FillCircle(knob, frame.Units(8f), ink);
+        var hit = track.Inset(new Edges(0f, -frame.Units(8f)));
+        if (frame.Input.PressedInside(hit) || (frame.Input.IsHeld() && hit.Contains(frame.Input.Pointer)))
+        {
+            var next = (int)MathF.Round(Math.Clamp((frame.Input.Pointer.X - track.Min.X) / MathF.Max(1f, track.Width),
+                0f, 1f) * 1439f);
+            sky.TryLockTime(next);
+        }
+    }
+
+    private static void Stamp(in AppletFrame frame, Rect area, string label, int minute, ISkyDesk sky, bool night,
+        Vector4 ink, Vector4 hush)
+    {
+        var on = sky.TimeLocked && Near(sky.LockedMinute, minute);
+        var inner = area.Inset(new Edges(frame.Units(2f), 0f));
+        frame.Paint.Fill(inner, on
+            ? (night ? new Vector4(1f, 1f, 1f, 0.20f) : new Vector4(0.12f, 0.18f, 0.28f, 0.14f))
+            : (night ? new Vector4(1f, 1f, 1f, 0.06f) : new Vector4(0.12f, 0.16f, 0.22f, 0.06f)), frame.Units(10f));
+        frame.Text.DrawIn(inner, label, new TextStyle(FontRole.CaptionStrong, on ? ink : hush, TextAlign.Center));
+        if (frame.Input.PressedInside(inner))
+        {
+            sky.TryLockTime(minute);
+        }
+    }
+
+    private static bool Near(int locked, int stamp)
+    {
+        var delta = Math.Abs(locked - stamp);
+        return delta <= 8 || delta >= 1440 - 8;
+    }
+
+    private static float WeatherGridHeight(in AppletFrame frame, int count)
+    {
+        var rows = Math.Max(1, (int)MathF.Ceiling(count / 3f));
+        return frame.Units(18f) + rows * frame.Units(72f) + (rows - 1) * frame.Units(8f);
+    }
+
+    private static void DrawWeatherGrid(in AppletFrame frame, Rect area, IReadOnlyList<SkyChoice> choices,
+        ISkyDesk sky, bool night, Vector4 ink, Vector4 hush)
+    {
+        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.sky"),
+            new TextStyle(FontRole.CaptionStrong, hush));
+        var grid = stack.TakeRemaining();
+        var total = choices.Count + 1;
+        var cols = 3;
+        var rows = Math.Max(1, (int)MathF.Ceiling(total / (float)cols));
+        var gap = frame.Units(8f);
+        var cellW = (grid.Width - gap * (cols - 1)) / cols;
+        var cellH = (grid.Height - gap * (rows - 1)) / rows;
+        for (var index = 0; index < total; index++)
+        {
+            var col = index % cols;
+            var row = index / cols;
+            var cell = Rect.FromSize(
+                new Vector2(grid.Min.X + col * (cellW + gap), grid.Min.Y + row * (cellH + gap)),
+                new Vector2(cellW, cellH));
+            if (index == 0)
+            {
+                DrawSkyCell(frame, cell, 0, PhoneLanguages.T("weather.natural"), 0, !sky.WeatherLocked, sky, night,
+                    ink, hush);
+                continue;
+            }
+
+            var choice = choices[index - 1];
+            DrawSkyCell(frame, cell, choice.Id, choice.Name, choice.IconId,
+                sky.WeatherLocked && sky.LockedWeather == choice.Id, sky, night, ink, hush);
+        }
+    }
+
+    private static void DrawSkyCell(in AppletFrame frame, Rect area, byte id, string name, uint icon, bool on,
+        ISkyDesk sky, bool night, Vector4 ink, Vector4 hush)
+    {
+        Glass(frame, area, night);
+        if (on)
+        {
+            frame.Paint.Stroke(area, ink, frame.Units(1.8f), frame.Units(22f));
+        }
+
+        var iconBox = area.TopSlice(area.Height * 0.62f).Inset(frame.Units(4f));
+        if (id == 0)
+        {
+            SkyMarks.Draw(frame.Paint, iconBox, "natural", night);
+        }
+        else
+        {
+            SkyMarks.Draw(frame.Paint, iconBox, name, night: false);
+        }
+        frame.Text.DrawEllipsized(area.BottomSlice(frame.Units(18f)).Inset(new Edges(frame.Units(4f), 0f)), name,
+            new TextStyle(FontRole.Caption, on ? ink : hush, TextAlign.Center, scale: 0.82f));
+        if (frame.Input.ConsumeClick(area))
+        {
+            if (id == 0)
+            {
+                sky.UnlockWeather();
+            }
+            else
+            {
+                sky.TryLockWeather(id);
+            }
+        }
+    }
+
+    private static bool Tab(in AppletFrame frame, Rect area, string label, bool on, bool night, Vector4 ink,
+        Vector4 hush, bool forecast)
+    {
+        if (on)
+        {
+            frame.Paint.Fill(area.Inset(frame.Units(2f)),
+                night ? new Vector4(1f, 1f, 1f, 0.16f) : new Vector4(0.10f, 0.16f, 0.26f, 0.10f),
+                frame.Units(16f));
+        }
+
+        var mark = Rect.FromSize(new Vector2(area.Center.X - frame.Units(13f), area.Min.Y + frame.Units(4f)),
+            new Vector2(frame.Units(26f), frame.Units(22f)));
+        if (forecast)
+        {
+            SkyMarks.ForecastTab(frame.Paint, mark, on, night);
+        }
+        else
+        {
+            SkyMarks.ControlTab(frame.Paint, mark, on, night);
+        }
+
+        frame.Text.DrawIn(area.BottomSlice(frame.Units(16f)), label,
+            new TextStyle(FontRole.CaptionStrong, on ? ink : hush, TextAlign.Center));
+        return frame.Input.PressedInside(area);
+    }
+
+    private static Rect Slice(Rect area, int index, float width) =>
+        Rect.FromSize(new Vector2(area.Min.X + width * index, area.Min.Y), new Vector2(width, area.Height));
+
+    private static string Ago(DateTimeOffset starts, DateTimeOffset now)
+    {
+        var minutes = Math.Max(0, (int)Math.Round((starts - now).TotalMinutes));
+        return minutes.ToString(CultureInfo.InvariantCulture) + "m";
     }
 
     public static Vector4 Ink(bool night) =>

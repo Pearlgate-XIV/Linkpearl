@@ -62,6 +62,19 @@
     <ProjectReference Include="..\Linkpearl.Platform.Ffxiv\Linkpearl.Platform.Ffxiv.csproj" />
     <ProjectReference Include="..\Linkpearl.Applets.Core\Linkpearl.Applets.Core.csproj" />
     <ProjectReference Include="..\Linkpearl.Applets.Life\Linkpearl.Applets.Life.csproj" />
+    <ProjectReference Include="..\Linkpearl.EchoMix\Linkpearl.EchoMix.csproj" />
+    <ProjectReference Include="..\..\vendor\EchoMix\EchoMix.AudioHost\EchoMix.AudioHost.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
   </ItemGroup>
+
+  <Target Name="CopyEchoMixAudioHost" AfterTargets="Build">
+    <ItemGroup>
+      <EchoMixHostFiles Include="$(MSBuildThisFileDirectory)..\..\vendor\EchoMix\EchoMix.AudioHost\bin\$(Configuration)\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(EchoMixHostFiles)" DestinationFolder="$(OutDir)AudioHost\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

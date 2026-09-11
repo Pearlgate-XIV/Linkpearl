@@ -8,7 +8,12 @@
     <Project Path="src/Linkpearl.Destinations/Linkpearl.Destinations.csproj" />
     <Project Path="src/Linkpearl.Device/Linkpearl.Device.csproj" />
     <Project Path="src/Linkpearl.Host/Linkpearl.Host.csproj" />
+    <Project Path="src/Linkpearl.EchoMix/Linkpearl.EchoMix.csproj" />
     <Project Path="src/Linkpearl.Net/Linkpearl.Net.csproj" />
     <Project Path="src/Linkpearl.Platform.Ffxiv/Linkpearl.Platform.Ffxiv.csproj" />
+  </Folder>
+  <Folder Name="/vendor/">
+    <Project Path="vendor/EchoMix/EchoMix.Shared/EchoMix.Shared.csproj" />
+    <Project Path="vendor/EchoMix/EchoMix.AudioHost/EchoMix.AudioHost.csproj" />
   </Folder>
 </Solution>

@@ -19,7 +19,7 @@ namespace Linkpearl.Destinations.Profile;
 public sealed class ProfileChrome
 {
     private const float TitleScale = 1f;
-    public const float SheetHeightUnits = 184f;
+    public const float SheetHeightUnits = 208f;
 
     private enum Sheet : byte
     {
@@ -29,6 +29,7 @@ public sealed class ProfileChrome
         PickBadge = 3,
         PlaceBanner = 4,
         PickZone = 5,
+        PickStill = 6,
     }
 
     private readonly BadgeBook book;
@@ -50,7 +51,9 @@ public sealed class ProfileChrome
     private readonly InkPicker inkPicker = new();
     private bool portraitWait;
     private bool bannerWait;
+    private bool pickBanner;
     private float zoneScroll;
+    private float stillScroll;
 
     private enum ColorWell : byte
     {
@@ -218,22 +221,25 @@ public sealed class ProfileChrome
         var ink = frame.Theme.Palette.Ink;
         var patron = GlassName.IsPatron(book, pearl.Current, display, development);
         titleClock += frame.DeltaSeconds;
-        var showTitle = sheet != Sheet.Edit;
-        var title = showTitle ? GlassName.Honorific(display) : string.Empty;
-        var nameH = frame.Text.LineHeight(FontRole.Display);
-        var titleH = title.Length > 0 ? frame.Text.LineHeight(FontRole.CaptionStrong) * TitleScale : 0f;
+        var title = GlassName.Honorific(display);
+        var glowPad = frame.Units(6f);
+        var nameH = frame.Text.LineHeight(FontRole.Display) + glowPad;
+        var titleH = title.Length > 0
+            ? frame.Text.LineHeight(FontRole.CaptionStrong) * TitleScale + glowPad
+            : 0f;
         var titleGap = titleH > 0f ? frame.Units(2f) : 0f;
         var rowH = MathF.Max(frame.Units(16f), frame.Text.LineHeight(FontRole.CaptionStrong) + frame.Units(4f));
         if (titleH > 0f)
         {
-            DrawHonorTitle(frame, Rect.FromSize(area.Min, new Vector2(area.Width, titleH)), title);
+            NameMark.Draw(frame, Rect.FromSize(area.Min, new Vector2(area.Width, titleH)), title,
+                MarkLook.ForTitle(display), FontRole.CaptionStrong, titleClock, TitleScale);
         }
 
         var nameRow = Rect.FromSize(new Vector2(area.Min.X, area.Min.Y + titleH + titleGap),
             new Vector2(area.Width, nameH));
         if (patron && (display.NameGlow || display.NameInkCustom))
         {
-            DrawHonorMark(frame, nameRow, name, MarkLook.ForName(display, ink), FontRole.Display);
+            NameMark.Draw(frame, nameRow, name, MarkLook.ForName(display, ink), FontRole.Display, titleClock);
         }
         else
         {
@@ -328,6 +334,11 @@ public sealed class ProfileChrome
         if (sheet == Sheet.PickZone)
         {
             return DrawPickZone(frame);
+        }
+
+        if (sheet == Sheet.PickStill)
+        {
+            return DrawPickStill(frame);
         }
 
         return DrawEditSheet(frame);
@@ -440,7 +451,7 @@ public sealed class ProfileChrome
         DrawNotice(frame, stack.Take(frame.Units(40f)),
             synced
                 ? "Copied to Music and VYBE. Each app can still be edited on its own."
-                : "Copies name, photo, and banner to Music and VYBE. Time zone is shared from this profile.");
+                : "Copies name, title, photo, and banner to Music and VYBE. Time zone is shared from this profile.");
         DrawNameControls(frame, ref stack, snapshot);
         DrawGateRows(frame, ref stack, snapshot);
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -493,6 +504,15 @@ public sealed class ProfileChrome
         DrawChoice(frame, stack.Take(frame.Units(40f)), "First name", display.NameStyle == NameStyle.Given,
             () => display.NameStyle = NameStyle.Given);
 
+        var honorRow = stack.Take(frame.Units(52f));
+        CardChrome.DrawGold(frame, honorRow);
+        var honorPad = honorRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
+        frame.Text.DrawIn(honorPad.TopSlice(frame.Units(14f)), "TITLE",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        display.OwnTitle = frame.TextField.Draw("profile-own-title",
+            honorPad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
+            display.OwnTitle, "Shown above your name", ShownName.OwnTitleLimit, out _);
+
         if (patron)
         {
             var nameRow = stack.Take(frame.Units(52f));
@@ -527,7 +547,7 @@ public sealed class ProfileChrome
             return;
         }
 
-        DrawColorDoor(frame, ref stack, "Name text", display.NameInkR, display.NameInkG, display.NameInkB,
+        DrawColorDoor(frame, ref stack, "Name Text color", display.NameInkR, display.NameInkG, display.NameInkB,
             ColorWell.NameInk, display.SetNameInkColor);
         DrawSelect(frame, ref stack, "Glow type",
             ["Static", "Pulse", "Wave"],
@@ -584,43 +604,6 @@ public sealed class ProfileChrome
         if (frame.Input.ConsumeClick(row))
         {
             tap();
-        }
-    }
-
-    private void DrawHonorTitle(in AppletFrame frame, Rect area, string title) =>
-        DrawHonorMark(frame, area, title, MarkLook.ForTitle(display), FontRole.CaptionStrong, TitleScale);
-
-    private void DrawHonorMark(in AppletFrame frame, Rect area, string text, in MarkLook look, FontRole role,
-        float markScale = 1f)
-    {
-        var unit = frame.Units(1f);
-        var width = 0f;
-        var count = 0;
-        foreach (var rune in text.EnumerateRunes())
-        {
-            width += frame.Text.Measure(rune.ToString(), role).X * markScale;
-            count++;
-        }
-
-        if (width < 1f || count == 0)
-        {
-            return;
-        }
-
-        var scale = markScale * MathF.Min(1f, area.Width / width);
-        var x = area.Min.X;
-        var index = 0;
-        foreach (var rune in text.EnumerateRunes())
-        {
-            var glyph = rune.ToString();
-            var size = frame.Text.Measure(glyph, role) * scale;
-            var cell = Rect.FromSize(new Vector2(x, area.Min.Y), new Vector2(size.X, area.Height));
-            var fill = TitleFx.Fill(look, titleClock, index, count) with { W = 1f };
-            var glow = TitleFx.Glow(look, titleClock, index, count);
-            frame.Text.DrawFitted(cell, glyph,
-                new TextStyle(role, fill, TextAlign.Left, 1f, markScale, glow, TitleFx.Spread(look, unit)));
-            x += size.X;
-            index++;
         }
     }
 
@@ -764,6 +747,129 @@ public sealed class ProfileChrome
 
         frame.Paint.PopClip();
         return frame.Content.Height;
+    }
+
+    private float DrawPickStill(in AppletFrame frame)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        var inset = frame.Units(14f);
+        var content = frame.Content.Inset(inset);
+        var head = content.TopSlice(frame.Units(28f));
+        frame.Text.DrawIn(head.LeftSlice(frame.Units(28f)), "‹",
+            new TextStyle(FontRole.Title, gold, TextAlign.Center));
+        frame.Text.DrawIn(head.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)),
+            pickBanner ? "Choose banner" : "Choose photo",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
+        if (frame.Input.ConsumeClick(head.LeftSlice(frame.Units(90f))))
+        {
+            DismissPicker();
+            return frame.Content.Height;
+        }
+
+        var sources = content.Inset(new Edges(0f, frame.Units(36f), 0f, 0f)).TopSlice(frame.Units(44f));
+        var gap = frame.Units(8f);
+        var half = (sources.Width - gap) * 0.5f;
+        var gallery = sources.LeftSlice(half);
+        var desktop = sources.RightSlice(half);
+        DrawSourceCard(frame, gallery, "Gallery", "Camera photos");
+        DrawSourceCard(frame, desktop, "This PC", "Browse files");
+        if (frame.Input.ConsumeClick(desktop))
+        {
+            files.BeginImagePick();
+            if (pickBanner)
+            {
+                bannerWait = true;
+            }
+            else
+            {
+                portraitWait = true;
+            }
+
+            return frame.Content.Height;
+        }
+
+        var list = content.Inset(new Edges(0f, frame.Units(90f), 0f, 0f));
+        frame.Text.DrawIn(list.TopSlice(frame.Units(16f)), "FROM GALLERY",
+            new TextStyle(FontRole.CaptionStrong, gold));
+        var grid = list.Inset(new Edges(0f, frame.Units(20f), 0f, 0f));
+        var shots = GalleryFiles.List(paths);
+        if (shots.Count == 0)
+        {
+            frame.Text.DrawWrapped(grid.TopSlice(frame.Units(48f)),
+                "No photos in Gallery yet. Take one in Camera, or pick from this PC.",
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+            return frame.Content.Height;
+        }
+
+        var cellGap = frame.Units(6f);
+        var cell = (grid.Width - cellGap * 2f) / 3f;
+        var rows = (shots.Count + 2) / 3;
+        var contentH = MathF.Max(grid.Height + 8f, rows * (cell + cellGap));
+        ScrollSlider.Apply(frame, grid, ref stillScroll, contentH);
+        frame.Paint.PushClip(grid);
+        for (var index = 0; index < shots.Count; index++)
+        {
+            var col = index % 3;
+            var row = index / 3;
+            var shot = Rect.FromSize(
+                new Vector2(grid.Min.X + (cell + cellGap) * col, grid.Min.Y - stillScroll + row * (cell + cellGap)),
+                new Vector2(cell, cell));
+            DrawGalleryStill(frame, shot, shots[index].Path);
+            if (frame.Input.ConsumeClick(shot))
+            {
+                TakeStill(shots[index].Path);
+                frame.Paint.PopClip();
+                return frame.Content.Height;
+            }
+        }
+
+        frame.Paint.PopClip();
+        return frame.Content.Height;
+    }
+
+    private static void DrawSourceCard(in AppletFrame frame, Rect area, string title, string line)
+    {
+        CardChrome.DrawGold(frame, area);
+        var inner = area.Inset(new Edges(frame.Units(10f), frame.Units(6f)));
+        frame.Text.DrawEllipsized(inner.TopSlice(frame.Units(18f)), title,
+            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawEllipsized(inner.BottomSlice(frame.Units(14f)), line,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private static void DrawGalleryStill(in AppletFrame frame, Rect area, string path)
+    {
+        CardChrome.DrawGold(frame, area);
+        var texture = frame.Textures.FromFile(path);
+        if (texture is not { IsReady: true })
+        {
+            frame.Paint.Fill(area.Inset(frame.Units(2f)), frame.Theme.Palette.SurfaceRaised, frame.Units(8f));
+            return;
+        }
+
+        var dest = area.Inset(frame.Units(2f));
+        var uv = CoverFit.Uv(texture.Size, dest.Size);
+        frame.Paint.ImageRounded(texture, dest, uv.Min, uv.Max, Vector4.One, frame.Units(8f));
+    }
+
+    private void TakeStill(string sourcePath)
+    {
+        if (pickBanner)
+        {
+            if (BannerFiles.TryImport(paths, sourcePath, out var fileName))
+            {
+                ApplyBanner(fileName);
+            }
+
+            return;
+        }
+
+        if (PortraitFiles.TryImport(paths, sourcePath, out var name))
+        {
+            book.SetPortrait(name);
+            pearl.SetAvatar(PortraitFiles.Absolute(paths, name));
+            sheet = Sheet.PlacePortrait;
+        }
     }
 
     private void DrawZoneChoice(in AppletFrame frame, Rect row, string id, string city, string place)
@@ -1215,8 +1321,10 @@ public sealed class ProfileChrome
 
     private void PickPortrait()
     {
-        files.BeginImagePick();
-        portraitWait = true;
+        pickBanner = false;
+        stillScroll = 0f;
+        returnToEdit = sheet == Sheet.Edit || sheet == Sheet.PlacePortrait || returnToEdit;
+        sheet = Sheet.PickStill;
     }
 
     private void FinishPortraitPick()
@@ -1242,8 +1350,10 @@ public sealed class ProfileChrome
 
     private void PickBanner()
     {
-        files.BeginImagePick();
-        bannerWait = true;
+        pickBanner = true;
+        stillScroll = 0f;
+        returnToEdit = sheet == Sheet.Edit || sheet == Sheet.PlaceBanner || returnToEdit;
+        sheet = Sheet.PickStill;
     }
 
     private void FinishBannerPick()

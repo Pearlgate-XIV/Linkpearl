@@ -1,5 +1,6 @@
 using System.Linq;
 using Linkpearl.Applets;
+using Linkpearl.Applets.Life.Venues;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Feedback;
@@ -16,7 +17,7 @@ using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Music;
 
-public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStationMarks
+public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStationMarks, IEchoMixStation
 {
     public static readonly AppletManifest Manifest = new()
     {
@@ -49,6 +50,9 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private readonly HostEnvironment environment;
     private readonly INoticeTray notices;
     private readonly IClock clock;
+    private readonly IEchoMixBooth booth;
+    private readonly IStreamDesk streams;
+    private readonly ILifestream lifestream;
     private readonly HashSet<string> liveSeen = new(StringComparer.OrdinalIgnoreCase);
     private bool liveSeeded;
     private readonly MusicState state;
@@ -78,7 +82,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         IPublicRadio publicRadio, ICommunityRadio community, IPearlHub pearl, IFilePicker files, BadgeBook badges,
         IBroadcastSense sense, IBroadcastPush push, IAudioPorts ports, IFeedbackDesk desk,
         HandsetProfileDesk profiles, HostEnvironment environment, INoticeTray notices, IClock clock,
-        IFrameLoop frames)
+        IFrameLoop frames, IEchoMixBooth booth, IStreamDesk streams, ILifestream lifestream)
     {
         this.game = game;
         this.paths = paths;
@@ -96,6 +100,9 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         this.environment = environment;
         this.notices = notices;
         this.clock = clock;
+        this.booth = booth;
+        this.streams = streams;
+        this.lifestream = lifestream;
         state = MusicState.Load(paths, game.Character.Name);
         book = MusicBook.Load(paths);
         state.Sit(book);
@@ -129,6 +136,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
 
         community.Refresh();
+        streams.Refresh();
         frames.Tick += OnFrame;
     }
 
@@ -233,7 +241,11 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             state.DisplayName = shown;
         }
 
-        state.Honorific = ShownName.ClampTitle(honorific).Trim();
+        var title = ShownName.ClampTitle(honorific).Trim();
+        if (title.Length > 0)
+        {
+            state.Honorific = title;
+        }
         var face = HandsetLook.CopyPortrait(paths, state.ProfileFacePath, badges, "music-profile-face");
         state.ProfileFacePath = face.Path;
         state.FaceZoom = face.Zoom;
@@ -263,6 +275,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         publicRadio.Ensure(state.Genre);
         WarmStations();
         community.Refresh();
+        streams.Refresh();
         if (!state.HasAccount)
         {
             state.Page = state.OnAuthSheet ? state.Page : MusicPage.Auth;
@@ -323,6 +336,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         {
             lastCommunityRefresh = Environment.TickCount64;
             community.Refresh();
+            streams.Refresh();
         }
 
         WatchFollowedLive();
@@ -331,8 +345,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private void WatchFollowedLive()
     {
         var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var rows = community.Live;
-        for (var index = 0; index < rows.Count; index++)
+        var rows = MergedLive();
+        for (var index = 0; index < rows.Length; index++)
         {
             var station = rows[index];
             if (!station.Live)
@@ -572,6 +586,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             {
                 lastCommunityRefresh = Environment.TickCount64;
                 community.Refresh();
+                streams.Refresh();
             }
         }
         catch (Exception)
@@ -737,12 +752,30 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
             if (livePicks.Length == 0)
             {
-                DrawHint(frame, ref stack, "When DJs go live on Pearlgate, their stations land here.");
+                DrawHint(frame, ref stack, "When DJs go live on a Linkpearl broadcast, their stations land here.");
             }
             else
             {
                 var liveCard = area.Width * 0.42f;
                 DrawFollowShelf(frame, stack.Take(liveCard + frame.Units(28f)), livePicks, compact: false);
+            }
+
+            var twitchPicks = RecommendedTwitch();
+            if (MusicChrome.Section(frame, stack.Take(frame.Units(24f)), "Recommended Twitch DJs"))
+            {
+                state.FeedPane = MusicFeedPane.Twitch;
+                OpenTab(MusicTab.Feed);
+                return;
+            }
+
+            if (twitchPicks.Length == 0)
+            {
+                DrawHint(frame, ref stack, "Live Twitch DJs from Rolladeck land here.");
+            }
+            else
+            {
+                var twitchCard = area.Width * 0.42f;
+                DrawFollowShelf(frame, stack.Take(twitchCard + frame.Units(28f)), twitchPicks, compact: false);
             }
 
             var more = MoreLikeStations();
@@ -885,9 +918,10 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             var hearH = frame.Units(18f);
             var hear = Rect.FromSize(
                 new Vector2(art.Min.X + frame.Units(4f), art.Max.Y - frame.Units(4f) - hearH),
-                new Vector2(MathF.Min(art.Width - frame.Units(8f), MusicChrome.ListenerWidth(frame, hearN, true)),
+                new Vector2(MathF.Min(art.Width - frame.Units(8f),
+                    StationAudienceWidth(frame, station with { Listeners = hearN }, true)),
                     hearH));
-            MusicChrome.ListenerCount(frame, hear, hearN, compact: true);
+            DrawStationAudience(frame, hear, station with { Listeners = hearN }, compact: true);
             var heartW = frame.Units(36f) * 0.95f;
             var heartH = frame.Units(28f) * 0.95f;
             var heart = Rect.FromSize(
@@ -910,46 +944,6 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             {
                 OpenStation(station);
             }
-        }
-    }
-
-    private void DrawFeedStationCard(in AppletFrame frame, Rect area, PublicStation station)
-    {
-        var head = area.TopSlice(frame.Units(18f));
-        frame.Text.DrawEllipsized(head.Inset(new Edges(0f, 0f, frame.Units(28f), 0f)),
-            station.Place + " · station",
-            new TextStyle(FontRole.Caption, MusicChrome.Mute));
-        var card = area.Inset(new Edges(0f, frame.Units(22f), 0f, 0f));
-        DrawStationArt(frame, card, station.ArtUrl, station.Id, station.Title);
-        var rail = card.RightSlice(frame.Units(44f)).Inset(new Edges(0f, frame.Units(18f), frame.Units(8f),
-            frame.Units(56f)));
-        var heart = rail.TopSlice(frame.Units(42f));
-        DrawStationLike(frame, heart, station.Id);
-        var copy = card.BottomSlice(frame.Units(48f)).Inset(new Edges(frame.Units(12f), 0f, frame.Units(56f),
-            frame.Units(8f)));
-        frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(18f)),
-            station.Title + (station.Bitrate > 0 ? " · " + station.Bitrate + "k" : string.Empty),
-            new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
-        frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), station.Place,
-            new TextStyle(FontRole.Caption, MusicChrome.Mute));
-        var hearN = ShownListeners(station.Listeners,
-            string.Equals(audio.Now.Id, station.Id, StringComparison.OrdinalIgnoreCase));
-        MusicChrome.ListenerCount(frame,
-            card.TopSlice(frame.Units(22f)).RightSlice(MathF.Min(card.Width * 0.5f,
-                MusicChrome.ListenerWidth(frame, hearN, true))).Inset(new Edges(0f, frame.Units(8f), frame.Units(8f), 0f)),
-            hearN, compact: true);
-        var play = card.BottomSlice(frame.Units(48f)).RightSlice(frame.Units(48f)).Inset(frame.Units(4f));
-        frame.Paint.FillCircle(play.Center, frame.Units(16f), new Vector4(1f, 1f, 1f, 0.88f));
-        frame.Text.DrawIn(play, "▶", new TextStyle(FontRole.CaptionStrong, MusicChrome.Ground, TextAlign.Center));
-        if (TapStationLike(frame, heart, station.Id))
-        {
-            return;
-        }
-
-        if (frame.Input.ConsumeClick(play) || frame.Input.ConsumeClick(card))
-        {
-            TunePublic(station);
-            state.Open(MusicPage.Player);
         }
     }
 
@@ -986,10 +980,11 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         var hearN = ShownListeners(station.Listeners, station.Live);
-        MusicChrome.ListenerCount(frame,
-            card.TopSlice(frame.Units(22f)).RightSlice(MathF.Min(card.Width * 0.5f,
-                MusicChrome.ListenerWidth(frame, hearN, false))).Inset(new Edges(0f, frame.Units(8f), frame.Units(8f), 0f)),
-            hearN);
+        var shown = station with { Listeners = hearN };
+        DrawStationAudience(frame,
+            card.TopSlice(frame.Units(22f)).RightSlice(MathF.Min(card.Width * 0.72f,
+                StationAudienceWidth(frame, shown, false))).Inset(new Edges(0f, frame.Units(8f), frame.Units(8f), 0f)),
+            shown, compact: false);
         var play = card.BottomSlice(frame.Units(48f)).RightSlice(frame.Units(48f)).Inset(frame.Units(4f));
         frame.Paint.FillCircle(play.Center, frame.Units(16f), new Vector4(1f, 1f, 1f, 0.88f));
         frame.Text.DrawIn(play, "▶", new TextStyle(FontRole.CaptionStrong, MusicChrome.Ground, TextAlign.Center));
@@ -1087,6 +1082,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private PublicStation[] moreLike = [];
     private string recommendedLiveKey = string.Empty;
     private CommunityStation[] recommendedLive = [];
+    private string recommendedTwitchKey = string.Empty;
+    private CommunityStation[] recommendedTwitch = [];
 
     private CommunityStation[] SavedLiveStations()
     {
@@ -1178,25 +1175,32 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         return rows;
     }
 
-    private CommunityStation[] RecommendedLive()
+    private CommunityStation[] RecommendedLive() =>
+        PickRecommended(BroadcastLive(), ref recommendedLiveKey, ref recommendedLive);
+
+    private CommunityStation[] RecommendedTwitch() =>
+        PickRecommended(TwitchBoard(), ref recommendedTwitchKey, ref recommendedTwitch);
+
+    private CommunityStation[] PickRecommended(IReadOnlyList<CommunityStation> source, ref string cachedKey,
+        ref CommunityStation[] cached)
     {
-        var pool = community.Live
+        var pool = source
             .Where(row => row.Id.Length > 0 && !OwnStation(row))
             .GroupBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();
         var key = string.Join(",", pool.Select(static row => row.Id).OrderBy(static id => id, StringComparer.Ordinal));
-        if (string.Equals(key, recommendedLiveKey, StringComparison.Ordinal) && recommendedLive.Length > 0)
+        if (string.Equals(key, cachedKey, StringComparison.Ordinal) && cached.Length > 0)
         {
-            return recommendedLive;
+            return cached;
         }
 
-        recommendedLiveKey = key;
+        cachedKey = key;
         var pick = Math.Min(3, pool.Length);
         if (pick == 0)
         {
-            recommendedLive = [];
-            return recommendedLive;
+            cached = [];
+            return cached;
         }
 
         var order = Enumerable.Range(0, pool.Length).ToArray();
@@ -1207,13 +1211,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             (order[index], order[swap]) = (order[swap], order[index]);
         }
 
-        recommendedLive = new CommunityStation[pick];
+        cached = new CommunityStation[pick];
         for (var index = 0; index < pick; index++)
         {
-            recommendedLive[index] = pool[order[index]];
+            cached[index] = pool[order[index]];
         }
 
-        return recommendedLive;
+        return cached;
     }
 
     private IReadOnlyList<PublicStation> MoreLikeStations()
@@ -1326,6 +1330,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         else if (tab == MusicTab.Feed)
         {
             community.Refresh();
+            streams.Refresh();
         }
         else if (tab is MusicTab.Search or MusicTab.Home or MusicTab.Library)
         {
@@ -1522,10 +1527,11 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         {
             var panes = stack.Take(frame.Units(32f));
             var gap = frame.Units(4f);
-            var cell = (panes.Width - gap * 2f) / 3f;
+            var cell = (panes.Width - gap * 3f) / 4f;
             var radio = Rect.FromSize(panes.Min, new Vector2(cell, panes.Height));
             var following = Rect.FromSize(new Vector2(radio.Max.X + gap, panes.Min.Y), new Vector2(cell, panes.Height));
             var live = Rect.FromSize(new Vector2(following.Max.X + gap, panes.Min.Y), new Vector2(cell, panes.Height));
+            var twitch = Rect.FromSize(new Vector2(live.Max.X + gap, panes.Min.Y), new Vector2(cell, panes.Height));
             if (MusicChrome.SoftPill(frame, radio, "Radio", state.FeedPane == MusicFeedPane.Radio))
             {
                 state.FeedPane = MusicFeedPane.Radio;
@@ -1544,9 +1550,19 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
                 state.Scroll = 0f;
             }
 
+            if (MusicChrome.SoftPill(frame, twitch, "Twitch DJs", state.FeedPane == MusicFeedPane.Twitch))
+            {
+                state.FeedPane = MusicFeedPane.Twitch;
+                state.Scroll = 0f;
+            }
+
             if (state.FeedPane == MusicFeedPane.Live)
             {
                 DrawFeedLive(frame, ref stack);
+            }
+            else if (state.FeedPane == MusicFeedPane.Twitch)
+            {
+                DrawFeedTwitch(frame, ref stack);
             }
             else if (state.FeedPane == MusicFeedPane.Following)
             {
@@ -1565,33 +1581,118 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private void DrawFeedRadio(in AppletFrame frame, ref Stack stack)
     {
+        publicRadio.Ensure(state.Genre);
         var stations = publicRadio.Stations(state.Genre);
+        var genre = state.Genre.Length > 0 ? state.Genre : "Radio";
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)),
+            stations.Count == 0
+                ? genre
+                : genre + "  ·  " + (stations.Count == 1 ? "1 station" : stations.Count + " stations"),
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
         if (stations.Count == 0)
         {
             DrawHint(frame, ref stack, publicRadio.Busy ? "Finding stations…" : "No stations yet. Try Search.");
             return;
         }
 
-        var take = Math.Min(stations.Count, 6);
+        WarmStationArt(stations);
+        var take = Math.Min(stations.Count, 24);
         for (var index = 0; index < take; index++)
         {
-            DrawFeedStationCard(frame, stack.Take(frame.Units(220f)), stations[index]);
+            DrawRadioRow(frame, stack.Take(frame.Units(76f)), stations[index]);
+        }
+    }
+
+    private void DrawRadioRow(in AppletFrame frame, Rect area, PublicStation station)
+    {
+        var current = string.Equals(audio.Now.Id, station.Id, StringComparison.OrdinalIgnoreCase);
+        var playing = current && audio.Phase is HandsetAudioPhase.Playing or HandsetAudioPhase.Buffering;
+        MusicChrome.Plate(frame, area, frame.Units(16f));
+        var inset = area.Inset(frame.Units(10f));
+        var art = CoverFit.InscribedSquare(inset.LeftSlice(inset.Height));
+        DrawStationArt(frame, art, station.ArtUrl, station.Id, station.Title);
+        var like = inset.RightSlice(frame.Units(28f)).TopSlice(frame.Units(24f));
+        var hearN = ShownListeners(station.Listeners, current);
+        var hear = inset.RightSlice(MathF.Min(inset.Width * 0.42f, MusicChrome.ListenerWidth(frame, hearN, true)))
+            .BottomSlice(frame.Units(18f));
+        var body = inset.Inset(new Edges(art.Width + frame.Units(10f), 0f, like.Width + frame.Units(8f), 0f));
+        frame.Text.DrawEllipsized(body.TopSlice(frame.Units(18f)), station.Title,
+            new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
+        frame.Text.DrawEllipsized(body.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(18f))),
+            station.Place + (station.Bitrate > 0 ? "  ·  " + station.Bitrate + "k" : string.Empty) +
+            (playing ? "  ·  Playing" : current ? "  ·  Paused" : string.Empty),
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(16f)),
+            station.Genre.Length > 0 ? station.Genre : string.Empty,
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        MusicChrome.ListenerCount(frame, hear, hearN, compact: true);
+        var liked = community.StationLiked(station.Id);
+        frame.Text.DrawIn(like, liked ? "♥" : "♡",
+            new TextStyle(FontRole.BodyStrong, liked ? MusicChrome.LikePink : MusicChrome.Mute, TextAlign.Center));
+        if (TapStationLike(frame, like, station.Id))
+        {
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(area))
+        {
+            TunePublic(station);
+            state.Open(MusicPage.Player);
         }
     }
 
     private void DrawFeedLive(in AppletFrame frame, ref Stack stack)
     {
-        var live = community.Live;
-        if (live.Count == 0)
+        var board = BroadcastBoard();
+        var liveN = 0;
+        for (var index = 0; index < board.Length; index++)
         {
-            DrawHint(frame, ref stack, "No one is live on Pearlgate right now.");
+            if (board[index].Live)
+            {
+                liveN++;
+            }
+        }
+
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)),
+            board.Length == 0
+                ? "No stations yet"
+                : board.Length == 1
+                    ? (liveN == 1 ? "1 station · live" : "1 station")
+                    : board.Length + " stations" + (liveN > 0 ? "  ·  " + liveN + " live" : string.Empty),
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        if (board.Length == 0)
+        {
+            DrawHint(frame, ref stack, "Create a station and it stays listed here, live or off air.");
             return;
         }
 
-        for (var index = 0; index < live.Count; index++)
+        for (var index = 0; index < board.Length; index++)
         {
-            DrawFeedLiveCard(frame, stack.Take(frame.Units(220f)), live[index]);
+            DrawBroadcastRow(frame, stack.Take(frame.Units(84f)), board[index]);
         }
+    }
+
+    private void DrawFeedTwitch(in AppletFrame frame, ref Stack stack)
+    {
+        var live = TwitchBoard();
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)),
+            live.Length == 0
+                ? "No one live · Rolladeck"
+                : (live.Length == 1 ? "1 live DJ" : live.Length + " live DJs") + " · Rolladeck",
+            new TextStyle(FontRole.Caption, MusicChrome.Mute));
+        if (live.Length == 0)
+        {
+            DrawHint(frame, ref stack, "When a community DJ goes live on Twitch, they land here.");
+        }
+        else
+        {
+            for (var index = 0; index < live.Length; index++)
+            {
+                DrawTwitchDjRow(frame, stack.Take(frame.Units(84f)), live[index]);
+            }
+        }
+
+        DrawRolladeckCredit(frame, stack.Take(frame.Units(22f)));
     }
 
     private void DrawFeedFollowing(in AppletFrame frame, ref Stack stack)
@@ -1646,17 +1747,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             byId[id] = station with { Id = id };
         }
 
-        foreach (var row in community.Live)
-        {
-            Put(row);
-        }
-
-        foreach (var row in community.Directory)
-        {
-            Put(row);
-        }
-
-        foreach (var row in community.Mine)
+        foreach (var row in MergedBoard())
         {
             Put(row);
         }
@@ -1685,25 +1776,10 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             return EmptyCommunity();
         }
 
-        foreach (var row in community.Live)
+        foreach (var row in MergedBoard())
         {
-            if (string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase))
-            {
-                return row;
-            }
-        }
-
-        foreach (var row in community.Directory)
-        {
-            if (string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase))
-            {
-                return row;
-            }
-        }
-
-        foreach (var row in community.Mine)
-        {
-            if (string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(row.Id, bare, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(row.TwitchLogin, StreamChrome.LoginOf(bare), StringComparison.OrdinalIgnoreCase))
             {
                 return row;
             }
@@ -1773,6 +1849,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         state.ToggleFollowStation(snap);
         state.Save(paths);
     }
+
+    public bool HasAccount => state.HasAccount;
 
     public bool Liked(string id) => community.StationLiked(id);
 
@@ -2041,8 +2119,19 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             var query = state.Search.Trim();
             if (query.Length > 0)
             {
+                var liveHits = SearchLiveHits(query);
                 var hits = SearchHits(query);
                 WarmStationArt(hits);
+                if (liveHits.Length > 0)
+                {
+                    MusicChrome.Kicker(frame, stack.Take(frame.Units(18f)),
+                        liveHits.Length == 1 ? "1 live station" : liveHits.Length + " live stations");
+                    for (var index = 0; index < liveHits.Length; index++)
+                    {
+                        DrawCommunityRow(frame, ref stack, liveHits[index]);
+                    }
+                }
+
                 MusicChrome.Kicker(frame, stack.Take(frame.Units(18f)), hits.Count + " stations");
                 DrawPublicRows(frame, ref stack, hits, Math.Min(hits.Count, 16));
             }
@@ -2065,11 +2154,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private void DrawDiscoverLive(in AppletFrame frame, Rect area)
     {
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        var board = community.Directory;
+        var board = MergedBoard();
         var live = board.Where(static row => row.Live).ToArray();
         var dark = board.Where(static row => !row.Live).ToArray();
         var status = stack.Take(frame.Units(16f));
-        frame.Text.DrawIn(status.LeftSlice(status.Width * 0.62f), "Community stations. Offline until a DJ goes live.",
+        frame.Text.DrawIn(status.LeftSlice(status.Width * 0.62f),
+            "Icecast and Twitch. Listening and watching stay separate.",
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         frame.Text.DrawIn(status.RightSlice(status.Width * 0.38f), live.Length + " on air",
             new TextStyle(FontRole.Caption, MusicChrome.Mute, TextAlign.Right));
@@ -2114,7 +2204,9 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             frame.Text.DrawIn(copy.Inset(new Edges(0f, frame.Units(26f), 0f, 0f)),
                 community.Notice.Length > 0
                     ? community.Notice
-                    : "Create your station, then Go live. Everyone on LIVE can tune it.",
+                    : streams.Notice.Length > 0
+                        ? streams.Notice
+                        : "Create your station, then Go live. Community Twitch stations from Rolladeck land here too.",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             if (frame.Input.ConsumeClick(empty) && state.StationName.Length == 0)
             {
@@ -2154,13 +2246,15 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             station.Name.Length > 0 ? station.Name : "Station",
             new TextStyle(FontRole.Title, MusicChrome.Ink));
         var hearN = ShownListeners(station.Listeners, station.Live);
+        var shown = station with { Listeners = hearN };
         var hear = body.BottomSlice(frame.Units(16f)).RightSlice(
-            MathF.Min(body.Width * 0.5f, MusicChrome.ListenerWidth(frame, hearN, true)));
+            MathF.Min(body.Width * 0.5f, StationAudienceWidth(frame, shown, true)));
         frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(16f)).Inset(new Edges(0f, 0f, hear.Width + frame.Units(4f), 0f)),
             (station.Host.Length > 0 ? station.Host : "DJ") +
-            (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty),
+            (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty) +
+            (station.VenueLine.Length > 0 ? " · " + station.VenueLine : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
-        MusicChrome.ListenerCount(frame, hear, hearN, compact: true);
+        DrawStationAudience(frame, hear, shown, compact: true);
         var profile = body.TopSlice(frame.Units(16f)).RightSlice(frame.Units(72f));
         frame.Text.DrawIn(profile, "Profile",
             new TextStyle(FontRole.CaptionStrong, MusicChrome.Purple, TextAlign.Right));
@@ -2607,12 +2701,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         frame.Text.DrawEllipsized(inset.Inset(new Edges(0f, frame.Units(20f), 0f, frame.Units(16f))), station.Name,
             new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
         var hearN = ShownListeners(station.Listeners, station.Live);
+        var shown = station with { Listeners = hearN };
         var hear = inset.BottomSlice(frame.Units(16f)).RightSlice(
-            MathF.Min(inset.Width * 0.45f, MusicChrome.ListenerWidth(frame, hearN, true)));
+            MathF.Min(inset.Width * 0.45f, StationAudienceWidth(frame, shown, true)));
         frame.Text.DrawIn(inset.BottomSlice(frame.Units(14f)).Inset(new Edges(0f, 0f, hear.Width + frame.Units(4f), 0f)),
             ShownStationGenre(station).Length > 0 ? ShownStationGenre(station) : station.Host,
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
-        MusicChrome.ListenerCount(frame, hear, hearN, compact: true);
+        DrawStationAudience(frame, hear, shown, compact: true);
         if (frame.Input.ConsumeClick(area))
         {
             OpenStation(station);
@@ -2637,14 +2732,15 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         var hearN = ShownListeners(station.Listeners,
             string.Equals(audio.Now.Id, station.Id, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(MusicState.BareStationId(audio.Now.Id), station.Id, StringComparison.OrdinalIgnoreCase));
-        var hear = body.RightSlice(MathF.Min(body.Width * 0.42f, MusicChrome.ListenerWidth(frame, hearN, true)))
+        var shown = station with { Listeners = hearN };
+        var hear = body.RightSlice(MathF.Min(body.Width * 0.42f, StationAudienceWidth(frame, shown, true)))
             .BottomSlice(frame.Units(16f));
         frame.Text.DrawEllipsized(body.Inset(new Edges(0f, 0f, hear.Width + frame.Units(4f), 0f)).BottomSlice(frame.Units(16f)),
             (station.Host.Length > 0 ? station.Host : "DJ") +
             (ShownStationGenre(station).Length > 0 ? " · " + ShownStationGenre(station) : string.Empty) +
-            (station.Bio.Length > 0 ? " · " + station.Bio : string.Empty),
+            (station.VenueLine.Length > 0 ? " · " + station.VenueLine : string.Empty),
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
-        MusicChrome.ListenerCount(frame, hear, hearN, compact: true);
+        DrawStationAudience(frame, hear, shown, compact: true);
         if (station.Live)
         {
             MusicChrome.LiveMark(frame, badge);
@@ -2700,6 +2796,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         MusicChrome.Primary(frame, go, "Continue to Setup");
         if (frame.Input.ConsumeClick(go) && (state.Listener || state.Dj || state.Venue))
         {
+            state.Scroll = 0f;
+            state.SheetHeight = 0f;
             if (state.Listener)
             {
                 state.Page = MusicPage.SetupListener;
@@ -2827,6 +2925,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private void OpenStation(CommunityStation station)
     {
+        if (station.WatchUrl.Length > 0)
+        {
+            VenuesChrome.OpenUrl(station.WatchUrl);
+            return;
+        }
+
         var url = station.ListenUrl.Length > 0 ? station.ListenUrl : OwnStation(station) ? community.OwnedListenUrl : string.Empty;
         if (url.Length > 0)
         {
@@ -2947,6 +3051,35 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         if (!community.Broadcasting)
         {
             push.Stop();
+        }
+
+        if (booth.Mixing)
+        {
+            if (sense.Monitoring)
+            {
+                sense.StopMonitor();
+            }
+
+            sense.Select(IBroadcastSense.DefaultMixId);
+            sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
+            var boothNow = Environment.TickCount64;
+            if (!sense.Listening && boothNow - lastCaptureTry > 1500)
+            {
+                lastCaptureTry = boothNow;
+                sense.Start();
+            }
+
+            var boothIngest = community.OwnedIngestUrl;
+            if (community.Broadcasting && boothIngest.Length > 0 && !push.Sending && boothNow - lastPushTry > 1500)
+            {
+                lastPushTry = boothNow;
+                push.Start(
+                    boothIngest,
+                    state.StationName.Length > 0 ? state.StationName : "Linkpearl",
+                    state.StationGenreLine);
+            }
+
+            return;
         }
 
         var tapId = state.CaptureId.Length > 0 ? state.CaptureId : IBroadcastSense.DefaultMixId;
@@ -3185,6 +3318,45 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
         state.Save(paths);
     }
+
+    string IEchoMixStation.StationTitle =>
+        state.StationName.Length > 0 ? state.StationName : SharedName();
+
+    string IEchoMixStation.DjName =>
+        state.DjName.Length > 0 ? state.DjName : SharedName();
+
+    string IEchoMixStation.Genre => state.StationGenreLine;
+
+    bool IEchoMixStation.Broadcasting => community.Broadcasting;
+
+    string IEchoMixStation.ListenUrl => community.OwnedListenUrl;
+
+    string IEchoMixStation.Notice =>
+        community.Notice.Length > 0 ? community.Notice : push.Notice;
+
+    void IEchoMixStation.Prepare()
+    {
+        if (state.StationName.Length == 0)
+        {
+            var name = SharedName();
+            state.StationName = name.Length > 0 ? name + " FM" : "Linkpearl FM";
+        }
+
+        PublishStation();
+    }
+
+    void IEchoMixStation.GoLive()
+    {
+        ((IEchoMixStation)this).Prepare();
+        community.UseIcecast(state.IcecastHost, "source", state.IcecastPassword);
+        community.GoLive(
+            state.StationName.Length > 0 ? state.StationName : SharedName() + " FM",
+            state.StationGenreLine);
+    }
+
+    void IEchoMixStation.EndLive() => community.EndLive();
+
+    public void OpenEchoMix() => booth.Open();
 
     private void PickStationArt()
     {

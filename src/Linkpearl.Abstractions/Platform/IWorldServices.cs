@@ -133,6 +133,8 @@ public interface IFilePicker
 
     void BeginAttachPick() => BeginImagePick();
 
+    void BeginAudioPick() => BeginAttachPick();
+
     bool TryTakeFolder(out string path)
     {
         path = string.Empty;

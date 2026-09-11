@@ -2,6 +2,7 @@ using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
+using Linkpearl.Platform;
 using Linkpearl.Preferences;
 
 namespace Linkpearl.Applets.Life.AppStore;
@@ -20,14 +21,16 @@ public sealed class AppStoreApplet : IApplet
     };
 
     private readonly DisplayPreferences display;
+    private readonly IGameSession game;
     private readonly List<AppSpec> visible = new();
     private int category;
     private string query = string.Empty;
     private float scroll;
 
-    public AppStoreApplet(DisplayPreferences display)
+    public AppStoreApplet(DisplayPreferences display, IGameSession game)
     {
         this.display = display;
+        this.game = game;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -178,7 +181,9 @@ public sealed class AppStoreApplet : IApplet
         for (var index = 0; index < AppShelf.Catalog.Length; index++)
         {
             var spec = AppShelf.Catalog[index];
-            if (spec.Hidden || string.Equals(spec.Id, "appstore", StringComparison.Ordinal) || !Matches(spec, needle))
+            if (spec.Hidden || string.Equals(spec.Id, "appstore", StringComparison.Ordinal) ||
+                (string.Equals(spec.Id, "afterdark", StringComparison.Ordinal) && BlocksVybe()) ||
+                !Matches(spec, needle))
             {
                 continue;
             }
@@ -200,5 +205,16 @@ public sealed class AppStoreApplet : IApplet
                spec.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                spec.Caption.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                AppShelf.GroupLabels[(int)spec.Group].Contains(needle, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool BlocksVybe()
+    {
+        var name = (game.RaceName ?? string.Empty) + " " + (game.TribeName ?? string.Empty);
+        return game.RaceId == 3 ||
+               game.TribeId is 5 or 6 ||
+               name.Contains("Lalafell", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Dunesfolk", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Plainsfolk", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("ララフェル", StringComparison.Ordinal);
     }
 }

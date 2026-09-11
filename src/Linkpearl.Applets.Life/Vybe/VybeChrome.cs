@@ -19,6 +19,8 @@ internal static class VybeChrome
     public static readonly Vector4 Online = new(0.000f, 0.902f, 0.463f, 1f);
     public static readonly Vector4 PlusViolet = new(0.620f, 0.280f, 0.920f, 1f);
     public const byte LalafellRace = 3;
+    public const byte PlainsfolkTribe = 5;
+    public const byte DunesfolkTribe = 6;
 
     public static readonly NightPalette Night = new(
         new Vector4(0f, 0f, 0f, 1f),
@@ -47,9 +49,31 @@ internal static class VybeChrome
     public static NightPalette Tone(bool night) => night ? Night : Day;
 
     public static bool IsLalafell(byte raceId, string raceName) =>
+        IsLalafell(raceId, 0, raceName, string.Empty);
+
+    public static bool IsLalafell(byte raceId, byte tribeId, string raceName, string tribeName) =>
         raceId == LalafellRace ||
-        raceName.Contains("Lalafell", StringComparison.OrdinalIgnoreCase) ||
-        raceName.Contains("ララフェル", StringComparison.Ordinal);
+        tribeId is PlainsfolkTribe or DunesfolkTribe ||
+        LooksLalafell(raceName) ||
+        LooksLalafell(tribeName);
+
+    public static bool IsLalafell(string? race) =>
+        !string.IsNullOrWhiteSpace(race) && LooksLalafell(race);
+
+    private static bool LooksLalafell(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        return name.Contains("Lalafell", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Dunesfolk", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("Plainsfolk", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("ララフェル", StringComparison.Ordinal) ||
+               name.Contains("デューンフォーク", StringComparison.Ordinal) ||
+               name.Contains("プレーンフォーク", StringComparison.Ordinal);
+    }
 
     public static void Stage(in AppletFrame frame)
     {
@@ -174,10 +198,11 @@ internal static class VybeChrome
             new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
     }
 
-    public static void PostSheet(in AppletFrame frame, Rect area)
+    public static void PostSheet(in AppletFrame frame, Rect area, bool flush = false)
     {
-        frame.Paint.Fill(area, new Vector4(0.055f, 0.055f, 0.06f, 0.94f), frame.Units(16f));
-        frame.Paint.Stroke(area, new Vector4(1f, 1f, 1f, 0.08f), frame.Units(1f), frame.Units(16f));
+        var radius = flush ? 0f : frame.Units(16f);
+        frame.Paint.Fill(area, new Vector4(0.055f, 0.055f, 0.06f, 0.94f), radius);
+        frame.Paint.Stroke(area, new Vector4(1f, 1f, 1f, 0.08f), frame.Units(1f), radius);
     }
 
     public static float OutlineChipWidth(in AppletFrame frame, string label) =>
@@ -207,6 +232,8 @@ internal static class VybeChrome
     public const string CommentGlyph = "vybe-comment.png";
     public const string RepostGlyph = "vybe-repost.png";
     public const string SaveGlyph = "vybe-save.png";
+    public const string ShareGlyph = "vybe-share.png";
+    public const string GroupGlyph = "vybe-groups.png";
 
     public static bool StoryAction(in AppletFrame frame, Rect area, string glyph, string count, bool on)
     {
@@ -222,23 +249,34 @@ internal static class VybeChrome
         string fallback)
     {
         var ink = on ? Night.Accent : Vector4.One;
-        ActionGlyph(frame, area.TopSlice(area.Height * 0.58f).Inset(frame.Units(12f)), file, ink, fallback,
-            FontRole.Caption);
-        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.42f), count,
+        ActionGlyph(frame, CoverFit.InscribedSquare(area.TopSlice(area.Height * 0.64f)).Inset(area.Width * 0.08f),
+            file, ink, fallback, FontRole.Title);
+        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.36f), count,
             new TextStyle(FontRole.Caption, Vector4.One, TextAlign.Center));
-        return frame.Input.ConsumeClick(area);
+        return frame.Input.ConsumeClick(area.Expand(frame.Units(4f)));
     }
 
     public static void PostGlyph(in AppletFrame frame, Rect area, string file, string count, bool on,
         NightPalette tone, string fallback)
     {
         var ink = on ? tone.Accent : tone.Mute;
-        var icon = area.LeftSlice(area.Height).Inset(frame.Units(2f));
+        var iconSide = frame.Units(16f);
+        var gap = frame.Units(4f);
+        var countW = count.Length > 0
+            ? frame.Text.Measure(count, FontRole.Caption).X + gap
+            : 0f;
+        var used = iconSide + countW;
+        var left = area.Center.X - used * 0.5f;
+        var icon = Rect.FromSize(
+            new Vector2(left, area.Center.Y - iconSide * 0.5f),
+            new Vector2(iconSide, iconSide));
         ActionGlyph(frame, icon, file, ink, fallback, FontRole.Caption);
         if (count.Length > 0)
         {
-            frame.Text.DrawIn(area.Inset(new Edges(area.Height, 0f, 0f, 0f)), count,
-                new TextStyle(FontRole.Caption, ink, TextAlign.Left));
+            var label = Rect.FromSize(
+                new Vector2(icon.Max.X + gap, area.Min.Y),
+                new Vector2(countW, area.Height));
+            frame.Text.DrawIn(label, count, new TextStyle(FontRole.Caption, ink, TextAlign.Left));
         }
     }
 
@@ -396,17 +434,40 @@ internal static class VybeChrome
     public static void Brand(in AppletFrame frame, Rect area, bool plus)
     {
         var tone = Tone(plus);
-        var word = "VYBE";
+        const string word = "VYBE";
         var wide = frame.Text.Measure(word, FontRole.Title).X;
-        frame.Text.DrawIn(area, word, new TextStyle(FontRole.Title, tone.Ink));
+        var wordH = frame.Text.LineHeight(FontRole.Title);
+        var wordRow = Rect.FromSize(new Vector2(area.Min.X, area.Center.Y - wordH * 0.5f),
+            new Vector2(MathF.Min(wide, area.Width), wordH));
+        frame.Text.DrawIn(wordRow, word, new TextStyle(FontRole.Title, tone.Ink));
         if (!plus)
         {
             return;
         }
 
-        var mark = Rect.FromSize(new Vector2(area.Min.X + wide + frame.Units(3f), area.Min.Y),
-            new Vector2(frame.Units(18f), area.Height));
-        frame.Text.DrawIn(mark, "+", new TextStyle(FontRole.Title, tone.Accent, TextAlign.Center));
+        var side = MathF.Min(frame.Units(16f), MathF.Max(frame.Units(12f), area.Height * 0.38f));
+        var left = wordRow.Max.X + frame.Units(5f);
+        if (left + side > area.Max.X)
+        {
+            return;
+        }
+
+        var badge = Rect.FromSize(new Vector2(left, area.Center.Y - side * 0.5f), new Vector2(side, side));
+        frame.Paint.FillCircle(badge.Center, side * 0.78f, tone.Accent with { W = 0.22f });
+        WashFill(frame, badge, side * 0.34f);
+        DrawPlusBars(frame, badge.Inset(side * 0.26f), Vector4.One);
+    }
+
+    private static void DrawPlusBars(in AppletFrame frame, Rect area, Vector4 ink)
+    {
+        var thick = MathF.Max(frame.Units(1.8f), area.Height * 0.22f);
+        var mid = area.Center;
+        var bar = Rect.FromSize(new Vector2(area.Min.X, mid.Y - thick * 0.5f),
+            new Vector2(area.Width, thick));
+        var stem = Rect.FromSize(new Vector2(mid.X - thick * 0.5f, area.Min.Y),
+            new Vector2(thick, area.Height));
+        frame.Paint.Fill(bar, ink, thick * 0.5f);
+        frame.Paint.Fill(stem, ink, thick * 0.5f);
     }
 
     public static float PlusTagWidth(in AppletFrame frame) =>
@@ -492,20 +553,20 @@ internal static class VybeChrome
         var tone = Tone(night);
         var count = 4;
         var cellW = area.Width / count;
-        var mark = frame.Units(22f);
+        var side = frame.Units(17f);
         for (var index = 0; index < count; index++)
         {
             var cell = Rect.FromSize(new Vector2(area.Min.X + cellW * index, area.Min.Y),
                 new Vector2(cellW, area.Height));
             var on = selected == index;
             var ink = on ? tone.Accent : tone.Mute;
-            var glyph = Rect.FromSize(cell.Center - new Vector2(mark * 0.5f, mark * 0.5f + frame.Units(1f)),
-                new Vector2(mark, mark));
+            var glyph = Rect.FromSize(cell.Center - new Vector2(side * 0.5f, side * 0.5f + frame.Units(1f)),
+                new Vector2(side, side));
             DrawProfileMark(frame, glyph, index, ink);
             if (on)
             {
                 var bar = cell.BottomSlice(frame.Units(2.2f));
-                var inset = MathF.Max(0f, (bar.Width - mark) * 0.5f);
+                var inset = MathF.Max(0f, (bar.Width - side) * 0.5f);
                 frame.Paint.Fill(bar.Inset(new Edges(inset, 0f)), tone.Accent, frame.Units(1.1f));
             }
 
@@ -520,46 +581,44 @@ internal static class VybeChrome
 
     private static void DrawProfileMark(in AppletFrame frame, Rect area, int mark, Vector4 ink)
     {
+        var box = CoverFit.InscribedSquare(area).Inset(area.Height * 0.04f);
+        var stroke = MathF.Max(1.6f, box.Height * 0.11f);
         switch (mark)
         {
             case 1:
-                DrawGridMark(frame, area, ink);
+                DrawGridMark(frame, box, ink, stroke);
                 break;
             case 2:
-                DrawGroupMark(frame, area, ink);
+                DrawGroupMark(frame, box, ink, stroke);
                 break;
             case 3:
-                DrawFavoriteMark(frame, area, ink);
+                DrawRepostMark(frame, box, ink, stroke);
                 break;
             default:
-                DrawListMark(frame, area, ink);
+                DrawListMark(frame, box, ink, stroke);
                 break;
         }
     }
 
-    private static void DrawListMark(in AppletFrame frame, Rect area, Vector4 ink)
+    private static void DrawListMark(in AppletFrame frame, Rect area, Vector4 ink, float stroke)
     {
-        area = area.Inset(area.Height * 0.10f);
-        var stroke = MathF.Max(1.3f, area.Height * 0.10f);
-        var pad = area.Width * 0.08f;
-        var row = area.Height / 3.4f;
+        var pad = area.Width * 0.06f;
+        var row = area.Height / 2f;
         for (var index = 0; index < 3; index++)
         {
-            var y = area.Min.Y + area.Height * 0.18f + row * index;
+            var y = area.Min.Y + area.Height * 0.18f + row * index * 0.64f;
             var dot = new Vector2(area.Min.X + pad + stroke, y);
-            frame.Paint.FillCircle(dot, stroke * 0.72f, ink);
-            frame.Paint.Line(new Vector2(area.Min.X + pad + stroke * 3.2f, y),
+            frame.Paint.FillCircle(dot, stroke * 0.7f, ink);
+            frame.Paint.Line(new Vector2(area.Min.X + pad + stroke * 3f, y),
                 new Vector2(area.Max.X - pad, y), ink, stroke);
         }
     }
 
-    private static void DrawGridMark(in AppletFrame frame, Rect area, Vector4 ink)
+    private static void DrawGridMark(in AppletFrame frame, Rect area, Vector4 ink, float stroke)
     {
-        area = area.Inset(area.Height * 0.10f);
-        var gap = area.Width * 0.12f;
+        var gap = area.Width * 0.14f;
         var cell = (area.Width - gap) * 0.5f;
-        var radius = MathF.Max(1.4f, cell * 0.16f);
-        var stroke = MathF.Max(1.2f, cell * 0.08f);
+        var radius = MathF.Max(1.6f, cell * 0.18f);
         for (var row = 0; row < 2; row++)
         {
             for (var col = 0; col < 2; col++)
@@ -572,54 +631,44 @@ internal static class VybeChrome
         }
     }
 
-    private static void DrawGroupMark(in AppletFrame frame, Rect area, Vector4 ink)
+    private static void DrawGroupMark(in AppletFrame frame, Rect area, Vector4 ink, float stroke)
     {
-        area = area.Inset(area.Height * 0.10f);
-        var stroke = MathF.Max(1.3f, area.Height * 0.10f);
-        var back = area.Center + new Vector2(area.Width * 0.16f, -area.Height * 0.08f);
-        var front = area.Center + new Vector2(-area.Width * 0.12f, 0f);
-        var head = MathF.Min(area.Width, area.Height) * 0.16f;
-        frame.Paint.StrokeCircle(back + new Vector2(0f, -area.Height * 0.18f), head * 0.85f, ink, stroke);
-        frame.Paint.StrokeCircle(front + new Vector2(0f, -area.Height * 0.16f), head, ink, stroke);
-        frame.Paint.Stroke(
-            Rect.FromSize(back + new Vector2(-head * 1.15f, head * 0.2f), new Vector2(head * 2.3f, head * 1.55f)),
-            ink, stroke, head);
-        frame.Paint.Stroke(
-            Rect.FromSize(front + new Vector2(-head * 1.35f, head * 0.35f), new Vector2(head * 2.7f, head * 1.7f)),
-            ink, stroke, head);
-    }
-
-    private static void DrawFavoriteMark(in AppletFrame frame, Rect area, Vector4 ink)
-    {
-        if (TryPacked(frame, area, RepostGlyph, ink))
+        if (TryPackedFill(frame, area, GroupGlyph, ink))
         {
             return;
         }
 
-        DrawSolidRepost(frame, area, ink);
+        var head = area.Height * 0.18f;
+        var back = new Vector2(area.Center.X + area.Width * 0.18f, area.Min.Y + area.Height * 0.28f);
+        var front = new Vector2(area.Center.X - area.Width * 0.14f, area.Min.Y + area.Height * 0.30f);
+        frame.Paint.StrokeCircle(back, head * 0.82f, ink, stroke);
+        frame.Paint.StrokeCircle(front, head, ink, stroke);
+        frame.Paint.Stroke(
+            Rect.FromSize(new Vector2(back.X - head * 1.2f, back.Y + head * 0.85f),
+                new Vector2(head * 2.4f, area.Max.Y - (back.Y + head * 0.85f))),
+            ink, stroke, head);
+        frame.Paint.Stroke(
+            Rect.FromSize(new Vector2(front.X - head * 1.4f, front.Y + head * 0.95f),
+                new Vector2(head * 2.8f, area.Max.Y - (front.Y + head * 0.95f))),
+            ink, stroke, head);
     }
 
-    private static void DrawSolidRepost(in AppletFrame frame, Rect area, Vector4 ink)
+    private static void DrawRepostMark(in AppletFrame frame, Rect area, Vector4 ink, float stroke)
     {
-        var stroke = MathF.Max(2.2f, area.Height * 0.18f);
-        var box = area.Inset(area.Height * 0.10f);
-        var top = box.Min.Y + box.Height * 0.30f;
-        var bot = box.Max.Y - box.Height * 0.30f;
-        var left = box.Min.X + box.Width * 0.08f;
-        var right = box.Max.X - box.Width * 0.08f;
-        var mid = box.Width * 0.22f;
-        frame.Paint.Line(new Vector2(left, top + box.Height * 0.18f), new Vector2(left, top), ink, stroke);
-        frame.Paint.Line(new Vector2(left, top), new Vector2(right - mid, top), ink, stroke);
-        frame.Paint.Line(new Vector2(right - mid * 1.15f, top - box.Height * 0.12f), new Vector2(right, top), ink,
-            stroke);
-        frame.Paint.Line(new Vector2(right - mid * 1.15f, top + box.Height * 0.12f), new Vector2(right, top), ink,
-            stroke);
-        frame.Paint.Line(new Vector2(right, bot - box.Height * 0.18f), new Vector2(right, bot), ink, stroke);
-        frame.Paint.Line(new Vector2(right, bot), new Vector2(left + mid, bot), ink, stroke);
-        frame.Paint.Line(new Vector2(left + mid * 1.15f, bot - box.Height * 0.12f), new Vector2(left, bot), ink,
-            stroke);
-        frame.Paint.Line(new Vector2(left + mid * 1.15f, bot + box.Height * 0.12f), new Vector2(left, bot), ink,
-            stroke);
+        var left = area.Min.X + area.Width * 0.24f;
+        var right = area.Max.X - area.Width * 0.24f;
+        var top = area.Min.Y + area.Height * 0.14f;
+        var bot = area.Max.Y - area.Height * 0.14f;
+        var mid = area.Width * 0.14f;
+        var tip = area.Height * 0.14f;
+        frame.Paint.Line(new Vector2(left, top + tip), new Vector2(left, top), ink, stroke);
+        frame.Paint.Line(new Vector2(left, top), new Vector2(right - mid * 0.35f, top), ink, stroke);
+        frame.Paint.Line(new Vector2(right - mid, top - tip), new Vector2(right, top), ink, stroke);
+        frame.Paint.Line(new Vector2(right - mid, top + tip), new Vector2(right, top), ink, stroke);
+        frame.Paint.Line(new Vector2(right, bot - tip), new Vector2(right, bot), ink, stroke);
+        frame.Paint.Line(new Vector2(right, bot), new Vector2(left + mid * 0.35f, bot), ink, stroke);
+        frame.Paint.Line(new Vector2(left + mid, bot - tip), new Vector2(left, bot), ink, stroke);
+        frame.Paint.Line(new Vector2(left + mid, bot + tip), new Vector2(left, bot), ink, stroke);
     }
 
     public static int TextTabs(in AppletFrame frame, Rect area, string[] labels, int selected, bool night)
@@ -817,20 +866,21 @@ internal static class VybeChrome
 
         if (night)
         {
-            frame.Paint.StrokeCircle(mark.Center + new Vector2(frame.Units(2f), 0f), frame.Units(7f), tone.Accent,
-                frame.Units(1.6f));
-            frame.Paint.StrokeCircle(mark.Center + new Vector2(frame.Units(6f), -frame.Units(2f)), frame.Units(5f),
-                tone.Accent with { W = 0.35f }, frame.Units(1.4f));
+            frame.Paint.FillCircle(mark.Center, frame.Units(7.2f), tone.Accent with { W = 0.18f });
+            frame.Paint.StrokeCircle(mark.Center + new Vector2(frame.Units(1.6f), -frame.Units(0.6f)),
+                frame.Units(6.2f), tone.Accent, frame.Units(1.7f));
+            frame.Paint.FillCircle(mark.Center + new Vector2(frame.Units(2.4f), -frame.Units(1.2f)),
+                frame.Units(4.4f), tone.Ground);
         }
         else
         {
-            frame.Paint.StrokeCircle(mark.Center, frame.Units(5f), tone.Accent, frame.Units(1.6f));
-            for (var ray = 0; ray < 6; ray++)
+            frame.Paint.FillCircle(mark.Center, frame.Units(4.6f), tone.Accent);
+            for (var ray = 0; ray < 8; ray++)
             {
-                var angle = ray * MathF.PI / 3f;
+                var angle = ray * MathF.PI / 4f;
                 var dir = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
-                frame.Paint.Line(mark.Center + dir * frame.Units(8f), mark.Center + dir * frame.Units(11f), tone.Accent,
-                    frame.Units(1.4f));
+                frame.Paint.Line(mark.Center + dir * frame.Units(6.4f), mark.Center + dir * frame.Units(9.6f),
+                    tone.Accent, frame.Units(1.3f));
             }
         }
 
@@ -916,15 +966,13 @@ internal static class VybeChrome
     public static void SaveMark(in AppletFrame frame, Rect area, Vector4 ink)
     {
         var mark = ToolInk(frame, area, ink);
-        // Bookmark art already has canvas padding; use a larger box so the mark
-        // matches home_edit's on-screen size while staying inside the disk.
-        var box = CoverFit.InscribedSquare(area.Inset(area.Height * 0.16f));
+        var box = ToolGlyphBox(area);
         if (TryPacked(frame, box, "vybe-save.png", mark))
         {
             return;
         }
 
-        BookmarkShape(frame, ToolGlyphBox(area), mark);
+        BookmarkShape(frame, box, mark);
     }
 
     public static void SaveTick(in AppletFrame frame, Rect area, Vector4 ink, bool on)
@@ -975,7 +1023,7 @@ internal static class VybeChrome
     }
 
     private static Rect ToolGlyphBox(Rect area) =>
-        CoverFit.InscribedSquare(area.Inset(area.Height * 0.30f));
+        CoverFit.InscribedSquare(area.Inset(area.Height * 0.22f));
 
     private static bool TryGlyph(in AppletFrame frame, Rect area, string file, Vector4 ink) =>
         TryFile(frame, area, AppIconCatalog.Glyph(frame.Paths, file), ink);
@@ -984,6 +1032,11 @@ internal static class VybeChrome
         TryFile(frame, area, AppIconCatalog.Glyph(frame.Paths, file), ink) ||
         TryFile(frame, area, AppIconCatalog.Absolute(frame.Paths, file), ink) ||
         TryFile(frame, area, AppIconCatalog.Original(frame.Paths, file), ink);
+
+    private static bool TryPackedFill(in AppletFrame frame, Rect area, string file, Vector4 ink) =>
+        TryFileFill(frame, area, AppIconCatalog.Glyph(frame.Paths, file), ink) ||
+        TryFileFill(frame, area, AppIconCatalog.Absolute(frame.Paths, file), ink) ||
+        TryFileFill(frame, area, AppIconCatalog.Original(frame.Paths, file), ink);
 
     private static bool TryFile(in AppletFrame frame, Rect area, string path, Vector4 ink)
     {
@@ -1005,6 +1058,30 @@ internal static class VybeChrome
         }
 
         frame.Paint.Image(texture, dest, ink);
+        return true;
+    }
+
+    private static bool TryFileFill(in AppletFrame frame, Rect area, string path, Vector4 ink)
+    {
+        if (path.Length == 0 || !File.Exists(path))
+        {
+            return false;
+        }
+
+        var texture = frame.Textures.FromFile(path);
+        if (texture is not { IsReady: true } || texture.Handle == 0)
+        {
+            return false;
+        }
+
+        var dest = CoverFit.InscribedSquare(area);
+        if (dest.IsEmpty)
+        {
+            return false;
+        }
+
+        var uv = CoverFit.Uv(texture.Size, dest.Size);
+        frame.Paint.Image(texture, dest, uv.Min, uv.Max, ink);
         return true;
     }
 
@@ -1032,6 +1109,45 @@ internal static class VybeChrome
     {
         frame.Paint.FillCircle(center, radius, fill);
         frame.Paint.StrokeCircle(center, radius, Tone(night).Accent with { W = 0.85f }, MathF.Max(1.4f, radius * 0.08f));
+    }
+
+    public static bool StillReady(string path) =>
+        path.Length > 0 && File.Exists(path);
+
+    public static Vector4 EmptyStill(bool night) =>
+        Tone(night).CardHi with { W = 0.42f };
+
+    public static void EmptyBanner(in AppletFrame frame, Rect area, bool night)
+    {
+        frame.Paint.Fill(area, EmptyStill(night));
+    }
+
+    public static void EmptyPortrait(in AppletFrame frame, Vector2 center, float radius, bool night)
+    {
+        frame.Paint.FillCircle(center, radius, EmptyStill(night));
+    }
+
+    public static void AddPlus(in AppletFrame frame, Vector2 center, float radius, bool night)
+    {
+        var ink = Tone(night).Mute;
+        var arm = radius * 0.55f;
+        var thick = MathF.Max(2f, radius * 0.18f);
+        frame.Paint.Line(center + new Vector2(-arm, 0f), center + new Vector2(arm, 0f), ink, thick);
+        frame.Paint.Line(center + new Vector2(0f, -arm), center + new Vector2(0f, arm), ink, thick);
+    }
+
+    public static void Hairline(in AppletFrame frame, Rect area, bool night)
+    {
+        var y = area.Max.Y - 1f;
+        frame.Paint.Line(new Vector2(area.Min.X, y), new Vector2(area.Max.X, y), Tone(night).Faint, 1f);
+    }
+
+    public static void LivePip(in AppletFrame frame, Vector2 faceCenter, float faceRadius, bool online)
+    {
+        var at = faceCenter + new Vector2(faceRadius * 0.70f, faceRadius * 0.70f);
+        var radius = MathF.Max(3.2f, faceRadius * 0.22f);
+        frame.Paint.FillCircle(at, radius + frame.Units(1.8f), new Vector4(0.06f, 0.06f, 0.07f, 1f));
+        frame.Paint.FillCircle(at, radius, online ? Online : new Vector4(0.52f, 0.52f, 0.56f, 1f));
     }
 
     public static void StoryRing(in AppletFrame frame, Vector2 center, float radius, bool seen, bool night)

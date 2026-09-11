@@ -454,6 +454,17 @@ public sealed class TalkInbox : ITalk, IDisposable
 
         if (TalkIds.TryParseTell(threadId, out var name, out var world))
         {
+            if (world.Length == 0)
+            {
+                lock (gate)
+                {
+                    if (rooms.TryGetValue(threadId, out var room) && room.World.Length > 0)
+                    {
+                        world = room.World;
+                    }
+                }
+            }
+
             chat.SendTell(name, world, trimmed);
             RememberOutgoing(name, world, trimmed);
         }
@@ -974,7 +985,7 @@ public sealed class TalkInbox : ITalk, IDisposable
     private TalkThread ToThread(Room room)
     {
         var canSend = room.Kind != TalkKind.Pearl && chat.CanSend && RoomCanSend(room);
-        var preview = room.Preview.Length > 0
+        var preview = !string.IsNullOrEmpty(room.Preview)
             ? room.Preview
             : room.Kind == TalkKind.Party && !chat.InParty
                 ? "Join a party to talk here."
@@ -1153,9 +1164,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             Subtitle = savedWorld.Length > 0 ? savedWorld : "Tell",
             Note = stored.Note ?? string.Empty,
             Preview = stored.Preview ?? string.Empty,
-            LastAt = stored.LastAtUnix > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(stored.LastAtUnix)
-                : DateTimeOffset.MinValue,
+            LastAt = UnixOrMin(stored.LastAtUnix),
             Unread = Math.Max(stored.Unread, 0),
         };
         var lines = stored.Lines;
@@ -1164,9 +1173,7 @@ public sealed class TalkInbox : ITalk, IDisposable
             for (var index = 0; index < lines.Length; index++)
             {
                 var line = lines[index];
-                var at = line.AtUnix > 0
-                    ? DateTimeOffset.FromUnixTimeSeconds(line.AtUnix)
-                    : DateTimeOffset.MinValue;
+                var at = UnixOrMin(line.AtUnix);
                 room.Lines.Add(new TalkLine(line.Sender ?? string.Empty, line.Body ?? string.Empty, at, line.Mine));
             }
         }
@@ -1190,11 +1197,20 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     private static TalkThread PearlThread(PearlChat chat, bool canSend)
     {
-        var last = chat.LastMessageAtUnix > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(chat.LastMessageAtUnix)
-            : DateTimeOffset.MinValue;
-        var preview = chat.Preview.Length > 0 ? chat.Preview : "No messages yet";
-        return new TalkThread(TalkIds.Pearl(chat.Id), TalkKind.Pearl, 0, chat.Title, "Pearlgate", preview, last,
+        DateTimeOffset last;
+        try
+        {
+            last = chat.LastMessageAtUnix > 0
+                ? DateTimeOffset.FromUnixTimeSeconds(chat.LastMessageAtUnix)
+                : DateTimeOffset.MinValue;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            last = DateTimeOffset.MinValue;
+        }
+        var preview = string.IsNullOrEmpty(chat.Preview) ? "No messages yet" : chat.Preview;
+        return new TalkThread(TalkIds.Pearl(chat.Id ?? string.Empty), TalkKind.Pearl, 0,
+            chat.Title ?? string.Empty, "Pearlgate", preview, last,
             chat.UnreadCount, false, canSend);
     }
 
@@ -1343,6 +1359,23 @@ public sealed class TalkInbox : ITalk, IDisposable
         }
 
         return false;
+    }
+
+    private static DateTimeOffset UnixOrMin(long unix)
+    {
+        if (unix <= 0)
+        {
+            return DateTimeOffset.MinValue;
+        }
+
+        try
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(unix);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return DateTimeOffset.MinValue;
+        }
     }
 
     private sealed class Room

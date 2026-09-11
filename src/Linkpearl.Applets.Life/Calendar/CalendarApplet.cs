@@ -1,5 +1,6 @@
 using System.Globalization;
 using Linkpearl.Applets;
+using Linkpearl.Applets.Life.Venues;
 using Linkpearl.Calendar;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
@@ -32,6 +33,7 @@ public sealed class CalendarApplet : IApplet, IDisposable
     private readonly IChime chime;
     private readonly INoticeTray notices;
     private readonly CalendarBook book;
+    private readonly VenuesDiary venues;
     private DateTime month;
     private DateTime selected;
     private float scroll;
@@ -43,13 +45,15 @@ public sealed class CalendarApplet : IApplet, IDisposable
     private int draftMinute;
     private int draftRemind = 1;
 
-    public CalendarApplet(IClock clock, IFrameLoop frames, IChime chime, INoticeTray notices, CalendarBook book)
+    public CalendarApplet(IClock clock, IFrameLoop frames, IChime chime, INoticeTray notices, CalendarBook book,
+        VenuesDiary venues)
     {
         this.clock = clock;
         this.frames = frames;
         this.chime = chime;
         this.notices = notices;
         this.book = book;
+        this.venues = venues;
         var now = clock.Now.Date;
         month = new DateTime(now.Year, now.Month, 1);
         selected = now;
@@ -126,8 +130,8 @@ public sealed class CalendarApplet : IApplet, IDisposable
         var page = inner.Translate(new Vector2(0f, -scroll));
         frame.Paint.PushClip(inner);
         var lines = ToChrome(book.ForDay(selected));
-        var content = CalendarChrome.App(frame, page, now, month, selected, book.MarkedDays(month), lines, bells,
-            out var hit);
+        var content = CalendarChrome.App(frame, page, now, month, selected, book.DayDots(month), WeekDots(now),
+            lines, bells, out var hit);
         frame.Paint.PopClip();
         ApplyHit(hit, now);
         ScrollSlider.Apply(frame, inner, ref scroll, content);
@@ -169,6 +173,18 @@ public sealed class CalendarApplet : IApplet, IDisposable
         {
             BeginDraft(CalendarKind.Reminder);
         }
+    }
+
+    private byte[] WeekDots(DateTimeOffset now)
+    {
+        var start = now.Date.AddDays(-(int)now.DayOfWeek);
+        var dots = new byte[7];
+        for (var index = 0; index < 7; index++)
+        {
+            dots[index] = (byte)book.DotsOn(start.AddDays(index));
+        }
+
+        return dots;
     }
 
     private void ShowDay(DateTime day)
@@ -248,6 +264,7 @@ public sealed class CalendarApplet : IApplet, IDisposable
             if (frame.Input.ConsumeClick(drop))
             {
                 book.Drop(draftId);
+                venues.ForgetCalendar(draftId);
                 editing = false;
             }
         }
@@ -289,7 +306,15 @@ public sealed class CalendarApplet : IApplet, IDisposable
             var title = CalendarBook.ShownTitle(item);
             var when = item.StartsAt.ToLocalTime().ToString("ddd, h:mm tt", CultureInfo.CurrentCulture);
             var detail = item.Kind == CalendarKind.Reminder ? when : "Starts " + when;
-            notices.PostCalendar(item.Id, title, detail, clock);
+            if (TryVenueId(item.Id, out var venueId))
+            {
+                notices.PostVenue(venueId, title, detail, clock);
+            }
+            else
+            {
+                notices.PostCalendar(item.Id, title, detail, clock);
+            }
+
             chime.Ring(title, detail);
         });
     }
@@ -342,5 +367,25 @@ public sealed class CalendarApplet : IApplet, IDisposable
         {
             value = value >= max ? min : value + 1;
         }
+    }
+
+    private static bool TryVenueId(string itemId, out string venueId)
+    {
+        venueId = string.Empty;
+        if (itemId.StartsWith("vn:", StringComparison.Ordinal))
+        {
+            venueId = itemId[3..];
+            return venueId.Length > 0;
+        }
+
+        if (!itemId.StartsWith("vs:", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var rest = itemId[3..];
+        var cut = rest.LastIndexOf(':');
+        venueId = cut > 0 ? rest[..cut] : rest;
+        return venueId.Length > 0;
     }
 }

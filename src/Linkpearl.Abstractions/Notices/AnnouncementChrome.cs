@@ -45,18 +45,22 @@ public static class AnnouncementChrome
         var accent = Accent(night);
         var inset = area.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
         var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
-        DrawSource(frame, stack.Take(frame.Units(16f)), more, hush, accent);
-        var hero = stack.Take(MathF.Max(frame.Units(22f), inset.Height * 0.34f));
-        frame.Text.DrawFitted(hero, title, new TextStyle(FontRole.Title, ink));
-        if (stack.Remaining.Height >= frame.Units(28f) && body.Length > 0)
+        DrawSource(frame, stack.Take(frame.Units(18f)), more, hush, accent);
+        var footH = frame.Units(14f);
+        var room = MathF.Max(frame.Units(22f), stack.Remaining.Height - footH - frame.Units(3f));
+        var wrap = frame.Text.MeasureWrapped(title, FontRole.BodyStrong, inset.Width);
+        var titleH = Math.Clamp(wrap.Y, frame.Units(22f), room);
+        frame.Text.DrawWrapped(stack.Take(titleH), title,
+            new TextStyle(FontRole.BodyStrong, ink, TextAlign.Left, 1.12f));
+        if (stack.Remaining.Height >= footH + frame.Units(28f) && body.Length > 0)
         {
-            frame.Text.DrawWrapped(stack.Take(MathF.Min(frame.Units(40f), stack.Remaining.Height - frame.Units(16f))),
+            frame.Text.DrawWrapped(stack.Take(MathF.Min(frame.Units(36f), stack.Remaining.Height - footH)),
                 body, new TextStyle(FontRole.Caption, hush, TextAlign.Left, 1.12f));
         }
 
-        if (stack.Remaining.Height >= frame.Units(14f))
+        if (stack.Remaining.Height >= footH)
         {
-            var foot = stack.Take(frame.Units(14f));
+            var foot = stack.Take(footH);
             frame.Text.DrawEllipsized(foot.LeftSlice(foot.Width * 0.55f), when.Length > 0 ? when : "Linkpearl",
                 new TextStyle(FontRole.Caption, accent));
             frame.Text.DrawIn(foot.RightSlice(foot.Width * 0.42f), "Read",
@@ -100,9 +104,10 @@ public static class AnnouncementChrome
         var bar = row.LeftSlice(frame.Units(4f)).Inset(new Edges(0f, frame.Units(10f), 0f, frame.Units(10f)));
         frame.Paint.Fill(bar, accent, bar.Width);
         var inner = row.Inset(new Edges(frame.Units(16f), frame.Units(10f), frame.Units(12f), frame.Units(10f)));
-        frame.Text.DrawEllipsized(inner.TopSlice(frame.Units(18f)), title,
-            new TextStyle(FontRole.BodyStrong, ink));
-        var rest = inner.Inset(new Edges(0f, frame.Units(20f), 0f, 0f));
+        var titleH = MathF.Max(frame.Units(18f),
+            MathF.Min(frame.Units(36f), frame.Text.MeasureWrapped(title, FontRole.BodyStrong, inner.Width).Y));
+        frame.Text.DrawWrapped(inner.TopSlice(titleH), title, new TextStyle(FontRole.BodyStrong, ink, TextAlign.Left, 1.08f));
+        var rest = inner.Inset(new Edges(0f, titleH + frame.Units(2f), 0f, 0f));
         if (when.Length > 0)
         {
             frame.Text.DrawIn(rest.RightSlice(frame.Units(36f)).BottomSlice(frame.Units(14f)), when,
@@ -127,9 +132,11 @@ public static class AnnouncementChrome
         var hush = Hush(night);
         var accent = Accent(night);
         var stack = new Stack(page, StackAxis.Vertical, frame.Units(8f));
-        frame.Text.DrawIn(stack.Take(frame.Units(14f)), "Linkpearl",
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "LinkPearl Announcements",
             new TextStyle(FontRole.CaptionStrong, accent));
-        frame.Text.DrawWrapped(stack.Take(frame.Units(48f)), title, new TextStyle(FontRole.Title, ink));
+        var titleH = Math.Clamp(frame.Text.MeasureWrapped(title, FontRole.Title, page.Width).Y,
+            frame.Units(28f), frame.Units(96f));
+        frame.Text.DrawWrapped(stack.Take(titleH), title, new TextStyle(FontRole.Title, ink));
         if (when.Length > 0)
         {
             frame.Text.DrawIn(stack.Take(frame.Units(16f)), when, new TextStyle(FontRole.Caption, hush));
@@ -183,14 +190,18 @@ public static class AnnouncementChrome
 
     private static void DrawSource(in AppletFrame frame, Rect row, int more, Vector4 hush, Vector4 accent)
     {
-        frame.Text.DrawEllipsized(row.LeftSlice(row.Width * 0.7f), "Linkpearl",
+        var chipW = more > 0 ? frame.Units(36f) : 0f;
+        var label = chipW > 0f
+            ? row.Inset(new Edges(0f, 0f, chipW + frame.Units(4f), 0f))
+            : row;
+        frame.Text.DrawFitted(label, "LinkPearl Announcements",
             new TextStyle(FontRole.CaptionStrong, accent));
         if (more <= 0)
         {
             return;
         }
 
-        var chip = row.RightSlice(frame.Units(36f));
+        var chip = row.RightSlice(chipW);
         frame.Paint.Fill(chip, accent with { W = 0.18f }, chip.Height * 0.5f);
         frame.Text.DrawIn(chip, "+" + more.ToString(CultureInfo.InvariantCulture),
             new TextStyle(FontRole.CaptionStrong, hush, TextAlign.Center, 1f, 0.86f));

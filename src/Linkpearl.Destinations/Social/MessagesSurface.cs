@@ -27,6 +27,7 @@ internal sealed class MessagesSurface
     private readonly ITalkPopouts popouts;
     private readonly IFilePicker files;
     private readonly IGifDesk gifs;
+    private readonly ChatMarks marks;
     private readonly ChatTray tray = new();
     private string openId = string.Empty;
     private string profileId = string.Empty;
@@ -45,7 +46,7 @@ internal sealed class MessagesSurface
     private InboxMenu? inboxMenu;
 
     public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display, IPearlHub pearl,
-        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs)
+        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs, ChatMarks marks)
     {
         this.talk = talk;
         this.clock = clock;
@@ -55,6 +56,7 @@ internal sealed class MessagesSurface
         this.popouts = popouts;
         this.files = files;
         this.gifs = gifs;
+        this.marks = marks;
     }
 
     public bool ThreadOpen => openId.Length > 0 && profileId.Length == 0;
@@ -226,7 +228,12 @@ internal sealed class MessagesSurface
         var shifted = body.Translate(new Vector2(0f, -inboxScroll));
         var list = new Stack(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
             frame.Units(12f));
+        var listHeight = 0f;
+        var clipped = false;
+        try
+        {
         frame.Paint.PushClip(body);
+        clipped = true;
 
         if (direct)
         {
@@ -292,8 +299,15 @@ internal sealed class MessagesSurface
                     : InboxEmptyCopy());
         }
 
-        var listHeight = plane - list.Remaining.Height;
-        frame.Paint.PopClip();
+        listHeight = plane - list.Remaining.Height;
+        }
+        finally
+        {
+            if (clipped)
+            {
+                frame.Paint.PopClip();
+            }
+        }
 
         ScrollSlider.Apply(frame, body, ref inboxScroll, listHeight, live: inboxMenu is null);
         DrawInboxMenu(frame, body);
@@ -393,9 +407,15 @@ internal sealed class MessagesSurface
             ? new Rect(new Vector2(area.Min.X, bar.Min.Y - replies - frame.Units(6f)),
                 new Vector2(area.Max.X, bar.Min.Y - frame.Units(6f)))
             : bar;
+        var quoteH = marks.ComposerHeight(frame, openId);
         var messagesTop = friendH > 0f ? friendBar.Max.Y + frame.Units(8f) : header.Max.Y + frame.Units(8f);
+        var messagesBottom = (replies > 0f ? replyRow.Min.Y : bar.Min.Y) - frame.Units(8f) - quoteH;
         var messages = new Rect(new Vector2(area.Min.X, messagesTop),
-            new Vector2(area.Max.X, (replies > 0f ? replyRow.Min.Y : bar.Min.Y) - frame.Units(8f)));
+            new Vector2(area.Max.X, messagesBottom));
+        var quote = quoteH > 0f
+            ? new Rect(new Vector2(area.Min.X, messages.Max.Y + frame.Units(4f)),
+                new Vector2(area.Max.X, messages.Max.Y + frame.Units(4f) + quoteH))
+            : default;
 
         DrawHeader(frame, header, thread);
         if (openId.Length == 0)
@@ -425,7 +445,14 @@ internal sealed class MessagesSurface
                 draft = fields.Insert("messages-draft", draft, glyph);
                 fields.Focus("messages-draft");
             }, SendBit, null, gifs);
+        if (quoteH > 0f)
+        {
+            marks.DrawReply(frame, quote, openId, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
+                frame.Theme.Palette.SurfaceRaised);
+        }
 
+        marks.DrawMenu(frame, frame.Content, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
+            frame.Theme.Palette.Accent, frame.Theme.Palette.SurfaceRaised);
         return frame.Content.Height;
     }
 
@@ -1040,8 +1067,7 @@ internal sealed class MessagesSurface
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
             if (frame.Input.ConsumeClick(cell) && thread?.CanSend == true)
             {
-                talk.Send(openId, replies[index]);
-                stickBottom = true;
+                Post(openId, replies[index]);
             }
         }
     }
@@ -1060,8 +1086,7 @@ internal sealed class MessagesSurface
             return;
         }
 
-        talk.Send(openId, body);
-        stickBottom = true;
+        Post(openId, body);
     }
 
     private void SendDraft()
@@ -1073,7 +1098,29 @@ internal sealed class MessagesSurface
         }
 
         draft = string.Empty;
-        talk.Send(openId, outgoing);
+        Post(openId, outgoing);
+    }
+
+    private void Post(string thread, string body)
+    {
+        if (body.Length == 0 || thread.Length == 0)
+        {
+            return;
+        }
+
+        var outgoing = marks.Seal(thread, body);
+        talk.Send(thread, outgoing);
+        var lines = talk.Lines(thread);
+        if (lines.Count > 0)
+        {
+            var last = lines[^1];
+            marks.CatchSent(thread, "me", last.Mine ? last.At.ToString("O") : string.Empty, outgoing);
+        }
+        else
+        {
+            marks.CatchSent(thread, "me", string.Empty, outgoing);
+        }
+
         stickBottom = true;
     }
 
@@ -1096,7 +1143,10 @@ internal sealed class MessagesSurface
         var total = 0f;
         for (var index = 0; index < lines.Count; index++)
         {
-            heights[index] = ChatBits.NamedRowHeight(frame, viewport.Width, lines[index].Body);
+            var key = LineKey(lines[index]);
+            heights[index] = ChatBits.NamedRowHeight(frame, viewport.Width, lines[index].Body,
+                                 marks.Cite(key, openId, lines[index].Body, lines[index].Mine)) +
+                             marks.Band(frame, key);
             total += heights[index] + (index == 0 ? 0f : gap);
         }
 
@@ -1134,21 +1184,26 @@ internal sealed class MessagesSurface
         }
 
         frame.Paint.PushClip(viewport);
-        var cursor = viewport.Min.Y - threadOffset;
-        for (var index = 0; index < lines.Count; index++)
+        try
         {
-            var height = heights[index];
-            var row = new Rect(new Vector2(viewport.Min.X, cursor),
-                new Vector2(viewport.Max.X, cursor + height));
-            if (row.Max.Y >= viewport.Min.Y && row.Min.Y <= viewport.Max.Y)
+            var cursor = viewport.Min.Y - threadOffset;
+            for (var index = 0; index < lines.Count; index++)
             {
-                DrawLine(frame, row, lines[index], thread?.Title ?? string.Empty);
+                var height = heights[index];
+                var row = new Rect(new Vector2(viewport.Min.X, cursor),
+                    new Vector2(viewport.Max.X, cursor + height));
+                if (row.Max.Y >= viewport.Min.Y && row.Min.Y <= viewport.Max.Y)
+                {
+                    DrawLine(frame, row, lines[index], thread?.Title ?? string.Empty);
+                }
+
+                cursor += height + gap;
             }
-
-            cursor += height + gap;
         }
-
-        frame.Paint.PopClip();
+        finally
+        {
+            frame.Paint.PopClip();
+        }
     }
 
     private static float MeasureLine(in AppletFrame frame, float width, TalkLine line) =>
@@ -1163,7 +1218,7 @@ internal sealed class MessagesSurface
             ? frame.Theme.Palette.Accent with { W = 0.38f }
             : frame.Theme.Palette.SurfaceRaised with { W = 0.36f };
         var ink = frame.Theme.Palette.Ink;
-        var who = line.Mine ? "ME" : line.Sender.Length > 0 ? line.Sender : peerName.Length > 0 ? peerName : "Them";
+        var who = line.Mine ? "You" : line.Sender.Length > 0 ? line.Sender : peerName.Length > 0 ? peerName : "Them";
         var nameRow = bubble.TopSlice(frame.Units(14f));
         frame.Text.DrawEllipsized(nameRow, who,
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent,
@@ -1172,11 +1227,33 @@ internal sealed class MessagesSurface
         frame.Paint.Fill(top, fill, radius);
         frame.Paint.Stroke(top, frame.Theme.Palette.WarmAccent with { W = line.Mine ? 0.36f : 0.20f },
             frame.Theme.Metrics.Hairline, radius);
-        var copy = top.Inset(frame.Units(8f));
+        var key = LineKey(line);
+        var band = marks.Band(frame, key);
+        var copy = top.Inset(new Edges(frame.Units(8f), frame.Units(8f), frame.Units(8f),
+            frame.Units(8f) + band));
         frame.Paint.PushClip(copy);
-        ChatBits.Draw(frame, copy, line.Body, ink, frame.Theme.Palette.InkMuted, null, gifs);
-        frame.Paint.PopClip();
+        try
+        {
+            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, ink, frame.Theme.Palette.InkMuted, null, gifs,
+                marks.Cite(key, openId, line.Body ?? string.Empty, line.Mine));
+        }
+        finally
+        {
+            frame.Paint.PopClip();
+        }
+        if (band > 0f)
+        {
+            marks.DrawBand(frame, top.BottomSlice(band).Inset(new Edges(frame.Units(8f), 0f)), LineKey(line));
+        }
+
+        if (!marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
+        {
+            marks.Offer(openId, key, who, line.Body, frame.Input.Pointer);
+        }
     }
+
+    private string LineKey(TalkLine line) =>
+        ChatMarks.Key(openId, line.Mine ? "me" : line.Sender, line.At.ToString("O"), line.Body);
 
     private void DrawThreadRow(in AppletFrame frame, Rect inset, TalkThread thread)
     {
@@ -1184,7 +1261,7 @@ internal sealed class MessagesSurface
         DrawAvatar(frame, avatar, thread);
         var body = inset.Inset(new Edges(frame.Units(48f), 0f, 0f, 0f));
         var header = body.TopSlice(frame.Units(20f));
-        frame.Text.DrawEllipsized(header.Inset(new Edges(0f, 0f, frame.Units(44f), 0f)), thread.Title,
+        frame.Text.DrawEllipsized(header.Inset(new Edges(0f, 0f, frame.Units(44f), 0f)), thread.Title ?? string.Empty,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var when = UnixAgo.Format(thread.LastAt, clock.Now);
         if (when.Length > 0)
@@ -1193,7 +1270,9 @@ internal sealed class MessagesSurface
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkFaint, TextAlign.Right));
         }
 
-        var preview = thread.Preview.Length > 0 ? ChatBits.Preview(thread.Preview) : thread.Subtitle;
+        var preview = !string.IsNullOrEmpty(thread.Preview)
+            ? ChatBits.Preview(thread.Preview)
+            : thread.Subtitle ?? string.Empty;
         EmojiText.DrawEllipsized(frame, body.Inset(new Edges(0f, frame.Units(22f), thread.Unread > 0 ? frame.Units(28f) : 0f,
             0f)), preview, frame.Theme.Palette.InkMuted);
         if (thread.Unread > 0)
@@ -1210,7 +1289,7 @@ internal sealed class MessagesSurface
     {
         frame.Paint.FillCircle(area.Center, area.Width * 0.42f, frame.Theme.Palette.SurfaceRaised);
         frame.Paint.StrokeCircle(area.Center, area.Width * 0.42f, frame.Theme.Palette.WarmAccent, frame.Units(1.2f));
-        if (thread.Kind == TalkKind.Tell && thread.Title.Length > 0)
+        if (thread.Kind == TalkKind.Tell && !string.IsNullOrEmpty(thread.Title))
         {
             frame.Text.DrawIn(area, thread.Title.AsSpan(0, 1),
                 new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink, TextAlign.Center));
@@ -1431,9 +1510,9 @@ internal sealed class MessagesSurface
     }
 
     private static bool Matches(TalkThread thread, string query) =>
-        thread.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-        thread.Preview.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-        thread.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase);
+        (thread.Title ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase) ||
+        (thread.Preview ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase) ||
+        (thread.Subtitle ?? string.Empty).Contains(query, StringComparison.OrdinalIgnoreCase);
 
     private static bool LooksLikeTell(string query)
     {

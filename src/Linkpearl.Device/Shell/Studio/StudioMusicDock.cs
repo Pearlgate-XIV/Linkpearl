@@ -14,6 +14,7 @@ internal sealed class StudioMusicDock
     private readonly IPearlHub pearl;
     private readonly IStationMarks marks;
     private readonly Action<Rect, string> openStations;
+    private readonly Action<string, Rect> openApplet;
     private bool volumeOpen;
     private bool volumeDrag;
     private int genreIndex;
@@ -23,13 +24,14 @@ internal sealed class StudioMusicDock
     private bool markBusy;
 
     public StudioMusicDock(IHandsetAudio audio, IPublicRadio radio, IPearlHub pearl, IStationMarks marks,
-        Action<Rect, string> openStations)
+        Action<Rect, string> openStations, Action<string, Rect> openApplet)
     {
         this.audio = audio;
         this.radio = radio;
         this.pearl = pearl;
         this.marks = marks;
         this.openStations = openStations;
+        this.openApplet = openApplet;
     }
 
     public bool BlocksPager => volumeOpen || volumeDrag || markBusy;
@@ -45,6 +47,11 @@ internal sealed class StudioMusicDock
         }
 
         markBusy = false;
+        if (!marks.HasAccount)
+        {
+            DrawLocked(frame, row);
+            return;
+        }
 
         var genres = radio.Genres;
         var genre = ResolveGenre(genres);
@@ -476,6 +483,33 @@ internal sealed class StudioMusicDock
             audio.Play(new HandsetTune(station.Id, station.Title, station.Genre + " · " + station.Place, next, false,
                 station.ArtUrl ?? string.Empty));
         });
+    }
+
+    private void DrawLocked(in AppletFrame frame, Rect row)
+    {
+        var accent = new Vector4(0.18f, 0.86f, 1f, 1f);
+        var radius = frame.Units(14f);
+        frame.Paint.Fill(row, frame.Theme.Palette.SurfaceOverlay with { W = 0.82f }, radius);
+        frame.Paint.Stroke(row, accent with { W = 0.22f }, frame.Theme.Metrics.Hairline, radius);
+        var art = row.LeftSlice(row.Height);
+        frame.Paint.Fill(art, frame.Theme.Palette.SurfaceSunken with { W = 1f });
+        AppMarks.DrawFace(frame, art.Inset(frame.Units(8f)), "music", false);
+        var pane = row.Inset(new Edges(art.Width + frame.Units(8f), frame.Units(10f), frame.Units(10f),
+            frame.Units(10f)));
+        frame.Text.DrawEllipsized(pane.TopSlice(frame.Units(14f)), "Create an account",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink));
+        frame.Text.DrawWrapped(pane.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
+            "You must first create an account before using.",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        if (frame.Input.IsHovering(row) || row.Contains(frame.Input.Pointer))
+        {
+            markBusy = true;
+        }
+
+        if (frame.Input.ConsumeClick(row))
+        {
+            openApplet("music", row);
+        }
     }
 
     private void DrawArt(in AppletFrame frame, Rect area, string path, Vector4 gold)

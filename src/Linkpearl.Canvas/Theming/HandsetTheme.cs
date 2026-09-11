@@ -24,6 +24,7 @@ public sealed class HandsetTheme : ITheme
         ["pearlchat"] = new Vector4(0.831f, 0.686f, 0.373f, 1.00f),
         ["friends"] = new Vector4(0.45f, 0.70f, 0.95f, 1.00f),
         ["market"] = new Vector4(0.38f, 0.86f, 0.52f, 1.00f),
+        ["venues"] = new Vector4(0.94f, 0.32f, 0.52f, 1.00f),
         ["events"] = new Vector4(0.72f, 0.48f, 0.92f, 1.00f),
         ["settings"] = new Vector4(0.635f, 0.663f, 0.706f, 1.00f),
     };

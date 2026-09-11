@@ -341,6 +341,9 @@ public static class AppMarks
             case "market":
                 DrawChart(paint, center, size, White, stroke);
                 break;
+            case "venues":
+                DrawPin(paint, center, size, White, stroke);
+                break;
             case "events":
             case "eorzea":
                 DrawTickets(paint, center, size, White, stroke);
@@ -445,6 +448,13 @@ public static class AppMarks
         paint.FillCircle(b, s * 0.10f, ink);
         paint.FillCircle(d, s * 0.10f, ink);
         paint.FillCircle(e, s * 0.10f, ink);
+    }
+
+    private static void DrawPin(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)
+    {
+        paint.StrokeCircle(c + new Vector2(0f, -s * 0.22f), s * 0.42f, ink, stroke);
+        paint.FillCircle(c + new Vector2(0f, -s * 0.22f), s * 0.14f, ink);
+        paint.Line(c + new Vector2(0f, s * 0.18f), c + new Vector2(0f, s * 0.72f), ink, stroke);
     }
 
     private static void DrawTickets(IPaintSurface paint, Vector2 c, float s, Vector4 ink, float stroke)

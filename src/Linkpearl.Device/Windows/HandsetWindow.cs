@@ -45,6 +45,7 @@ public sealed class HandsetWindow : Window
     private readonly HostPaths paths;
     private readonly ResizeGrip resizeGrip = new();
     private readonly SideButton powerButton = new(SideEdge.Right);
+    private readonly SideButton volumeButton = new(SideEdge.Right, 0.16f, 42f);
     private readonly PocketUnlock pocketUnlock = new();
     private readonly HandsetBoot boot = new();
     private bool wantFold;
@@ -59,6 +60,8 @@ public sealed class HandsetWindow : Window
     private Rect lastShell;
     private float lastOuterRadius;
     private float lastGripScale = 1f;
+    private bool holdSide;
+    private float volumeCue;
 
     public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
         HandsetShapePreference shapePreference, ScreenField screenField, ITextField textField,
@@ -196,7 +199,7 @@ public sealed class HandsetWindow : Window
             ResizeGrip.Hits(lastShell, lastGripScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
         Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
             (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner ||
-                shell.HoldsWindow
+                shell.HoldsWindow || holdSide
                 ? ImGuiWindowFlags.NoMove
                 : 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -370,11 +373,16 @@ public sealed class HandsetWindow : Window
 
             var powerArea = usingSkin ? plate.PowerOn(windowRect) : powerButton.Area(windowRect, railDepth, scale);
             var powerHit = CasePowerHit(powerArea, screen, scale);
+            var volumeArea = usingSkin ? plate.VolumeOn(windowRect) : volumeButton.Area(windowRect, railDepth, scale);
+            var volumeHit = CaseSideHit(volumeArea, screen, windowRect, scale);
+            var volumeUp = volumeHit.TopSlice(volumeHit.Height * 0.5f);
+            var volumeDown = volumeHit.BottomSlice(volumeHit.Height * 0.5f);
             var showLock = !asleep && shapePreference.ShowLockTab;
             var lockArea = LockButton.Area(windowRect, screen, scale);
             var lockHit = showLock ? LockButton.HitArea(windowRect, screen, scale) : Rect.Empty;
             var pointer = input.Pointer;
-            var overChrome = powerHit.Contains(pointer) || lockHit.Contains(pointer);
+            holdSide = volumeHit.Contains(pointer) || powerHit.Contains(pointer);
+            var overChrome = powerHit.Contains(pointer) || volumeHit.Contains(pointer) || lockHit.Contains(pointer);
             IInputProbe frameInput = overChrome || boot.Covering ? SilentInput.Instance : input;
             var frame = new AppletFrame(screen, paint, text, frameInput, theme, router, textField, textures, paths,
                 scale, deltaSeconds);
@@ -389,7 +397,8 @@ public sealed class HandsetWindow : Window
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
                     if (!sliderHit.Contains(pointer) && !noticeHit.Contains(pointer) &&
-                        !powerHit.Contains(pointer) && windowRect.Contains(pointer))
+                        !powerHit.Contains(pointer) && !volumeHit.Contains(pointer) &&
+                        windowRect.Contains(pointer))
                     {
                         pocketMoving = true;
                     }
@@ -441,9 +450,11 @@ public sealed class HandsetWindow : Window
                 plate.GasketOn(windowRect), asleep);
             if (!usingSkin)
             {
+                volumeButton.Draw(paint, windowRect, railDepth, scale, theme.Palette.InkFaint);
                 powerButton.Draw(paint, windowRect, railDepth, scale, theme.Palette.InkFaint);
             }
 
+            DrawVolumeCue(paint, screen, scale);
             if (asleep)
             {
                 if (woke)
@@ -469,6 +480,7 @@ public sealed class HandsetWindow : Window
                     Restore();
                 }
 
+                NudgeVolume(volumeUp, volumeDown);
                 return;
             }
 
@@ -483,6 +495,11 @@ public sealed class HandsetWindow : Window
             {
                 locked = !locked;
                 shapePreference.PositionLocked = locked;
+            }
+
+            if (NudgeVolume(volumeUp, volumeDown))
+            {
+                return;
             }
 
             if (ChromeClicked(powerHit) || pocketNow)
@@ -910,6 +927,72 @@ public sealed class HandsetWindow : Window
         return new Rect(
             new Vector2(left, power.Min.Y - pad * 0.35f),
             new Vector2(power.Max.X + pad, power.Max.Y + pad * 0.35f));
+    }
+
+    private static Rect CaseSideHit(Rect nub, Rect screen, Rect window, float scale)
+    {
+        if (nub.IsEmpty)
+        {
+            return Rect.Empty;
+        }
+
+        var pad = MathF.Max(12f, 16f * scale);
+        var left = MathF.Min(nub.Min.X, screen.Max.X) - pad;
+        var right = MathF.Max(nub.Max.X, window.Max.X);
+        return new Rect(
+            new Vector2(left, nub.Min.Y - pad * 0.2f),
+            new Vector2(right, nub.Max.Y + pad * 0.2f));
+    }
+
+    private bool NudgeVolume(Rect up, Rect down)
+    {
+        const float step = 0.08f;
+        var raised = SideClick(up, "##lp-vol-up");
+        var lowered = !raised && SideClick(down, "##lp-vol-down");
+        if (!raised && !lowered)
+        {
+            return false;
+        }
+
+        display.Volume = Math.Clamp(display.Volume + (raised ? step : -step), 0f, 1f);
+        volumeCue = 1.35f;
+        return true;
+    }
+
+    private static bool SideClick(Rect area, string id)
+    {
+        if (area.IsEmpty || area.Width < 2f || area.Height < 2f)
+        {
+            return false;
+        }
+
+        ImGui.SetCursorScreenPos(area.Min);
+        ImGui.InvisibleButton(id, new Vector2(MathF.Max(area.Width, 2f), MathF.Max(area.Height, 2f)));
+        return ImGui.IsItemClicked() || ChromeClicked(area);
+    }
+
+    private void DrawVolumeCue(IPaintSurface paint, Rect screen, float scale)
+    {
+        if (volumeCue <= 0f)
+        {
+            return;
+        }
+
+        volumeCue = MathF.Max(0f, volumeCue - ImGui.GetIO().DeltaTime);
+        var fade = MathF.Min(1f, volumeCue);
+        var width = MathF.Min(screen.Width * 0.64f, scale * 220f);
+        var height = scale * 34f;
+        var box = Rect.FromSize(
+            new Vector2(screen.Center.X - width * 0.5f, screen.Min.Y + scale * 52f),
+            new Vector2(width, height));
+        paint.Fill(box, new Vector4(0.07f, 0.07f, 0.09f, 0.84f * fade), height * 0.5f);
+        var inner = box.Inset(new Edges(scale * 10f, scale * 11f));
+        paint.Fill(inner, new Vector4(1f, 1f, 1f, 0.14f * fade), inner.Height * 0.5f);
+        var fill = inner.LeftSlice(inner.Width * display.Volume);
+        if (fill.Width > 1.5f)
+        {
+            paint.Fill(fill, new Vector4(1f, 1f, 1f, 0.92f * fade), inner.Height * 0.5f);
+        }
     }
 
     private static bool ChromeClicked(Rect area) =>

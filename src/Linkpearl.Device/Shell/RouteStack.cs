@@ -99,7 +99,39 @@ public sealed class RouteStack : IRouter
 
     public Rect? MotionOrigin => motionOrigin;
 
-    public bool CanOpen(string appletId) => applets.ContainsKey(appletId);
+    public bool CanOpen(string appletId) =>
+        applets.TryGetValue(appletId, out var applet) && applet.Allowed;
+
+    public void RevokeDisallowed()
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (current is { Allowed: false })
+        {
+            ids.Add(current.Manifest.Id);
+        }
+
+        foreach (var id in living)
+        {
+            if (applets.TryGetValue(id, out var applet) && !applet.Allowed)
+            {
+                ids.Add(id);
+            }
+        }
+
+        for (var index = 0; index < recents.Count; index++)
+        {
+            var id = recents[index].Id;
+            if (applets.TryGetValue(id, out var applet) && !applet.Allowed)
+            {
+                ids.Add(id);
+            }
+        }
+
+        foreach (var id in ids)
+        {
+            Dismiss(id);
+        }
+    }
 
     public void Open(string appletId) => Open(appletId, null, null);
 
@@ -264,7 +296,7 @@ public sealed class RouteStack : IRouter
 
     private void Open(string appletId, string? routeHint, Rect? originTile)
     {
-        if (!applets.TryGetValue(appletId, out var applet))
+        if (!applets.TryGetValue(appletId, out var applet) || !applet.Allowed)
         {
             return;
         }

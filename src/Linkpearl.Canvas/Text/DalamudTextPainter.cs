@@ -102,21 +102,34 @@ public sealed class DalamudTextPainter : ITextPainter
             var high = text.Length;
             while (low < high)
             {
-                var mid = (low + high + 1) / 2;
-                var candidateSize = MeasureScaled(string.Concat(text[..mid], ellipsis), style.Scale);
+                var mid = FitChars(text, (low + high + 1) / 2);
+                if (mid <= low)
+                {
+                    mid = NextChars(text, low);
+                    if (mid <= low)
+                    {
+                        break;
+                    }
+                }
+
+                var candidateSize = MeasureScaled(string.Concat(Prefix(text, mid), ellipsis), style.Scale);
                 if (candidateSize.X <= area.Width)
                 {
                     low = mid;
                 }
                 else
                 {
-                    high = mid - 1;
+                    high = mid > 0 ? FitChars(text, mid - 1) : 0;
                 }
             }
 
-            var truncated = string.Concat(text[..low], ellipsis);
+            var truncated = string.Concat(Prefix(text, low), ellipsis);
             var truncatedSize = MeasureScaled(truncated, style.Scale);
             DrawGlyphs(FittedOrigin(area, truncatedSize, style.Align), truncated, style);
+        }
+        catch (ArgumentException)
+        {
+            DrawGlyphs(area.Min, text, style);
         }
         finally
         {
@@ -202,6 +215,45 @@ public sealed class DalamudTextPainter : ITextPainter
         var floor = area.Max.Y - size.Y;
         y = floor < area.Min.Y ? area.Min.Y : Math.Clamp(y, area.Min.Y, floor);
         return new Vector2(AlignedX(area, size.X, align), y);
+    }
+
+    private static int FitChars(ReadOnlySpan<char> text, int count)
+    {
+        count = Math.Clamp(count, 0, text.Length);
+        if (count > 0 && count < text.Length && char.IsLowSurrogate(text[count]))
+        {
+            count--;
+        }
+
+        if (count > 0 && char.IsHighSurrogate(text[count - 1]))
+        {
+            count--;
+        }
+
+        return count;
+    }
+
+    private static int NextChars(ReadOnlySpan<char> text, int from)
+    {
+        if (from >= text.Length)
+        {
+            return from;
+        }
+
+        var next = from + 1;
+        if (from < text.Length && char.IsHighSurrogate(text[from]) && next < text.Length &&
+            char.IsLowSurrogate(text[next]))
+        {
+            next++;
+        }
+
+        return next;
+    }
+
+    private static string Prefix(ReadOnlySpan<char> text, int count)
+    {
+        count = FitChars(text, count);
+        return count <= 0 ? string.Empty : text[..count].ToString();
     }
 
     private static Vector2 MeasureScaled(ReadOnlySpan<char> text, float scale)

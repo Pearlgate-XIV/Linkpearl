@@ -53,6 +53,7 @@ internal enum MusicFeedPane : byte
     Radio = 0,
     Following = 1,
     Live = 2,
+    Twitch = 3,
 }
 
 internal sealed class MusicState
@@ -232,6 +233,9 @@ internal sealed class MusicState
 
     [JsonIgnore]
     public bool FollowListFollowers { get; set; }
+
+    [JsonIgnore]
+    public string FollowListOwnerId { get; set; } = string.Empty;
 
     public static readonly string[] Genres =
     {
@@ -1199,9 +1203,20 @@ internal sealed class FollowedStationSnap
 
     public string Mount { get; set; } = string.Empty;
 
-    public CommunityStation ToStation(bool live, int listeners = 0, int likes = 0, bool liked = false) =>
+    public string WatchUrl { get; set; } = string.Empty;
+
+    public string TwitchLogin { get; set; } = string.Empty;
+
+    public string VenueLine { get; set; } = string.Empty;
+
+    public string Lifestream { get; set; } = string.Empty;
+
+    public string Source { get; set; } = string.Empty;
+
+    public CommunityStation ToStation(bool live, int listeners = 0, int likes = 0, bool liked = false,
+        int viewers = 0) =>
         new(Id, Name.Length > 0 ? Name : "Station", Host, Genre, live, ListenUrl, listeners, Bio, ArtPath, Mount, likes,
-            liked);
+            liked, WatchUrl, viewers, TwitchLogin, VenueLine, Lifestream, Source);
 
     public static FollowedStationSnap From(CommunityStation station) =>
         new()
@@ -1214,6 +1229,11 @@ internal sealed class FollowedStationSnap
             ArtPath = station.ArtPath,
             ListenUrl = station.ListenUrl,
             Mount = station.Mount,
+            WatchUrl = station.WatchUrl,
+            TwitchLogin = station.TwitchLogin,
+            VenueLine = station.VenueLine,
+            Lifestream = station.Lifestream,
+            Source = station.Source,
         };
 }
 

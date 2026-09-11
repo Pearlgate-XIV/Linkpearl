@@ -95,7 +95,7 @@ internal sealed class AnnouncementShelf
         for (var index = 0; index < items.Length; index++)
         {
             var item = items[index];
-            AnnouncementChrome.Story(frame, stack.Take(frame.Units(72f)), item.Title, Snippet(item.Body),
+            AnnouncementChrome.Story(frame, stack.Take(frame.Units(88f)), item.Title, Snippet(item.Body),
                 AnnouncementChrome.Ago(item.CreatedAtUnix, clock.Now), night, () => OpenPosted(item));
         }
 

@@ -26,6 +26,7 @@ public static class ModuleDiscovery
         new WeatherModule(),
         new CameraModule(),
         new MarketModule(),
+        new VenuesModule(),
         new AppStoreModule(),
     };
 }

@@ -10,6 +10,7 @@ internal enum FilePickMode : byte
     Images = 0,
     Attach = 1,
     Folder = 2,
+    Audio = 3,
 }
 
 internal sealed class FilePickWindow : Window
@@ -245,7 +246,13 @@ internal sealed class FilePickWindow : Window
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.55f);
         ImGui.InputTextWithHint("##lp-file-name", "File Name", ref typed, 260);
         ImGui.SameLine();
-        ImGui.TextUnformatted(mode == FilePickMode.Folder ? "Folders" : mode == FilePickMode.Attach ? "Pictures, documents, and packs" : "Pictures");
+        ImGui.TextUnformatted(mode switch
+        {
+            FilePickMode.Folder => "Folders",
+            FilePickMode.Attach => "Pictures, documents, and packs",
+            FilePickMode.Audio => "Audio",
+            _ => "Pictures",
+        });
         ImGui.SameLine();
         if (ImGui.Button("Ok", new Vector2(76f * ImGuiHelpers.GlobalScale, 0f)))
         {
@@ -382,6 +389,19 @@ internal sealed class FilePickWindow : Window
     private bool Matches(string name)
     {
         var ext = Path.GetExtension(name);
+        if (mode == FilePickMode.Audio)
+        {
+            return ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".wav", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".flac", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".aac", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".wma", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".aiff", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".aif", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (mode == FilePickMode.Attach)
         {
             return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
@@ -410,6 +430,7 @@ internal sealed class FilePickWindow : Window
     {
         FilePickMode.Folder => "Choose folder",
         FilePickMode.Attach => "Attach files",
+        FilePickMode.Audio => "Load a track",
         _ => "Upload pictures",
     };
 

@@ -169,7 +169,8 @@ public static class EmojiBits
         return any;
     }
 
-    public static int OnlyCount(string text) => OnlyEmoji(text) ? ClusterCount(text) : 0;
+    public static int OnlyCount(string? text) =>
+        string.IsNullOrEmpty(text) ? 0 : OnlyEmoji(text) ? ClusterCount(text) : 0;
 
     public static bool LooksEmoji(string part)
     {

@@ -311,6 +311,8 @@ internal sealed class VybeFace
 
     public string Relationship { get; set; } = "Rather not say";
 
+    public string Race { get; set; } = string.Empty;
+
     public bool DmsOpen { get; set; } = true;
 
     public string[]? Genders { get; set; }
@@ -320,6 +322,10 @@ internal sealed class VybeFace
     public string[]? Intents { get; set; }
 
     public string[]? Tags { get; set; }
+
+    public bool LaneDone { get; set; }
+
+    public int[]? LaneMarks { get; set; }
 
     public static VybeFace From(VybeState state) =>
         new()
@@ -345,11 +351,14 @@ internal sealed class VybeFace
             BannerFocusX = state.BannerFocusX,
             BannerFocusY = state.BannerFocusY,
             Relationship = state.Relationship,
+            Race = state.Race,
             DmsOpen = state.DmsOpen,
             Genders = state.Genders.ToArray(),
             Sexualities = state.Sexualities.ToArray(),
             Intents = state.Intents.ToArray(),
             Tags = state.Tags.ToArray(),
+            LaneDone = state.LaneDone,
+            LaneMarks = VybeLaneMap.Fit(state.LaneMarks),
         };
 
     public void Apply(VybeState state)
@@ -376,11 +385,14 @@ internal sealed class VybeFace
         state.BannerFocusX = BannerFocusX;
         state.BannerFocusY = BannerFocusY;
         state.Relationship = string.IsNullOrWhiteSpace(Relationship) ? "Rather not say" : Relationship;
+        state.Race = SceneBook.NamedRace(0, Race ?? string.Empty);
         state.DmsOpen = DmsOpen;
         Copy(state.Genders, Genders);
         Copy(state.Sexualities, Sexualities);
         Copy(state.Intents, Intents);
         Copy(state.Tags, Tags);
+        state.LaneDone = LaneDone;
+        state.LaneMarks = VybeLaneMap.Fit(LaneMarks);
     }
 
     private static void Copy(List<string> target, string[]? source)

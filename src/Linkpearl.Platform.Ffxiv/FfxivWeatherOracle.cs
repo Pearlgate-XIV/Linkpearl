@@ -38,38 +38,12 @@ public sealed class FfxivWeatherOracle : IWeatherOracle
         var result = new WeatherWindow[count];
         for (var offset = 0; offset < count; offset++)
         {
-            var weatherId = offset == 0 ? ReadCurrent(territoryId) : ReadHour(territoryId, offset);
+            var weatherId = offset == 0 ? FfxivWeatherSense.Live(territoryId) : ReadHour(territoryId, offset);
             var starts = now - intoHour + hourLength * offset;
             result[offset] = new WeatherWindow(Title(weatherId), Icon(weatherId), starts, starts + hourLength);
         }
 
         return result;
-    }
-
-    private static unsafe byte ReadCurrent(ushort territoryId)
-    {
-        var manager = WeatherManager.Instance();
-        if (manager is null)
-        {
-            return 0;
-        }
-
-        var seen = manager->GetCurrentWeather();
-        if (seen != 0)
-        {
-            return seen;
-        }
-
-        if (manager->HasIndividualWeather(territoryId))
-        {
-            var individual = manager->GetIndividualWeather(territoryId);
-            if (individual != 0)
-            {
-                return individual;
-            }
-        }
-
-        return manager->GetWeatherForHour(territoryId, 0);
     }
 
     private static unsafe byte ReadHour(ushort territoryId, int hourOffset)

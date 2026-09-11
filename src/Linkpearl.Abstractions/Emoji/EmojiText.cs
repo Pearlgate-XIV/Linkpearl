@@ -101,18 +101,26 @@ public static class EmojiText
             return;
         }
 
+        var clipped = false;
         try
         {
             var height = 0f;
             var used = 0f;
             frame.Paint.PushClip(area);
+            clipped = true;
             Walk(frame.Paint, frame.Text, frame.Textures, frame.Paths, body, area.Width, style, true, ref height,
                 ref used, area.Min, oneLine);
-            frame.Paint.PopClip();
         }
         catch (Exception)
         {
-            frame.Text.DrawWrapped(area, body, new TextStyle(style.Role, style.Color));
+            frame.Text.DrawWrapped(area, body ?? string.Empty, new TextStyle(style.Role, style.Color));
+        }
+        finally
+        {
+            if (clipped)
+            {
+                frame.Paint.PopClip();
+            }
         }
     }
 
@@ -125,7 +133,7 @@ public static class EmojiText
         var y = 0f;
         var line = face;
         var dots = false;
-        var walk = StringInfo.GetTextElementEnumerator(body);
+        var walk = StringInfo.GetTextElementEnumerator(body ?? string.Empty);
         var pending = string.Empty;
         while (walk.MoveNext())
         {

@@ -21,6 +21,9 @@ public interface IApplet
 
     // Last inner page or tab, restored through AppletEntry.RouteHint after a cold open.
     string Place => string.Empty;
+
+    // When false the shell hides the icon and will not open the applet.
+    bool Allowed => true;
 }
 
 public interface IAppletBackground

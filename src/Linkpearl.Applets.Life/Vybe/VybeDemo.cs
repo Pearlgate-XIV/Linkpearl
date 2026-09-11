@@ -14,174 +14,29 @@ internal static class VybeDemo
 
     public static void Seed(VybeState state, HostPaths paths, bool seedHearts, string homeWorld = "")
     {
-        var people = People(paths);
-        if (homeWorld.Length > 0)
-        {
-            people[0] = people[0] with { World = homeWorld };
-            people[2] = people[2] with { World = homeWorld };
-            people[7] = people[7] with { World = homeWorld };
-        }
-
+        _ = paths;
+        _ = seedHearts;
+        _ = homeWorld;
         for (var index = state.Roster.Count - 1; index >= 0; index--)
         {
-            if (state.Roster[index].GateId.StartsWith("demo:", StringComparison.Ordinal))
+            if (!state.Roster[index].GateId.StartsWith("demo:", StringComparison.Ordinal))
             {
-                state.Roster.RemoveAt(index);
+                continue;
             }
+
+            var id = state.Roster[index].Id;
+            state.Roster.RemoveAt(index);
+            state.LiveStories.Remove(id);
+            state.LikedPeople.Remove(id);
+            state.Incoming.Remove(id);
+            state.Connected.Remove(id);
         }
-
-        for (var index = 0; index < people.Length; index++)
-        {
-            var person = people[index];
-            state.Roster.Add(person);
-            state.LiveStories.Add(person.Id);
-        }
-
-        if (seedHearts && state.LikedPeople.Count == 0)
-        {
-            state.LikedPeople.Add(people[0].Id);
-            state.LikedPeople.Add(people[2].Id);
-        }
-
-        if (state.Incoming.Count == 0)
-        {
-            state.Incoming.Add(people[1].Id);
-            state.Incoming.Add(people[10].Id);
-        }
-
-        state.Incoming.Remove(people[4].Id);
-
-        TryConnect(state, people[0].Id);
-        TryConnect(state, people[2].Id);
-        TryConnect(state, people[4].Id);
-        TryConnect(state, people[5].Id);
-        TryConnect(state, people[6].Id);
-        TryConnect(state, people[7].Id);
-        TryConnect(state, people[8].Id);
-        TryConnect(state, people[9].Id);
-        TryConnect(state, people[11].Id);
-        TryConnect(state, people[12].Id);
-        if (!state.Incoming.Contains(people[13].Id))
-        {
-            state.Incoming.Add(people[13].Id);
-        }
-        state.StarredChats.Add(VybeState.LocalTalkKey(people[0].Id));
-        state.StarredChats.Add(VybeState.LocalTalkKey(people[7].Id));
-        state.StarredChats.Add(VybeState.LocalTalkKey(people[12].Id));
-
-        SeedTalk(state, people[0].Id, "Sunset on the ward is unreal. Come through.",
-            new ChatLine(false, "You around tonight?", "2:14 PM"),
-            new ChatLine(true, "Just logged in.", "2:16 PM"),
-            new ChatLine(false, "Sunset on the ward is unreal. Come through.", "2:17 PM"),
-            new ChatLine(true, "On my way. Need a minute to swap glam ✨", "2:18 PM"),
-            new ChatLine(false, "Take your time. I grabbed a table by the fountain.", "2:19 PM"),
-            new ChatLine(true, "Perfect. Want coffee or something stronger?", "2:20 PM"),
-            new ChatLine(false, "Dealer's choice. Bring that playlist too 🎶", "2:21 PM"),
-            new ChatLine(true, "Already queued. See you in five.", "2:22 PM"));
-        SeedTalk(state, people[2].Id, "Always.",
-            new ChatLine(false, "Ward walks after midnight. You in?", "Yesterday"),
-            new ChatLine(true, "Always.", "Yesterday"),
-            new ChatLine(false, "Same route as last week. Meet at the aetheryte.", "Yesterday"),
-            new ChatLine(true, "I'll be the one with the lantern.", "Yesterday"),
-            new ChatLine(false, "Don't forget the snacks this time 😂", "Yesterday"),
-            new ChatLine(true, "I bought extra. Lesson learned.", "Yesterday"),
-            new ChatLine(false, "Good. Echo might join if we start late.", "11:40 PM"),
-            new ChatLine(true, "Tell them I'll save a seat.", "11:41 PM"));
-        SeedTalk(state, people[4].Id, "",
-            new ChatLine(false, "That set last night was feral.", "5:02 PM"),
-            new ChatLine(true, "I lost my voice yelling the chorus.", "5:04 PM"),
-            new ChatLine(false, "Same. Ace dropped that unreleased track at 2am.", "5:05 PM"),
-            new ChatLine(true, "I need that file. Did anyone record it?", "5:06 PM"),
-            new ChatLine(false, "Nyx said they clipped the drop. Asking now.", "5:08 PM"),
-            new ChatLine(true, "If they send it I'll bounce you a copy.", "5:09 PM"),
-            new ChatLine(false, "Deal. Club again Friday? 🔥", "5:11 PM"),
-            new ChatLine(true, "I'm in. Save me a spot on the rail.", "5:12 PM"),
-            new ChatLine(false, "Already did. Don't be late this time.", "5:13 PM"));
-        SeedTalk(state, people[5].Id, "",
-            new ChatLine(false, "Need a pose partner tomorrow.", "1:20 PM"),
-            new ChatLine(true, "Ward 12? I can do late afternoon.", "1:22 PM"),
-            new ChatLine(false, "Yes. Rooftop with the pink neon.", "1:23 PM"),
-            new ChatLine(true, "I know the one. Bring the black coat.", "1:24 PM"),
-            new ChatLine(false, "And the staff. The lighting loves it.", "1:25 PM"),
-            new ChatLine(true, "I'll dump the shots in a folder after.", "1:27 PM"));
-        SeedTalk(state, people[6].Id, "",
-            new ChatLine(false, "FC house is open if you want dinner.", "6:40 PM"),
-            new ChatLine(true, "What are we cooking?", "6:41 PM"),
-            new ChatLine(false, "Stew and too much cake. Wren already started.", "6:42 PM"),
-            new ChatLine(true, "Say less. I'll teleport after this duty.", "6:43 PM"),
-            new ChatLine(false, "Bring Sol if you see them online.", "6:44 PM"),
-            new ChatLine(true, "They're on a rooftop. I'll ping.", "6:45 PM"),
-            new ChatLine(false, "Perfect. We saved you a plate 💜", "6:46 PM"));
-        SeedTalk(state, people[7].Id, "",
-            new ChatLine(false, "You still awake?", "1:08 AM"),
-            new ChatLine(true, "Barely. What's up?", "1:09 AM"),
-            new ChatLine(false, "Can't sleep. Music is too good tonight.", "1:10 AM"),
-            new ChatLine(true, "Put me on speaker. I'll stay for a song.", "1:11 AM"),
-            new ChatLine(false, "This one first. Tell me if it slaps.", "1:12 AM"),
-            new ChatLine(true, "It slaps. Play the next one.", "1:14 AM"),
-            new ChatLine(false, "Okay but after this we both log.", "1:15 AM"),
-            new ChatLine(true, "Lies. See you in an hour 😴", "1:16 AM"),
-            new ChatLine(false, "Fair. Night market tomorrow if we survive.", "1:17 AM"),
-            new ChatLine(true, "I'm there. Coffee first though.", "1:18 AM"));
-        SeedTalk(state, people[8].Id, "",
-            new ChatLine(false, "Sunset from the roof is ridiculous tonight.", "7:31 PM"),
-            new ChatLine(true, "Send a shot.", "7:32 PM"),
-            new ChatLine(false, "Give me two minutes. Wind is wild.", "7:33 PM"),
-            new ChatLine(true, "Stay back from the edge please.", "7:33 PM"),
-            new ChatLine(false, "I lived. Look at that orange.", "7:36 PM"),
-            new ChatLine(true, "Okay that's illegal. We need a group pose.", "7:37 PM"));
-        SeedTalk(state, people[9].Id, "",
-            new ChatLine(false, "House tour later? I finished the garden.", "4:05 PM"),
-            new ChatLine(true, "Yes. I still owe you those indoor plants.", "4:06 PM"),
-            new ChatLine(false, "Bring them. Echo said they'll help hang lights.", "4:07 PM"),
-            new ChatLine(true, "I'll be there after raid. Don't start without me.", "4:08 PM"),
-            new ChatLine(false, "We won't. There's cake if you're fast 🎂", "4:09 PM"));
-        SeedTalk(state, people[11].Id, "",
-            new ChatLine(false, "Dance floor is packed. Where are you?", "11:02 PM"),
-            new ChatLine(true, "By the stairs. Pink jacket.", "11:03 PM"),
-            new ChatLine(false, "I see you. Don't move.", "11:03 PM"),
-            new ChatLine(true, "Too late I moved 😭", "11:04 PM"),
-            new ChatLine(false, "Found you. Next song is ours.", "11:05 PM"),
-            new ChatLine(true, "Lead. I follow.", "11:06 PM"));
-        SeedTalk(state, people[12].Id, "",
-            new ChatLine(false, "This thread stays plus-only. You good?", "12:41 AM"),
-            new ChatLine(true, "Yeah. I enabled VYBE+.", "12:42 AM"),
-            new ChatLine(false, "Good. I dropped a private set. Don't put it on the SFW feed.", "12:43 AM"),
-            new ChatLine(true, "Won't. Lounge later?", "12:44 AM"),
-            new ChatLine(false, "Private room after 1. Adults only. 🔥", "12:45 AM"));
-        SeedTalk(state, people[13].Id, "",
-            new ChatLine(false, "Saw you unlocked plus. Request incoming.", "1:02 AM"),
-            new ChatLine(false, "I keep the unfiltered dumps off the main board.", "1:03 AM"));
     }
 
     public static bool IsPlusPost(PearlPost post) => VybePostMark.IsPlus(post);
+    public static ScenePerson[] People(HostPaths paths) => [];
 
-    private static void TryConnect(VybeState state, int personId)
-    {
-        if (!state.TalkHidden(VybeState.LocalTalkKey(personId)))
-        {
-            state.Connected.Add(personId);
-        }
-    }
-
-    private static void SeedTalk(VybeState state, int personId, string oldTail, params ChatLine[] lines)
-    {
-        var thread = state.Thread(personId);
-        if (thread.Count > 0)
-        {
-            if (oldTail.Length == 0 || thread.Count >= 4 ||
-                !string.Equals(thread[^1].Body, oldTail, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            thread.Clear();
-        }
-
-        thread.AddRange(lines);
-    }
-
-    public static ScenePerson[] People(HostPaths paths)
+    private static ScenePerson[] DemoPeople(HostPaths paths)
     {
         return
         [
@@ -200,9 +55,9 @@ internal static class VybeDemo
                 0.40f, plusMember: true),
             Person(paths, "sol", "Sol", "@sol", "Jenova", "Sunset rooftops.", true, 0.94f, 0.48f, 0.22f, "luna"),
             Person(paths, "wren", "Wren", "@wren", "Siren", "FC house is open.", true, 0.28f, 0.58f, 0.46f, "echo"),
-            Person(paths, "iris", "Iris", "@iris", "Gilgamesh", "Looking for a pose partner.", false, 0.78f, 0.32f,
+            Person(paths, "iris", "Iris", "@iris", "Phoenix", "Looking for a pose partner.", false, 0.78f, 0.32f,
                 0.54f, "vex"),
-            Person(paths, "jett", "Jett", "@jett", "Leviathan", "On the dance floor.", true, 0.20f, 0.34f, 0.82f,
+            Person(paths, "jett", "Jett", "@jett", "Cerberus", "On the dance floor.", true, 0.20f, 0.34f, 0.82f,
                 "novale"),
             Person(paths, "velvet", "Velvet", "@velvet", "Balmung", "18+ after dark. DMs open.", true, 0.82f, 0.18f,
                 0.42f, "raven", true),
@@ -215,7 +70,9 @@ internal static class VybeDemo
         ];
     }
 
-    public static PearlPost[] Posts(HostPaths paths)
+    public static PearlPost[] Posts(HostPaths paths) => [];
+
+    private static PearlPost[] DemoPosts(HostPaths paths)
     {
         var luna = Face(paths, "luna");
         var ace = Face(paths, "ace");
@@ -266,10 +123,22 @@ internal static class VybeDemo
             nightOnly ? ["Dating", "ERP"] : ["Friends", "GPose"],
             nightOnly ? ["After Dark", "18+"] : ["Playful"],
             Face(paths, face.Length > 0 ? face : key), PlusMember: plusMember,
-            TimeZoneId: WorldZones.PickFor(key));
+            TimeZoneId: WorldZones.PickFor(key), Race: DemoRace(key));
     }
 
     public static bool HasPlusAccount(ScenePerson person) => person.PlusMember || person.NightOnly;
+
+    private static string DemoRace(string key) => key switch
+    {
+        "luna" or "iris" or "velvet" => "Miqo'te",
+        "ace" or "vex" or "hex" => "Au Ra",
+        "kairo" or "echo" or "ember" => "Elezen",
+        "nyx" or "noir" => "Viera",
+        "raven" or "novale" => "Au Ra",
+        "sol" or "jett" => "Hrothgar",
+        "wren" => "Hyur",
+        _ => SceneBook.Races[Math.Abs(key.GetHashCode(StringComparison.Ordinal)) % SceneBook.Races.Length],
+    };
 
     private static PearlPost Post(string id, string authorId, string name, string handle, string avatar, string body,
         string when, bool liked, int likes, int comments, int reposts, params PearlMedia[] media) =>

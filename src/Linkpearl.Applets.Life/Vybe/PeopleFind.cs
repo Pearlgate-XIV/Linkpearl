@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Linkpearl.Modules;
+using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Time;
 
@@ -77,6 +78,8 @@ internal sealed class PeopleFindState
 
     public List<string> Status { get; set; } = new();
 
+    public int[] LaneWant { get; set; } = [];
+
     public List<int> Passed { get; set; } = new();
 
     public List<int> Saved { get; set; } = new();
@@ -89,7 +92,7 @@ internal sealed class PeopleFindState
                Races.Count + Roles.Count + Jobs.Count + Interests.Count + RpInterest.Count + RpTypes.Count +
                Activity.Count + PlayTimes.Count + Communication.Count + Social.Count + DatingIntent.Count +
                Status.Count + Quick.Count + (SharedFloor.Length > 0 ? 1 : 0) + (WalkUp.Length > 0 ? 1 : 0) +
-               (OverlapPlay ? 1 : 0) + (Mode > 0 ? 1 : 0);
+               (OverlapPlay ? 1 : 0) + (Mode > 0 ? 1 : 0) + VybeLaneMap.ActiveWants(LaneWant);
     }
 
     public void Clear()
@@ -118,6 +121,7 @@ internal sealed class PeopleFindState
         Social.Clear();
         DatingIntent.Clear();
         Status.Clear();
+        LaneWant = VybeLaneMap.Blank();
     }
 
     public string[] Summary()
@@ -172,6 +176,15 @@ internal sealed class PeopleFindState
             PackOne(rows, "Play overlap");
         }
 
+        var want = VybeLaneMap.Fit(LaneWant);
+        for (var index = 0; index < want.Length; index++)
+        {
+            if (want[index] >= 10)
+            {
+                PackOne(rows, LaneWantLabel(index, want[index]));
+            }
+        }
+
         return rows;
     }
 
@@ -220,7 +233,21 @@ internal sealed class PeopleFindState
         {
             OverlapPlay = false;
         }
+
+        var want = VybeLaneMap.Fit(LaneWant);
+        for (var index = 0; index < want.Length; index++)
+        {
+            if (want[index] >= 10 && string.Equals(label, LaneWantLabel(index, want[index]), StringComparison.Ordinal))
+            {
+                want[index] = 0;
+            }
+        }
+
+        LaneWant = want;
     }
+
+    private static string LaneWantLabel(int lane, int percent) =>
+        VybeLaneMap.Lanes[lane] + " " + percent.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
 
     private static void Pack(List<string> rows, List<string> source)
     {
@@ -294,7 +321,8 @@ internal readonly record struct PeopleCard(
     bool DmsOpen = true,
     bool PlusOnly = false,
     bool PlusMember = false,
-    string TimeZoneId = "");
+    string TimeZoneId = "",
+    int[]? Pulse = null);
 
 internal static class PeopleFindBook
 {
@@ -331,10 +359,7 @@ internal static class PeopleFindBook
 
     public static readonly string[] Nearby = { "Same Zone", "Same City", "At My Venue", "Nearby Players" };
 
-    public static readonly string[] Races =
-    {
-        "Hyur", "Miqo'te", "Au Ra", "Viera", "Elezen", "Roegadyn", "Lalafell", "Hrothgar",
-    };
+    public static readonly string[] Races = SceneBook.Races;
 
     public static readonly string[] Roles =
     {
@@ -395,18 +420,37 @@ internal static class PeopleFindBook
 
     public static string DataCenterOf(string world) => world switch
     {
+        "Aether" or "Crystal" or "Primal" or "Dynamis" or "Light" or "Chaos" or "Elemental" or "Gaia" or "Mana"
+            or "Meteor" or "Materia" => world,
         "Balmung" or "Mateus" or "Zalera" or "Diabolos" or "Coeurl" or "Malboro" => "Crystal",
         "Gilgamesh" or "Jenova" or "Siren" or "Adamantoise" or "Cactuar" or "Faerie" or "Midgardsormr" or "Sargatanas" =>
             "Aether",
         "Leviathan" or "Excalibur" or "Hyperion" or "Behemoth" or "Famfrit" or "Lamia" or "Ultros" => "Primal",
         "Halicarnassus" or "Maduin" or "Marilith" or "Seraph" or "Cuchulainn" or "Golem" or "Kraken" or "Rafflesia" =>
             "Dynamis",
-        "Shiva" or "Twintania" or "Odin" or "Lich" or "Zodiark" or "Phoenix" => "Light",
+        "Shiva" or "Twintania" or "Odin" or "Lich" or "Zodiark" or "Phoenix" or "Alpha" or "Raiden" or "Sagittarius"
+            or "Phantom" => "Light",
         "Cerberus" or "Louisoix" or "Moogle" or "Omega" or "Ragnarok" or "Spriggan" => "Chaos",
+        "Aegis" or "Atomos" or "Carbuncle" or "Garuda" or "Gungnir" or "Kujata" or "Tonberry" or "Typhon" => "Elemental",
+        "Alexander" or "Bahamut" or "Durandal" or "Fenrir" or "Ifrit" or "Ridill" or "Tiamat" or "Ultima" => "Gaia",
+        "Anima" or "Asura" or "Chocobo" or "Hades" or "Ixion" or "Masamune" or "Pandaemonium" or "Titan" => "Mana",
+        "Belias" or "Mandragora" or "Ramuh" or "Shinryu" or "Unicorn" or "Valefor" or "Yojimbo" or "Zeromus" => "Meteor",
+        "Bismarck" or "Ravana" or "Sephirot" or "Sophia" or "Zurvan" => "Materia",
         _ => "Crystal",
     };
 
-    public static PeopleCard[] Deck(HostPaths paths)
+    public static string RegionOf(string world) => DataCenterOf(world) switch
+    {
+        "Aether" or "Crystal" or "Primal" or "Dynamis" => "NA",
+        "Light" or "Chaos" => "EU",
+        "Elemental" or "Gaia" or "Mana" or "Meteor" => "JP",
+        "Materia" => "OC",
+        _ => "NA",
+    };
+
+    public static PeopleCard[] Deck(HostPaths paths) => [];
+
+    private static PeopleCard[] DemoDeck(HostPaths paths)
     {
         return
         [
@@ -464,19 +508,19 @@ internal static class PeopleFindBook
                 "Sunset rooftops and map parties.", "No RP", Array.Empty<string>(), "No",
                 "Today", true, "Morning", "In-Game Only", "Group Social", "", "", 0,
                 false, true, "luna"),
-            Card(paths, "wren", "Wren Vale", "@wren", "Cactuar", "Botanist", "Gatherer", "Lalafell",
+            Card(paths, "wren", "Wren Vale", "@wren", "Cactuar", "Botanist", "Gatherer", "Hyur",
                 ["Creative Collaborators", "FC Connections", "Friends"],
                 ["Housing", "Housing Design", "Gathering", "Crafting", "Glamour"],
                 "Redecorating the FC again. Bring plants.", "RP Curious", ["Slice of Life"], "Ask First",
                 "Week", true, "Variable", "Text Chat", "Quiet / Chill", "", "", 0,
                 false, false, "echo"),
-            Card(paths, "iris", "Iris Quinn", "@iris", "Excalibur", "Dancer", "Physical Ranged", "Miqo'te",
+            Card(paths, "iris", "Iris Quinn", "@iris", "Phoenix", "Dancer", "Physical Ranged", "Miqo'te",
                 ["Dating", "Flirting", "Venue Friends"],
                 ["Fashion", "Venues", "Clubs", "GPOSE", "Music"],
                 "Looking for a pose partner and a late set.", "Casual RP", ["Social", "Romance"], "Yes",
                 "Online", true, "Late Night", "PearlChat", "Talkative", "Flirting", "Dating", 22,
                 true, true, "vex"),
-            Card(paths, "jett", "Jett Arden", "@jett", "Zalera", "Ninja", "Melee DPS", "Hrothgar",
+            Card(paths, "jett", "Jett Arden", "@jett", "Cerberus", "Ninja", "Melee DPS", "Hrothgar",
                 ["Gaming Partner", "Dungeon / Raid Friends", "Friends"],
                 ["PvP", "Dungeons", "Raiding", "Ultimate", "Achievement Hunting"],
                 "On the dance floor after savage. Frontline later.", "No RP", Array.Empty<string>(), "No",
@@ -542,15 +586,22 @@ internal static class PeopleFindBook
             picks.Add(card);
         }
 
-        picks.Sort((left, right) => Score(right, find, homeWorld, homeDc, mine) -
-                                    Score(left, find, homeWorld, homeDc, mine));
+        var lanes = state.LaneDone ? state.LaneMarks : null;
+        picks.Sort((left, right) => Score(right, find, homeWorld, homeDc, mine, lanes) -
+                                    Score(left, find, homeWorld, homeDc, mine, lanes));
         return picks;
     }
 
     public static bool Passes(PeopleCard card, PeopleFindState find, VybeState state, string homeWorld,
-        string homeDc, IReadOnlyCollection<string> mine)
+        string homeDc, IReadOnlyCollection<string> mine, bool skipQuery = false)
     {
-        if (find.Query.Length > 0 &&
+        if (VybeChrome.IsLalafell(card.Race))
+        {
+            return false;
+        }
+
+        find.Races.RemoveAll(VybeChrome.IsLalafell);
+        if (!skipQuery && find.Query.Length > 0 &&
             card.Name.IndexOf(find.Query, StringComparison.OrdinalIgnoreCase) < 0 &&
             card.Handle.IndexOf(find.Query, StringComparison.OrdinalIgnoreCase) < 0 &&
             card.World.IndexOf(find.Query, StringComparison.OrdinalIgnoreCase) < 0 &&
@@ -737,8 +788,172 @@ internal static class PeopleFindBook
         return true;
     }
 
+    public static bool FitsPost(PearlPost post, PeopleFindState find, VybeState state, PeopleCard[] deck,
+        string homeWorld, string search)
+    {
+        if (!HitsSearch(search, post.Body, post.AuthorName, post.AuthorHandle) &&
+            !PostMarksHit(post, search))
+        {
+            return false;
+        }
+
+        foreach (var (tag, pole) in state.Filters)
+        {
+            var has = PostMarksHit(post, tag);
+            if (pole == FilterPole.Include && !has)
+            {
+                return false;
+            }
+
+            if (pole == FilterPole.Exclude && has)
+            {
+                return false;
+            }
+        }
+
+        if (TryAuthor(post, deck, state, out var card))
+        {
+            return Passes(card, find, state, homeWorld, DataCenterOf(homeWorld), Mine(state), skipQuery: true);
+        }
+
+        var marks = VybePostTags.Collect(post);
+        return OverlapsLoose(find.Interests, marks) && OverlapsLoose(find.LookingFor, marks);
+    }
+
+    public static bool FitsHash(string tag, PeopleFindState find, string search)
+    {
+        var slug = VybePostTags.Normalize(tag);
+        if (slug.Length == 0)
+        {
+            return false;
+        }
+
+        var needle = VybePostTags.Normalize(search);
+        if (needle.Length > 0 && slug.IndexOf(needle, StringComparison.Ordinal) < 0)
+        {
+            return false;
+        }
+
+        return OverlapsLoose(find.Interests, [tag]) && OverlapsLoose(find.LookingFor, [tag]);
+    }
+
+    public static bool FitsGroup(SceneGroup group, PeopleFindState find, string search)
+    {
+        if (search.Length > 0 &&
+            group.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0 &&
+            group.Tag.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return false;
+        }
+
+        if (find.Mode == 1 || find.Nearby.Count > 0 || find.Quick.Contains("Nearby"))
+        {
+            if (!group.Nearby)
+            {
+                return false;
+            }
+        }
+
+        return OverlapsLoose(find.Interests, [group.Tag, group.Name]) &&
+               OverlapsLoose(find.LookingFor, [group.Tag, group.Name]);
+    }
+
+    public static PeopleCard FromPerson(ScenePerson person) =>
+        new(person.Id, person.GateId, person.Name, person.Handle, person.World, DataCenterOf(person.World),
+            string.Empty, [], string.Empty, person.Race, person.Intents, person.Tags, person.Line, string.Empty,
+            [], string.Empty, person.Online ? "Online" : string.Empty, person.Online, "Variable", string.Empty,
+            string.Empty, string.Empty, person.Relationship, 0,
+            person.Intents.Contains("Dating", StringComparer.OrdinalIgnoreCase), true, person.AvatarUrl,
+            person.Gender, person.Sexuality, person.DmsOpen ?? true, person.NightOnly, person.PlusMember,
+            person.TimeZoneId, VybeLaneMap.Seed(person.GateId.Length > 0 ? person.GateId : person.Name));
+
+    private static bool TryAuthor(PearlPost post, PeopleCard[] deck, VybeState state, out PeopleCard card)
+    {
+        for (var index = 0; index < deck.Length; index++)
+        {
+            var hit = deck[index];
+            if (hit.GateId.Length > 0 &&
+                string.Equals(hit.GateId, post.AuthorId, StringComparison.OrdinalIgnoreCase) ||
+                post.AuthorName.Length > 0 &&
+                string.Equals(hit.Name, post.AuthorName, StringComparison.OrdinalIgnoreCase))
+            {
+                card = hit;
+                return true;
+            }
+        }
+
+        if (post.AuthorId.Length > 0 && state.TryFindGate(post.AuthorId, out var person) ||
+            post.AuthorName.Length > 0 && state.TryFindName(post.AuthorName, out person))
+        {
+            card = FromPerson(person);
+            return true;
+        }
+
+        card = default;
+        return false;
+    }
+
+    private static bool HitsSearch(string search, params string[] fields)
+    {
+        if (search.Length == 0)
+        {
+            return true;
+        }
+
+        for (var index = 0; index < fields.Length; index++)
+        {
+            if (fields[index].IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool PostMarksHit(PearlPost post, string needle)
+    {
+        if (needle.Length == 0)
+        {
+            return true;
+        }
+
+        var marks = VybePostTags.Collect(post);
+        return OverlapsLoose([needle.Trim().TrimStart('#')], marks);
+    }
+
+    private static bool OverlapsLoose(List<string> need, IReadOnlyList<string> have)
+    {
+        if (need.Count == 0)
+        {
+            return true;
+        }
+
+        for (var index = 0; index < need.Count; index++)
+        {
+            var want = VybePostTags.Normalize(need[index]);
+            if (want.Length == 0)
+            {
+                continue;
+            }
+
+            for (var inner = 0; inner < have.Count; inner++)
+            {
+                var got = VybePostTags.Normalize(have[inner]);
+                if (got.Length > 0 &&
+                    (got.IndexOf(want, StringComparison.Ordinal) >= 0 ||
+                     want.IndexOf(got, StringComparison.Ordinal) >= 0))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public static int Score(PeopleCard card, PeopleFindState find, string homeWorld, string homeDc,
-        IReadOnlyCollection<string> mine)
+        IReadOnlyCollection<string> mine, int[]? mineLanes = null)
     {
         var score = 62 + SharedCount(card.Interests, mine) * 6;
         if (string.Equals(card.World, homeWorld, StringComparison.OrdinalIgnoreCase))
@@ -760,10 +975,17 @@ internal static class PeopleFindBook
             score += 5;
         }
 
-        return Math.Clamp(score, 58, 97);
+        var lanes = VybeLaneMap.Match(card.Pulse, find.LaneWant, mineLanes);
+        if (lanes > 0)
+        {
+            score += lanes / 6;
+        }
+
+        return Math.Clamp(score, 58, 99);
     }
 
-    public static string[] Reasons(PeopleCard card, string homeWorld, string homeDc, IReadOnlyCollection<string> mine)
+    public static string[] Reasons(PeopleCard card, string homeWorld, string homeDc, IReadOnlyCollection<string> mine,
+        PeopleFindState? find = null, int[]? mineLanes = null)
     {
         var rows = new List<string>();
         var shared = SharedCount(card.Interests, mine);
@@ -801,6 +1023,12 @@ internal static class PeopleFindBook
             rows.Add("Online now");
         }
 
+        var lanes = VybeLaneMap.Match(card.Pulse, find?.LaneWant, mineLanes);
+        if (lanes >= 40)
+        {
+            rows.Add("Role map " + lanes.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%");
+        }
+
         return rows.Count == 0 ? ["Suggested for you"] : rows.ToArray();
     }
 
@@ -835,7 +1063,7 @@ internal static class PeopleFindBook
             [job], role, race, looking, interests, bio, rp, rpTypes, walk, activity, online, play, comm, social,
             dating, status, age, datingOn, nearby, VybeDemo.FaceOf(paths, face.Length > 0 ? face : key),
             facts.Gender, facts.Sexuality, facts.DmsOpen, plusOnly, plusOnly || PlusFaces(key),
-            WorldZones.PickFor(key));
+            WorldZones.PickFor(key), VybeLaneMap.Seed(key));
     }
 
     private static bool PlusFaces(string key) =>

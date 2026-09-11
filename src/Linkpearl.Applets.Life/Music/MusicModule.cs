@@ -15,5 +15,6 @@ public sealed class MusicModule : ILinkpearlModule
         services.AddSingleton<MusicApplet>();
         services.AddSingleton<IApplet>(provider => provider.GetRequiredService<MusicApplet>());
         services.AddSingleton<IStationMarks>(provider => provider.GetRequiredService<MusicApplet>());
+        services.AddSingleton<IEchoMixStation>(provider => provider.GetRequiredService<MusicApplet>());
     }
 }

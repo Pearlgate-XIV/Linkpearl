@@ -4,6 +4,7 @@ using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Preferences;
 using Linkpearl.Time;
 using Linkpearl.Weather;
 
@@ -23,13 +24,16 @@ public sealed class WeatherApplet : IApplet
     private readonly IGameSession game;
     private readonly IClock clock;
     private readonly IWeatherOracle oracle;
+    private readonly ISkyDesk sky;
     private float scroll;
+    private int pane;
 
-    public WeatherApplet(IGameSession game, IClock clock, IWeatherOracle oracle)
+    public WeatherApplet(IGameSession game, IClock clock, IWeatherOracle oracle, ISkyDesk sky)
     {
         this.game = game;
         this.clock = clock;
         this.oracle = oracle;
+        this.sky = sky;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -44,25 +48,33 @@ public sealed class WeatherApplet : IApplet
 
     public void Compose(in AppletFrame frame)
     {
-        var bells = EorzeaTime.FromUnix(clock.UtcNow.ToUnixTimeSeconds());
+        var territory = (ushort)game.TerritoryId;
+        var look = sky.Look(territory);
+        var bells = look.Bells;
         var night = SkyChrome.IsNight(bells);
-        var hours = game.IsLoggedIn && game.TerritoryId != 0
-            ? oracle.Forecast((ushort)game.TerritoryId, WeatherChrome.ForecastHours)
+        var hours = game.IsLoggedIn && territory != 0
+            ? WeatherChrome.AlignNow(oracle.Forecast(territory, WeatherChrome.ForecastHours), look)
             : [];
         var current = hours.Count > 0 ? hours[0] : default;
-        var condition = First(game.IsLoggedIn ? game.WeatherName : "", current.Name, "Unknown skies");
-        var place = First(game.ZoneName, game.MapPlace, game.Character.WorldName, "Not logged in");
+        var condition = First(look.Name, game.IsLoggedIn ? game.WeatherName : "", current.Name,
+            PhoneLanguages.T("weather.unknown"));
+        var place = First(game.ZoneName, game.MapPlace, game.Character.WorldName, PhoneLanguages.T("weather.offline"));
         var runs = Runs(hours);
 
         SkyChrome.Paint(frame, frame.Content, condition, night);
-        var inner = frame.Content.Inset(new Edges(frame.Units(16f), frame.Units(8f), frame.Units(16f),
-            frame.Units(10f)));
+        var dock = frame.Content.BottomSlice(frame.Units(68f));
+        var inner = new Rect(frame.Content.Min + new Vector2(frame.Units(16f), frame.Units(8f)),
+            new Vector2(frame.Content.Max.X - frame.Units(16f), dock.Min.Y - frame.Units(6f)));
         var page = inner.Translate(new Vector2(0f, -scroll));
         frame.Paint.PushClip(inner);
-        var content = WeatherChrome.App(frame, page, place, condition, current.IconId, bells, hours, runs,
-            NextSky(hours));
+        var content = pane == 0
+            ? WeatherChrome.Forecast(frame, page, place, condition, current.IconId, bells, hours, runs,
+                NextSky(hours))
+            : WeatherChrome.Control(frame, page, bells, sky.ZoneChoices((ushort)game.TerritoryId), sky,
+                sky.CompanionLoaded, night);
         frame.Paint.PopClip();
         ScrollSlider.Apply(frame, inner, ref scroll, content);
+        pane = WeatherChrome.Tabs(frame, dock, pane, night);
     }
 
     private string NextSky(IReadOnlyList<WeatherWindow> hours)
@@ -84,7 +96,7 @@ public sealed class WeatherApplet : IApplet
             var minutes = (hours[index].Starts - clock.UtcNow).TotalMinutes;
             return minutes < 1.0
                 ? name
-                : name + " in " + ((int)MathF.Round((float)minutes)).ToString(CultureInfo.InvariantCulture) + " min";
+                : name + " in " + ((int)MathF.Round((float)minutes)).ToString(CultureInfo.InvariantCulture) + "m";
         }
 
         return string.Empty;

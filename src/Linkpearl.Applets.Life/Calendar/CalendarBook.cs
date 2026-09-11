@@ -18,6 +18,8 @@ public sealed class CalendarItem
     public DateTimeOffset StartsAt { get; set; }
     public int RemindMinutes { get; set; } = -1;
     public string LastFired { get; set; } = "";
+
+    public string Source { get; set; } = "";
 }
 
 public readonly record struct CalendarAgendaLine(string Id, string Title, string When, string Kind);
@@ -37,9 +39,9 @@ public sealed class CalendarBook : IDisposable
 
     public IReadOnlyList<CalendarItem> Items => items;
 
-    public IReadOnlyList<int> MarkedDays(DateTime month)
+    public byte[] DayDots(DateTime month)
     {
-        var days = new List<int>();
+        var dots = new byte[32];
         for (var index = 0; index < items.Count; index++)
         {
             var stamp = items[index].StartsAt.LocalDateTime;
@@ -48,13 +50,34 @@ public sealed class CalendarBook : IDisposable
                 continue;
             }
 
-            if (!days.Contains(stamp.Day))
+            if (dots[stamp.Day] < 4)
             {
-                days.Add(stamp.Day);
+                dots[stamp.Day]++;
             }
         }
 
-        return days;
+        return dots;
+    }
+
+    public int DotsOn(DateTime day)
+    {
+        var date = day.Date;
+        var count = 0;
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (items[index].StartsAt.LocalDateTime.Date != date)
+            {
+                continue;
+            }
+
+            count++;
+            if (count >= 4)
+            {
+                return 4;
+            }
+        }
+
+        return count;
     }
 
     public IReadOnlyList<CalendarAgendaLine> ForDay(DateTime day)
@@ -71,7 +94,7 @@ public sealed class CalendarBook : IDisposable
 
             lines.Add(new CalendarAgendaLine(item.Id, ShownTitle(item),
                 item.StartsAt.ToLocalTime().ToString("h:mm tt", CultureInfo.CurrentCulture),
-                item.Kind == CalendarKind.Reminder ? "Reminder" : "Event"));
+                VenueKind(item)));
         }
 
         lines.Sort(static (a, b) => string.CompareOrdinal(a.When, b.When));
@@ -142,6 +165,85 @@ public sealed class CalendarBook : IDisposable
         Save();
     }
 
+    public bool HoldsPrefixed(string prefix)
+    {
+        if (prefix.Length == 0)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (items[index].Id.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void DropPrefixed(string prefix)
+    {
+        if (prefix.Length == 0)
+        {
+            return;
+        }
+
+        var dirty = false;
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (!items[index].Id.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            items.RemoveAt(index);
+            dirty = true;
+        }
+
+        if (dirty)
+        {
+            Save();
+        }
+    }
+
+    public void DropFuturePrefixed(string prefix, DateTimeOffset now)
+    {
+        KeepFuturePrefixed(prefix, now, null);
+    }
+
+    public void KeepFuturePrefixed(string prefix, DateTimeOffset now, HashSet<string>? keep)
+    {
+        if (prefix.Length == 0)
+        {
+            return;
+        }
+
+        var dirty = false;
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            var item = items[index];
+            if (!item.Id.StartsWith(prefix, StringComparison.Ordinal) || item.StartsAt <= now)
+            {
+                continue;
+            }
+
+            if (keep is not null && keep.Contains(item.Id))
+            {
+                continue;
+            }
+
+            items.RemoveAt(index);
+            dirty = true;
+        }
+
+        if (dirty)
+        {
+            Save();
+        }
+    }
+
     public bool FireDue(DateTimeOffset now, Action<CalendarItem> due)
     {
         var dirty = false;
@@ -185,6 +287,17 @@ public sealed class CalendarBook : IDisposable
         if (item.Title.Trim().Length > 0)
         {
             return item.Title.Trim();
+        }
+
+        return item.Kind == CalendarKind.Reminder ? "Reminder" : "Event";
+    }
+
+    private static string VenueKind(CalendarItem item)
+    {
+        if (item.Id.StartsWith("vn:", StringComparison.Ordinal) ||
+            item.Id.StartsWith("vs:", StringComparison.Ordinal))
+        {
+            return "Venue";
         }
 
         return item.Kind == CalendarKind.Reminder ? "Reminder" : "Event";

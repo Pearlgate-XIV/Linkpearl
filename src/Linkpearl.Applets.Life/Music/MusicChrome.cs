@@ -78,13 +78,14 @@ internal static class MusicChrome
 
     public static void DiscMark(in AppletFrame frame, Rect area)
     {
-        var radius = MathF.Min(area.Width, area.Height) * 0.42f;
-        var center = area.Center;
-        frame.Paint.Glow(area, DockBlue with { W = 0.22f }, radius, frame.Units(16f));
-        frame.Paint.FillCircle(center, radius, Card);
-        frame.Paint.StrokeCircle(center, radius, DockBlue, MathF.Max(2f, radius * 0.08f));
-        frame.Paint.StrokeCircle(center, radius * 0.62f, Ink with { W = 0.55f }, MathF.Max(1.4f, radius * 0.05f));
-        frame.Paint.FillCircle(center, radius * 0.16f, DockBlue);
+        var mark = area.Inset(frame.Units(4f));
+        frame.Paint.Glow(mark, DockBlue with { W = 0.22f }, mark.Height * 0.22f, frame.Units(10f));
+        if (TryGlyph(frame, mark, "music.png", Ink))
+        {
+            return;
+        }
+
+        AppMarks.DrawGlyph(frame.Paint, mark, "music");
     }
 
     public static bool FollowAction(in AppletFrame frame, Rect area, bool on)
@@ -110,20 +111,43 @@ internal static class MusicChrome
         return frame.Input.ConsumeClick(area);
     }
 
-    public static void ListenerCount(in AppletFrame frame, Rect area, int count, bool compact = false)
+    public static void ListenerCount(in AppletFrame frame, Rect area, int count, bool compact = false) =>
+        CountChip(frame, area, count, compact, listening: true);
+
+    public static void ViewerCount(in AppletFrame frame, Rect area, int count, bool compact = false) =>
+        CountChip(frame, area, count, compact, listening: false);
+
+    public static void Audience(in AppletFrame frame, Rect area, int listeners, int viewers, bool compact = false)
     {
-        if (area.Width < 8f || area.Height < 8f)
+        if (listeners > 0 && viewers > 0)
         {
+            var gap = frame.Units(4f);
+            var listenW = MathF.Min(area.Width * 0.52f, ListenerWidth(frame, listeners, compact));
+            ListenerCount(frame, area.LeftSlice(listenW), listeners, compact);
+            ViewerCount(frame, area.Inset(new Edges(listenW + gap, 0f, 0f, 0f)), viewers, compact);
             return;
         }
 
-        var n = Math.Max(0, count);
-        var label = compact ? CompactCount(n) : n == 1 ? "1 listening" : n + " listening";
-        frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
-        var icon = area.LeftSlice(MathF.Min(area.Height, frame.Units(22f)));
-        DrawEars(frame.Paint, icon, Ink);
-        frame.Text.DrawIn(area.Inset(new Edges(icon.Width, 0f, frame.Units(6f), 0f)), label,
-            new TextStyle(compact ? FontRole.CaptionStrong : FontRole.Caption, Ink, TextAlign.Center));
+        if (viewers > 0)
+        {
+            ViewerCount(frame, area, viewers, compact);
+            return;
+        }
+
+        ListenerCount(frame, area, listeners, compact);
+    }
+
+    public static float AudienceWidth(in AppletFrame frame, int listeners, int viewers, bool compact)
+    {
+        if (listeners > 0 && viewers > 0)
+        {
+            return ListenerWidth(frame, listeners, compact) + frame.Units(4f) +
+                   ViewerWidth(frame, viewers, compact);
+        }
+
+        return viewers > 0
+            ? ViewerWidth(frame, viewers, compact)
+            : ListenerWidth(frame, listeners, compact);
     }
 
     public static float ListenerWidth(in AppletFrame frame, int count, bool compact)
@@ -131,6 +155,41 @@ internal static class MusicChrome
         var n = Math.Max(0, count);
         var text = compact ? CompactCount(n) : n == 1 ? "1 listening" : n + " listening";
         return frame.Units(compact ? 36f : 28f) + text.Length * frame.Units(6.2f);
+    }
+
+    public static float ViewerWidth(in AppletFrame frame, int count, bool compact)
+    {
+        var n = Math.Max(0, count);
+        var text = compact ? CompactCount(n) : n == 1 ? "1 watching" : n + " watching";
+        return frame.Units(compact ? 36f : 28f) + text.Length * frame.Units(6.2f);
+    }
+
+    private static void CountChip(in AppletFrame frame, Rect area, int count, bool compact, bool listening)
+    {
+        if (area.Width < 8f || area.Height < 8f)
+        {
+            return;
+        }
+
+        var n = Math.Max(0, count);
+        var label = compact
+            ? CompactCount(n)
+            : listening
+                ? n == 1 ? "1 listening" : n + " listening"
+                : n == 1 ? "1 watching" : n + " watching";
+        frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
+        var icon = area.LeftSlice(MathF.Min(area.Height, frame.Units(22f)));
+        if (listening)
+        {
+            DrawEars(frame.Paint, icon, Ink);
+        }
+        else
+        {
+            DrawEyes(frame.Paint, icon, Ink);
+        }
+
+        frame.Text.DrawIn(area.Inset(new Edges(icon.Width, 0f, frame.Units(6f), 0f)), label,
+            new TextStyle(compact ? FontRole.CaptionStrong : FontRole.Caption, Ink, TextAlign.Center));
     }
 
     private static string CompactCount(int count) =>
@@ -147,6 +206,16 @@ internal static class MusicChrome
             s * 0.18f);
         paint.Fill(Rect.FromSize(c + new Vector2(s * 0.63f, -s * 0.18f), new Vector2(s * 0.42f, s * 0.72f)), ink,
             s * 0.18f);
+    }
+
+    private static void DrawEyes(IPaintSurface paint, Rect area, Vector4 ink)
+    {
+        var c = area.Center;
+        var s = MathF.Min(area.Width, area.Height) * 0.22f;
+        paint.StrokeCircle(c + new Vector2(-s * 0.85f, 0f), s, ink, MathF.Max(1.1f, s * 0.28f));
+        paint.StrokeCircle(c + new Vector2(s * 0.85f, 0f), s, ink, MathF.Max(1.1f, s * 0.28f));
+        paint.FillCircle(c + new Vector2(-s * 0.85f, 0f), s * 0.38f, ink);
+        paint.FillCircle(c + new Vector2(s * 0.85f, 0f), s * 0.38f, ink);
     }
 
     public static void LiveMark(in AppletFrame frame, Rect area)
@@ -180,7 +249,7 @@ internal static class MusicChrome
         frame.Paint.Fill(area, on ? Purple : CardHi, frame.Units(12f));
         frame.Text.DrawIn(area, label,
             new TextStyle(FontRole.CaptionStrong, on ? GroundHi : Mute, TextAlign.Center));
-        return frame.Input.PressedInside(area) || frame.Input.ConsumeClick(area);
+        return frame.Input.ConsumeClick(area);
     }
 
     public static bool Row(in AppletFrame frame, Rect area, string title, string detail, bool live)
@@ -257,7 +326,9 @@ internal static class MusicChrome
             frame.Paint.Fill(area, CardHi, area.Height * 0.5f);
         }
 
-        frame.Text.DrawIn(area, label, new TextStyle(FontRole.BodyStrong, on ? Ink : Mute, TextAlign.Center));
+        var copy = area.Inset(frame.Units(2f));
+        frame.Text.DrawEllipsized(copy, label,
+            new TextStyle(FontRole.CaptionStrong, on ? Ink : Mute, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
     }
 

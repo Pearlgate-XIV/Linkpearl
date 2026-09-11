@@ -40,15 +40,15 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private FriendMenu? menu;
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
-        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs)
+        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks)
     {
         this.pearl = pearl;
         this.talk = talk;
         this.chat = chat;
         this.display = display;
         friendsBook = new FriendBook(paths);
-        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs);
-        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs);
+        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks);
+        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs, marks);
     }
 
     public DestinationTab Tab => DestinationTab.Social;

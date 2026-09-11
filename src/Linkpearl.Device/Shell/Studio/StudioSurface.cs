@@ -55,7 +55,7 @@ internal sealed class StudioSurface
     private Rect appsDockArea;
 
     public StudioSurface(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
-        IWeatherOracle weather, DisplayPreferences display, bool development, BadgeBook badges, NoticeLedger notices,
+        IWeatherOracle weather, ISkyDesk skyDesk, DisplayPreferences display, bool development, BadgeBook badges, NoticeLedger notices,
         ProfileChrome profile, Action<string, Rect> openApplet, Action<Rect, string> openRadioStations, IHandsetAudio audio,
         IPublicRadio radio, IStationMarks marks, GlassEdit glass)
     {
@@ -71,8 +71,8 @@ internal sealed class StudioSurface
         this.notices = notices;
         this.profile = profile;
         this.openApplet = openApplet;
-        sky = new StudioWeather(game, clock, weather);
-        musicDock = new StudioMusicDock(audio, radio, pearl, marks, openRadioStations);
+        sky = new StudioWeather(game, weather, skyDesk);
+        musicDock = new StudioMusicDock(audio, radio, pearl, marks, openRadioStations, openApplet);
     }
 
     public bool OverlayOpen => profile.OverlayOpen;
@@ -193,15 +193,10 @@ internal sealed class StudioSurface
         // Results paint after widgets. Mute everything under the sheet so a result tap
         // cannot also open weather (or any other tile) on the same press.
         var behind = hunting ? frame.WithInput(SilentInput.Instance) : frame;
-        HomeHeaderTools.Draw(behind, frame.Content, notices.Count(snapshot, talk, clock),
-            display.Hushed(game.IsInDuty || game.IsInCutscene), out var notice, out var settings);
+        HomeHeaderTools.Draw(behind, frame.Content, out var settings);
         if (!hunting && frame.Input.ConsumeClick(settings))
         {
             hub.Open(DestinationTab.Settings);
-        }
-        else if (!hunting && frame.Input.ConsumeClick(notice))
-        {
-            hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
         var huntH = StudioHunt.BarHeight(frame);
@@ -219,7 +214,7 @@ internal sealed class StudioSurface
             () => openApplet("phone", content.BottomSlice(dockH + dockLift)),
             () => openApplet("camera", content.BottomSlice(dockH + dockLift)));
         var at = frame.Input.Pointer;
-        var onChrome = huntBar.Contains(at) || notice.Contains(at) || settings.Contains(at) || dock.Contains(at);
+        var onChrome = huntBar.Contains(at) || settings.Contains(at) || dock.Contains(at);
         if (!hunting && (appsEdit || pickSlot >= 0) && !skipOpen && !appsDockArea.Contains(at) &&
             frame.Input.ConsumeClick(content))
         {
@@ -889,26 +884,21 @@ internal sealed class StudioSurface
         var gold = frame.Theme.Palette.WarmAccent;
         var hour = clock.Now.Hour;
         var hello = hour < 12 ? "Good morning," : hour < 17 ? "Good afternoon," : "Good evening,";
-        HomeHeaderTools.Draw(frame, frame.Content, notices.Count(snapshot, talk, clock),
-            display.Hushed(game.IsInDuty || game.IsInCutscene), out var notice, out var settings);
+        HomeHeaderTools.Draw(frame, frame.Content, out var settings);
 
         if (frame.Input.ConsumeClick(settings))
         {
             hub.Open(DestinationTab.Settings);
         }
-        else if (frame.Input.ConsumeClick(notice))
-        {
-            hub.Open(DestinationTab.Home, HomePane.Announcements);
-        }
 
         var helloRow = new Rect(
             new Vector2(frame.Content.Min.X + frame.Units(18f) + frame.Units(2f), row.Min.Y),
-            new Vector2(notice.Min.X - frame.Units(8f), row.Min.Y + frame.Units(22f)));
+            new Vector2(settings.Min.X - frame.Units(8f), row.Min.Y + frame.Units(22f)));
         frame.Text.DrawEllipsized(helloRow, hello,
             new TextStyle(FontRole.Caption, muted, TextAlign.Left, 1f, 1.13f));
 
         var identity = new Rect(new Vector2(row.Min.X, helloRow.Max.Y + frame.Units(2f)),
-            new Vector2(notice.Min.X - frame.Units(8f), row.Max.Y));
+            new Vector2(settings.Min.X - frame.Units(8f), row.Max.Y));
         var nameScale = 0.78f;
         var nameH = frame.Text.Measure("Ag", FontRole.Display).Y * nameScale + frame.Units(1f);
         var titleScale = 1.25f;
@@ -917,7 +907,7 @@ internal sealed class StudioSurface
         var badgeH = frame.Units(22f);
         var badgeGap = frame.Units(3f);
         var copyLeft = identity.Min.X + MathF.Min(identity.Height, frame.Units(79.2f)) + frame.Units(8f);
-        var nameRight = MathF.Max(copyLeft, notice.Min.X - frame.Units(8f));
+        var nameRight = MathF.Max(copyLeft, settings.Min.X - frame.Units(8f));
         var nameWidth = MathF.Max(0f, nameRight - copyLeft);
         SplitName(frame, name, nameWidth, FontRole.Display, nameScale, out var nameOne, out var nameTwo);
         var nameLines = nameTwo.Length > 0 ? 2 : 1;
@@ -930,7 +920,7 @@ internal sealed class StudioSurface
         DrawPortrait(frame, portrait);
         copyLeft = portrait.Max.X + frame.Units(8f);
         var copyWidth = MathF.Max(0f, calendarRight - copyLeft);
-        nameRight = MathF.Max(copyLeft, notice.Min.X - frame.Units(8f));
+        nameRight = MathF.Max(copyLeft, settings.Min.X - frame.Units(8f));
         nameWidth = MathF.Max(0f, nameRight - copyLeft);
         var copyTop = portrait.Min.Y;
         var nameRow = Rect.FromSize(new Vector2(copyLeft, copyTop), new Vector2(nameWidth, nameBlockH));
@@ -1097,7 +1087,8 @@ internal sealed class StudioSurface
             return;
         }
 
-        frame.Paint.PushClip(area);
+        var halo = look.Glow ? TitleFx.Spread(look, unit) * 2.6f : 0f;
+        frame.Paint.PushClip(area.Expand(halo));
         var x = area.Min.X;
         var index = 0;
         foreach (var rune in text.EnumerateRunes())

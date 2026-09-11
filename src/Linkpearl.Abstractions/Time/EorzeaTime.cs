@@ -16,9 +16,11 @@ public readonly struct EorzeaTime
         Minute = minute;
     }
 
-    public static EorzeaTime FromUnix(long unixSeconds)
+    public static EorzeaTime FromUnix(long unixSeconds) =>
+        FromEorzeaSeconds(unixSeconds * EarthToEorzea);
+
+    public static EorzeaTime FromEorzeaSeconds(double etSeconds)
     {
-        var etSeconds = unixSeconds * EarthToEorzea;
         var day = etSeconds % 86400.0;
         if (day < 0.0)
         {

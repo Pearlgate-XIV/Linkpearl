@@ -35,7 +35,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     public HomeDestination(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
         DisplayPreferences display, HostPaths paths, ITextureSource textures, BadgeBook badges, IFilePicker files,
-        IWeatherOracle weather, NoticeLedger notices, bool development, HandsetProfileDesk profiles)
+        IWeatherOracle weather, ISkyDesk sky, NoticeLedger notices, bool development, HandsetProfileDesk profiles)
     {
         this.clock = clock;
         this.game = game;
@@ -50,7 +50,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         this.notices = notices;
         profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, development, profiles);
         announcements = new AnnouncementShelf(pearl, talk, clock, hub, notices);
-        this.weather = new HomeWeatherCard(game, clock, weather);
+        this.weather = new HomeWeatherCard(game, weather, sky);
     }
 
     public ProfileChrome Profile => profile;
@@ -131,7 +131,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         DrawHeader(frame, header, snapshot);
 
         weather.Draw(frame, CardBand(stack.Take(frame.Units(132f))));
-        DrawHero(frame, CardBand(stack.Take(frame.Units(48f))), snapshot);
+        DrawHero(frame, CardBand(stack.Take(frame.Units(72f))), snapshot);
 
         var gridBudget = stack.Remaining.Height;
         var rowHeight = MathF.Max(0f, (gridBudget - gap * 3f) / 3f);
@@ -168,19 +168,11 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     private void DrawHeader(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
     {
-        var gold = frame.Theme.Palette.WarmAccent;
-        var hush = display.Hushed(game.IsInDuty || game.IsInCutscene);
-        var waiting = this.notices.Count(snapshot, talk, clock);
-        HomeHeaderTools.Draw(frame, frame.Content, waiting, hush, out var notice, out var settings);
+        HomeHeaderTools.Draw(frame, frame.Content, out var settings);
 
         if (frame.Input.ConsumeClick(settings))
         {
             hub.Open(DestinationTab.Settings);
-        }
-
-        if (frame.Input.ConsumeClick(notice))
-        {
-            hub.Open(DestinationTab.Home, HomePane.Announcements);
         }
 
         var name = GlassName.ProfileName(display, ShownName.Linked(game.Character.Name, snapshot.MeName),
@@ -209,7 +201,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         HomeMarks.Draw(frame.Paint, inset.RightSlice(frame.Units(12f)), HomeMark.Chevron, gold with { W = 0.7f });
 
         var body = inset.Inset(new Edges(frame.Units(28f), 0f, frame.Units(16f), 0f));
-        frame.Text.DrawEllipsized(body.TopSlice(frame.Units(14f)), "LINKPEARL ANNOUNCEMENTS",
+        frame.Text.DrawFitted(body.TopSlice(frame.Units(16f)), "LinkPearl Announcements",
             new TextStyle(FontRole.CaptionStrong, gold));
 
         string title;
@@ -228,8 +220,8 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             title = "No announcements.";
         }
 
-        frame.Text.DrawEllipsized(body.BottomSlice(frame.Units(14f)), title,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink));
+        frame.Text.DrawWrapped(body.Inset(new Edges(0f, frame.Units(18f), 0f, 0f)), title,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Left, 1.08f));
 
         if (frame.Input.ConsumeClick(row))
         {

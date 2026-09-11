@@ -1,4 +1,8 @@
+using System.Globalization;
 using Dalamud.Plugin;
+using HousingAddress =
+    (string Name, int World, int City, int Ward, int PropertyType, int Plot, int Apartment, bool ApartmentSubdivision,
+    bool AliasEnabled, string Alias);
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
 using Dalamud.Plugin.Services;
@@ -12,19 +16,19 @@ public sealed class FfxivLifestream : ILifestream
     private readonly IDalamudPluginInterface plugins;
     private readonly IDataManager data;
     private readonly ICallGateSubscriber<uint, byte, bool>? teleport;
+    private readonly ICallGateSubscriber<string, string, string, string, bool, bool, HousingAddress>? buildHome;
+    private readonly ICallGateSubscriber<HousingAddress, object>? goHome;
+    private readonly ICallGateSubscriber<string, object>? execute;
 
     public FfxivLifestream(IDalamudPluginInterface plugins, IDataManager data)
     {
         this.plugins = plugins;
         this.data = data;
-        try
-        {
-            teleport = plugins.GetIpcSubscriber<uint, byte, bool>("Lifestream.Teleport");
-        }
-        catch (IpcError)
-        {
-            teleport = null;
-        }
+        teleport = Subscribe(() => plugins.GetIpcSubscriber<uint, byte, bool>("Lifestream.Teleport"));
+        buildHome = Subscribe(() => plugins.GetIpcSubscriber<string, string, string, string, bool, bool, HousingAddress>(
+            "Lifestream.BuildAddressBookEntry"));
+        goHome = Subscribe(() => plugins.GetIpcSubscriber<HousingAddress, object>("Lifestream.GoToHousingAddress"));
+        execute = Subscribe(() => plugins.GetIpcSubscriber<string, object>("Lifestream.ExecuteCommand"));
     }
 
     public bool Ready
@@ -86,6 +90,68 @@ public sealed class FfxivLifestream : ILifestream
         catch (IpcError)
         {
             return false;
+        }
+    }
+
+    public bool TryGoHome(string world, string district, int ward, int plot, int apartment, bool subdivision)
+    {
+        if (!Ready || world.Length == 0 || district.Length == 0 || ward <= 0)
+        {
+            return false;
+        }
+
+        var apartmentHome = apartment > 0 && plot <= 0;
+        var number = apartmentHome ? apartment : plot;
+        if (number <= 0)
+        {
+            return false;
+        }
+
+        var wardText = ward.ToString(CultureInfo.InvariantCulture);
+        var numberText = number.ToString(CultureInfo.InvariantCulture);
+        try
+        {
+            if (buildHome is not null && goHome is not null)
+            {
+                var entry = buildHome.InvokeFunc(world, district, wardText, numberText, apartmentHome, subdivision);
+                if (entry.World != 0)
+                {
+                    goHome.InvokeAction(entry);
+                    return true;
+                }
+            }
+
+            if (execute is null)
+            {
+                return false;
+            }
+
+            var command = apartmentHome
+                ? world + " " + district + " W" + wardText + (subdivision ? " sub" : string.Empty) + " A" +
+                  numberText
+                : world + " " + district + " W" + wardText + " P" + numberText;
+            execute.InvokeAction(command);
+            return true;
+        }
+        catch (IpcNotReadyError)
+        {
+            return false;
+        }
+        catch (IpcError)
+        {
+            return false;
+        }
+    }
+
+    private static T? Subscribe<T>(Func<T> make) where T : class
+    {
+        try
+        {
+            return make();
+        }
+        catch (IpcError)
+        {
+            return null;
         }
     }
 }

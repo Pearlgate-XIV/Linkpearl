@@ -13,6 +13,7 @@ public enum NoticeKind : byte
     People = 2,
     Music = 3,
     Calendar = 4,
+    Venue = 5,
 }
 
 public static class NoticeMarks
@@ -23,6 +24,7 @@ public static class NoticeMarks
         NoticeKind.Announcement => "events",
         NoticeKind.Music => "music",
         NoticeKind.Calendar => "calendar",
+        NoticeKind.Venue => "venues",
         _ => "pearlchat",
     };
 }
@@ -94,6 +96,7 @@ public sealed class NoticeLedger : INoticeTray
         "music" => NoticeKind.Music,
         "announcements" => NoticeKind.Announcement,
         "calendar" => NoticeKind.Calendar,
+        "venues" => NoticeKind.Venue,
         _ => null,
     };
 
@@ -203,6 +206,20 @@ public sealed class NoticeLedger : INoticeTray
         var id = "music:live:" + target + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         seen.Add(id);
         Keep(new GlassNotice(id, NoticeKind.Music, title.Length > 0 ? title : "Live",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
+    }
+
+    public void PostVenue(string venueId, string title, string detail, IClock clock)
+    {
+        var target = venueId.Trim();
+        if (target.Length == 0)
+        {
+            return;
+        }
+
+        var id = "venue:" + target + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        seen.Add(id);
+        Keep(new GlassNotice(id, NoticeKind.Venue, title.Length > 0 ? title : "Venue",
             Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
     }
 

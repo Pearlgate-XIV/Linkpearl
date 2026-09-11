@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Text;
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
+using Linkpearl.Net;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Applets.Life.Vybe;
@@ -23,6 +25,94 @@ internal static class VybePostTags
     };
 
     public static string[] Lane(bool plus) => plus ? Plus : Discover;
+
+    public static string[] Collect(PearlPost post)
+    {
+        var tags = new List<string>();
+        if (post.Hashtags is { Length: > 0 })
+        {
+            for (var index = 0; index < post.Hashtags.Length; index++)
+            {
+                TryAdd(tags, post.Hashtags[index]);
+            }
+        }
+
+        AbsorbBody(tags, post.Body);
+        return tags.ToArray();
+    }
+
+    public static void AbsorbBody(List<string> tags, string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return;
+        }
+
+        var from = 0;
+        while (from < body.Length)
+        {
+            var hash = body.IndexOf('#', from);
+            if (hash < 0)
+            {
+                return;
+            }
+
+            var end = hash + 1;
+            while (end < body.Length && char.IsLetterOrDigit(body[end]))
+            {
+                end++;
+            }
+
+            if (end > hash + 1)
+            {
+                TryAdd(tags, body[hash..end]);
+            }
+
+            from = Math.Max(end, hash + 1);
+        }
+    }
+
+    public static string Caption(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return string.Empty;
+        }
+
+        var built = new StringBuilder(body.Length);
+        var from = 0;
+        while (from < body.Length)
+        {
+            var hash = body.IndexOf('#', from);
+            if (hash < 0)
+            {
+                built.Append(body.AsSpan(from));
+                break;
+            }
+
+            built.Append(body.AsSpan(from, hash - from));
+            var end = hash + 1;
+            while (end < body.Length && char.IsLetterOrDigit(body[end]))
+            {
+                end++;
+            }
+
+            if (end <= hash + 1)
+            {
+                built.Append('#');
+                from = hash + 1;
+                continue;
+            }
+
+            from = end;
+            while (from < body.Length && char.IsWhiteSpace(body[from]))
+            {
+                from++;
+            }
+        }
+
+        return built.ToString().Trim();
+    }
 
     public static string Format(string tag)
     {

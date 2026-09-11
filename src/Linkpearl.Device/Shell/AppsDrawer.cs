@@ -227,7 +227,7 @@ public sealed class AppsDrawer
     {
         var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(28f)));
         var action = row.RightSlice(frame.Units(72f));
-        var label = glass.Active ? "Done" : "Manage";
+        var label = glass.Active ? PhoneLanguages.T("ui.done") : PhoneLanguages.T("ui.manage");
         frame.Text.DrawIn(action, label, new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Right));
         if (frame.Input.ConsumeClick(action))
         {
@@ -248,18 +248,18 @@ public sealed class AppsDrawer
     private float DrawManageHeader(in AppletFrame frame, Rect inner, Vector4 gold, float top)
     {
         var row = Rect.FromSize(new Vector2(inner.Min.X, top), new Vector2(inner.Width, frame.Units(28f)));
-        frame.Text.DrawIn(row, "Manage Apps", new TextStyle(FontRole.Display, frame.Theme.Palette.Ink));
+        frame.Text.DrawIn(row, PhoneLanguages.T("shell.manage.apps"), new TextStyle(FontRole.Display, frame.Theme.Palette.Ink));
         var done = row.RightSlice(frame.Units(72f));
         frame.Paint.Stroke(done.Inset(new Edges(0f, frame.Units(2f))), gold, frame.Theme.Metrics.Hairline,
             frame.Units(10f));
-        frame.Text.DrawIn(done, "Done", new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
+        frame.Text.DrawIn(done, PhoneLanguages.T("ui.done"), new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
         if (frame.Input.ConsumeClick(done))
         {
             CloseInner();
         }
 
         var sub = Rect.FromSize(new Vector2(inner.Min.X, row.Max.Y), new Vector2(inner.Width, frame.Units(18f)));
-        frame.Text.DrawIn(sub, "Choose which owned apps sit on your screens.",
+        frame.Text.DrawIn(sub, PhoneLanguages.T("shell.manage.hint"),
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         return sub.Max.Y + frame.Units(8f);
     }
@@ -270,7 +270,7 @@ public sealed class AppsDrawer
         frame.Paint.Fill(field, frame.Theme.Palette.SurfaceOverlay with { W = 0.72f }, field.Height * 0.5f);
         frame.Paint.Stroke(field, gold with { W = 0.35f }, frame.Theme.Metrics.Hairline, field.Height * 0.5f);
         var type = field.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(8f), frame.Units(4f)));
-        query = frame.TextField.Draw("apps-manage-search", type, query, "Search apps");
+        query = frame.TextField.Draw("apps-manage-search", type, query, PhoneLanguages.T("shell.search.apps"));
         SearchMark.Draw(frame.Paint, field.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)),
             frame.Theme.Palette.InkMuted);
         return field.Max.Y + frame.Units(10f);
@@ -928,7 +928,7 @@ public sealed class AppsDrawer
             return;
         }
 
-        if (AppShelf.Find(id) is not AppSpec spec || spec.Hidden)
+        if (AppShelf.Find(id) is not AppSpec spec || spec.Hidden || !ShelfAllowed(id))
         {
             return;
         }
@@ -949,14 +949,21 @@ public sealed class AppsDrawer
         if (openFolder is not null)
         {
             display.TryFolder(openFolder, out _, out var children);
-            visible.AddRange(children);
+            for (var index = 0; index < children.Length; index++)
+            {
+                if (ShelfAllowed(children[index]))
+                {
+                    visible.Add(children[index]);
+                }
+            }
+
             return;
         }
 
         var shelf = display.AppsOnScreen(screen);
         for (var index = 0; index < shelf.Count; index++)
         {
-            if (!AppShelf.IsHidden(shelf[index]))
+            if (!AppShelf.IsHidden(shelf[index]) && ShelfAllowed(shelf[index]))
             {
                 visible.Add(shelf[index]);
             }
@@ -970,7 +977,7 @@ public sealed class AppsDrawer
         foreach (var id in display.OwnedApps)
         {
             if (id.StartsWith("folder:", StringComparison.Ordinal) || AppShelf.IsHidden(id) ||
-                !Matches(id, needle) || visible.Contains(id))
+                !ShelfAllowed(id) || !Matches(id, needle) || visible.Contains(id))
             {
                 continue;
             }
@@ -1002,6 +1009,19 @@ public sealed class AppsDrawer
         }
 
         return spec is AppSpec found && found.Chip == chip;
+    }
+
+    private bool ShelfAllowed(string id)
+    {
+        for (var index = 0; index < applets.Count; index++)
+        {
+            if (string.Equals(applets[index].Manifest.Id, id, StringComparison.Ordinal))
+            {
+                return applets[index].Allowed;
+            }
+        }
+
+        return true;
     }
 
     private void GroupVisible()

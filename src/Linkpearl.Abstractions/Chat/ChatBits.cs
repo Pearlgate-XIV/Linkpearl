@@ -19,6 +19,8 @@ public enum ChatBitKind : byte
 
 public readonly record struct ChatBit(ChatBitKind Kind, string Body, string Path);
 
+public readonly record struct ChatCite(string Who, string Preview);
+
 public static class ChatBits
 {
     public const string PlaceMark = "📍 ";
@@ -26,6 +28,7 @@ public static class ChatBits
     public const string PicMark = "¶img:";
     public const string StickerMark = "¶stk:";
     public const string GifMark = "¶gif:";
+    public const string RefMark = "¶ref:";
 
     public static string Place(string zone, string world) =>
         Location(zone, world, 0, 0f, 0f, 0);
@@ -47,8 +50,99 @@ public static class ChatBits
 
     public static string Gif(string id) => GifMark + id;
 
-    public static ChatBit Read(string body)
+    public static bool SplitRef(string body, out string who, out string preview, out string rest)
     {
+        who = string.Empty;
+        preview = string.Empty;
+        rest = body ?? string.Empty;
+        if (string.IsNullOrEmpty(body) || !body.StartsWith(RefMark, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var nl = body.IndexOf('\n');
+        var head = nl < 0 ? body[RefMark.Length..] : body[RefMark.Length..nl];
+        rest = nl < 0 ? string.Empty : body[(nl + 1)..];
+        var bar = head.IndexOf('|');
+        who = bar < 0 ? head : head[..bar];
+        preview = bar < 0 ? string.Empty : head[(bar + 1)..];
+        return true;
+    }
+
+    public static string ReplyName(string who)
+    {
+        var name = (who ?? string.Empty).Trim();
+        if (name.Length == 0)
+        {
+            return "Them";
+        }
+
+        return string.Equals(name, "ME", StringComparison.OrdinalIgnoreCase) ? "You" : name;
+    }
+
+    public static string Visible(string body)
+    {
+        SplitRef(body, out _, out _, out var rest);
+        return rest;
+    }
+
+    public static string Snippet(string body, int max = 72)
+    {
+        SplitRef(body ?? string.Empty, out _, out var quoted, out var rest);
+        var source = rest.Length > 0 ? rest : quoted.Length > 0 ? quoted : body ?? string.Empty;
+        var bit = Read(source);
+        var text = bit.Kind switch
+        {
+            ChatBitKind.Place => "📍 " + bit.Body,
+            ChatBitKind.Pic => "Photo",
+            ChatBitKind.Sticker => "Sticker",
+            ChatBitKind.Gif => "GIF",
+            _ => Collapse(bit.Body),
+        };
+        if (text.Length <= max)
+        {
+            return text;
+        }
+
+        var take = Math.Max(1, max - 1);
+        if (take < text.Length && char.IsLowSurrogate(text[take]))
+        {
+            take--;
+        }
+
+        if (take > 0 && char.IsHighSurrogate(text[take - 1]))
+        {
+            take--;
+        }
+
+        if (take <= 0)
+        {
+            take = char.IsHighSurrogate(text[0]) && text.Length > 1 ? 2 : 1;
+        }
+
+        return string.Concat(text.AsSpan(0, take), "…");
+    }
+
+    public static string Reply(string who, string preview, string body)
+    {
+        var name = ReplyName(who).Replace('|', '/');
+        var clip = Snippet(preview ?? string.Empty, 48).Replace('|', '/');
+        return RefMark + name + "|" + clip + "\n" + (body ?? string.Empty);
+    }
+
+    private static string Collapse(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    public static ChatBit Read(string? body)
+    {
+        SplitRef(body, out _, out _, out body);
         if (body.StartsWith(PicMark, StringComparison.Ordinal))
         {
             var path = body[PicMark.Length..];
@@ -78,8 +172,14 @@ public static class ChatBits
         return new ChatBit(ChatBitKind.Text, body, string.Empty);
     }
 
-    public static string Preview(string body)
+    public static string Preview(string? body)
     {
+        body ??= string.Empty;
+        if (SplitRef(body, out _, out _, out var rest) && rest.Length > 0)
+        {
+            return Snippet(rest);
+        }
+
         var bit = Read(body);
         return bit.Kind switch
         {
@@ -91,21 +191,28 @@ public static class ChatBits
         };
     }
 
-    public static float BubbleHeight(in AppletFrame frame, float width, string body)
+    public static float QuoteHeight(in AppletFrame frame) => frame.Units(36f);
+
+    public static float BubbleHeight(in AppletFrame frame, float width, string body, ChatCite cite = default)
     {
-        var bodyH = BodyHeight(frame, width, body);
-        return Read(body).Kind == ChatBitKind.Text ? PadPlain(frame, bodyH) : bodyH;
+        var bodyH = BodyHeight(frame, width, body, cite);
+        return Read(Visible(body)).Kind == ChatBitKind.Text ? PadPlain(frame, bodyH) : bodyH;
     }
 
     /// <summary>
     /// Tell / live-feed rows draw a name band above the bubble and inset the copy.
     /// Those chrome slices are not part of <see cref="BubbleHeight"/>.
     /// </summary>
-    public static float NamedRowHeight(in AppletFrame frame, float width, string body) =>
-        frame.Units(32f) + BodyHeight(frame, width, body);
+    public static float NamedRowHeight(in AppletFrame frame, float width, string body, ChatCite cite = default) =>
+        frame.Units(32f) + BodyHeight(frame, width, body, cite);
 
-    private static float BodyHeight(in AppletFrame frame, float width, string body)
+    private static float BodyHeight(in AppletFrame frame, float width, string body, ChatCite cite = default)
     {
+        if (TryCite(body, cite, out _, out _, out var rest))
+        {
+            return QuoteHeight(frame) + BodyHeight(frame, width, rest);
+        }
+
         var bit = Read(body);
         return bit.Kind switch
         {
@@ -157,8 +264,16 @@ public static class ChatBits
     }
 
     public static void Draw(in AppletFrame frame, Rect area, string body, Vector4 ink, Vector4 mute,
-        ILifestream? stream = null, IGifDesk? gifs = null)
+        ILifestream? stream = null, IGifDesk? gifs = null, ChatCite cite = default)
     {
+        if (TryCite(body, cite, out var who, out var preview, out var rest))
+        {
+            DrawQuote(frame, area.TopSlice(QuoteHeight(frame)), who, preview, ink, mute);
+            Draw(frame, area.Inset(new Edges(0f, QuoteHeight(frame) + frame.Units(2f), 0f, 0f)), rest, ink, mute,
+                stream, gifs);
+            return;
+        }
+
         var bit = Read(body);
         switch (bit.Kind)
         {
@@ -186,6 +301,39 @@ public static class ChatBits
                 EmojiText.Draw(frame, area, bit.Body, ink);
                 return;
         }
+    }
+
+    public static bool TryCite(string body, ChatCite cite, out string who, out string preview, out string rest)
+    {
+        if (!string.IsNullOrEmpty(cite.Who))
+        {
+            who = ReplyName(cite.Who);
+            preview = Snippet(cite.Preview is { Length: > 0 } quoted ? quoted : Visible(body), 80);
+            rest = Visible(body);
+            return true;
+        }
+
+        if (SplitRef(body, out who, out preview, out rest))
+        {
+            who = ReplyName(who);
+            preview = Snippet(preview, 80);
+            return true;
+        }
+
+        return false;
+    }
+
+    public static void DrawQuote(in AppletFrame frame, Rect area, string who, string preview, Vector4 ink,
+        Vector4 mute)
+    {
+        var wash = mute with { W = MathF.Min(0.22f, mute.W * 0.45f + 0.10f) };
+        frame.Paint.Fill(area, wash, frame.Units(8f));
+        frame.Paint.Fill(area.LeftSlice(frame.Units(3f)), ink with { W = 0.85f }, frame.Units(1.6f));
+        var copy = area.Inset(new Edges(frame.Units(10f), frame.Units(3f), frame.Units(6f), frame.Units(3f)));
+        frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(14f)), who,
+            new TextStyle(FontRole.CaptionStrong, ink));
+        frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(14f)), preview,
+            new TextStyle(FontRole.Caption, mute));
     }
 
     private static void DrawPlace(in AppletFrame frame, Rect area, ChatBit bit, Vector4 ink, Vector4 mute,

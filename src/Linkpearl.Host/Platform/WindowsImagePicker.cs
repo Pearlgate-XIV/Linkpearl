@@ -33,6 +33,8 @@ public sealed class WindowsImagePicker : IFilePicker
 
     public void BeginAttachPick() => Begin(PickKind.Attach, string.Empty);
 
+    public void BeginAudioPick() => Begin(PickKind.Audio, string.Empty);
+
     public void BeginFolderPick() => Begin(PickKind.Folder, string.Empty);
 
     public void BeginFolderPickFrom(string directory) => Begin(PickKind.Folder, directory);
@@ -108,7 +110,9 @@ public sealed class WindowsImagePicker : IFilePicker
                 ? FilePickMode.Folder
                 : next == PickKind.Attach
                     ? FilePickMode.Attach
-                    : FilePickMode.Images;
+                    : next == PickKind.Audio
+                        ? FilePickMode.Audio
+                        : FilePickMode.Images;
             glass.Open(mode, ExistingStart());
             return;
         }
@@ -147,14 +151,17 @@ public sealed class WindowsImagePicker : IFilePicker
             else
             {
                 var attach = pick == PickKind.Attach;
+                var audio = pick == PickKind.Audio;
                 using var dialog = new OpenFileDialog
                 {
-                    Title = attach ? "Attach files" : "Upload pictures",
-                    Filter = attach
+                    Title = audio ? "Load a track" : attach ? "Attach files" : "Upload pictures",
+                    Filter = audio
+                        ? "Audio|*.mp3;*.wav;*.flac;*.ogg;*.m4a;*.aac;*.wma;*.aiff;*.aif|All files|*.*"
+                        : attach
                         ? "Crash, pictures, documents, and packs|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.txt;*.log;*.dmp;*.pdf;*.doc;*.docx;*.tspack|All files|*.*"
                         : "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|All files|*.*",
                     FilterIndex = 1,
-                    Multiselect = true,
+                    Multiselect = !audio,
                     CheckFileExists = true,
                     CheckPathExists = true,
                     RestoreDirectory = true,
@@ -219,5 +226,6 @@ public sealed class WindowsImagePicker : IFilePicker
         Images = 0,
         Folder = 1,
         Attach = 2,
+        Audio = 3,
     }
 }

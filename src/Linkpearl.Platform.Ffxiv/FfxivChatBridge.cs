@@ -205,14 +205,15 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
     public void SendTell(string characterName, string world, string body)
     {
-        var name = characterName.Trim();
+        var name = StripTellToken(characterName);
         var text = SanitizeBody(body);
         if (name.Length == 0 || text.Length == 0)
         {
             return;
         }
 
-        var home = world.Trim();
+        var home = StripTellToken(world);
+        TakeHome(ref name, ref home);
         PeelWorld(ref name, home);
         if (name.Length == 0)
         {
@@ -232,10 +233,16 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             name = CanonicalName(name);
         }
 
+        home = StripTellToken(home);
+        if (home.Length == 0)
+        {
+            chat.Print("Linkpearl needs their world to send a tell.", "Linkpearl");
+            return;
+        }
+
         pendingTellName = name;
         pendingTellWorld = home;
-        var target = home.Length == 0 ? name : name + "@" + home;
-        Queue("/tell " + target + " " + text);
+        Queue("/tell " + name + "@" + home + " " + text);
     }
 
     public void InviteToParty(string characterName, string world)
@@ -724,6 +731,32 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
 
         return false;
+    }
+
+    private static string StripTellToken(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Trim().Trim('"').Trim();
+    }
+
+    private static void TakeHome(ref string name, ref string world)
+    {
+        var at = name.LastIndexOf('@');
+        if (at <= 0)
+        {
+            return;
+        }
+
+        var home = StripTellToken(name[(at + 1)..]);
+        name = StripTellToken(name[..at]);
+        if (world.Length == 0)
+        {
+            world = home;
+        }
     }
 
     private static void PeelWorld(ref string name, string world)

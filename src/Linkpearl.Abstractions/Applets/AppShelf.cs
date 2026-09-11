@@ -74,6 +74,8 @@ public static class AppShelf
             "friends.png"),
         Spec("market", "Market", "Universalis", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
             "market_watch.png"),
+        Spec("venues", "Venues", "Nightlife", AppGroup.Life, AppChip.Social, AppKind.Applet, default, 0, true,
+            "home_place.png"),
         Spec("appstore", "App Store", "Catalog", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
             "announcement.png"),
         Spec("events", "Events", "Activities", AppGroup.Life, AppChip.Social, AppKind.Shortcut, DestinationTab.Explore,
@@ -99,7 +101,7 @@ public static class AppShelf
     public static readonly string[] DefaultInstalled =
     {
         "pearlchat", "phone", "music", "afterdark", "weather", "calendar", "camera", "friends", "settings",
-        "feedback", "market", "appstore", "notes", "alarms",
+        "feedback", "market", "venues", "appstore", "notes", "alarms",
     };
 
     public static readonly string[] ChipLabels = { "All", "Social", "Music", "Utility", "System", "Favorites" };

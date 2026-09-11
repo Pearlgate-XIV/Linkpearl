@@ -23,6 +23,23 @@ public static class NameMark
         Draw(frame, area, name, MarkLook.ForName(display, fallbackInk), FontRole.Display, clock);
     }
 
+    public static void DrawTitle(in AppletFrame frame, Rect area, string title, DisplayPreferences display,
+        Vector4 fallbackInk, bool fancy, float clock)
+    {
+        if (area.Width < 1f || title.Length == 0)
+        {
+            return;
+        }
+
+        if (!fancy)
+        {
+            frame.Text.DrawEllipsized(area, title, new TextStyle(FontRole.CaptionStrong, fallbackInk));
+            return;
+        }
+
+        Draw(frame, area, title, MarkLook.ForTitle(display), FontRole.CaptionStrong, clock);
+    }
+
     public static void Draw(in AppletFrame frame, Rect area, string text, in MarkLook look, FontRole role,
         float clock, float markScale = 1f)
     {
@@ -46,7 +63,8 @@ public static class NameMark
         }
 
         var scale = markScale * MathF.Min(1f, area.Width / width);
-        frame.Paint.PushClip(area);
+        var halo = look.Glow ? TitleFx.Spread(look, unit) * 2.6f : 0f;
+        frame.Paint.PushClip(area.Expand(halo));
         var x = area.Min.X;
         var index = 0;
         foreach (var rune in text.EnumerateRunes())

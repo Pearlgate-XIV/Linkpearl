@@ -44,7 +44,8 @@ public sealed partial class CameraApplet
             var select = tools.RightSlice(frame.Units(236f)).LeftSlice(frame.Units(60f)).Inset(new Edges(0f,
                 frame.Units(4f), frame.Units(8f), frame.Units(4f)));
             var head = tools.Inset(new Edges(frame.Units(12f), frame.Units(6f), frame.Units(244f), 0f));
-            frame.Text.DrawEllipsized(head, GalleryTitle(), new TextStyle(FontRole.Title, PhotosChrome.Ink));
+            frame.Text.DrawEllipsized(head, GalleryTitle(),
+                new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink));
             if (library.Shots.Count > 0)
             {
                 ActionChip(frame, select, "Select");
@@ -197,7 +198,7 @@ public sealed partial class CameraApplet
         var cursor = viewport.Min.Y - scroll;
         var total = 0f;
         var add = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
-            new Vector2(viewport.Width, frame.Units(36f)));
+            new Vector2(frame.Units(88f), frame.Units(36f)));
         if (add.Overlaps(viewport))
         {
             ActionChip(frame, add, "+ Album");
@@ -253,13 +254,29 @@ public sealed partial class CameraApplet
 
         if (albums.Count == 0 && books.Count == 0)
         {
-            frame.Text.DrawIn(viewport.TopSlice(frame.Units(28f)), "No photos yet",
-                new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink, TextAlign.Center));
-            frame.Text.DrawWrapped(viewport.Inset(new Edges(frame.Units(16f), frame.Units(40f), frame.Units(16f), 0f)),
-                "Tap Upload to pick pictures, then crop before they land here. Link a GPose folder so Upload opens there.",
-                new TextStyle(FontRole.Caption, PhotosChrome.Mute, TextAlign.Center));
+            var copyW = MathF.Max(8f, viewport.Width - frame.Units(16f));
+            const string hint =
+                "Tap Upload to pick pictures, then crop before they land here. Link a GPose folder so Upload opens there.";
+            var hintH = MathF.Max(frame.Units(32f),
+                frame.Text.MeasureWrapped(hint, FontRole.Caption, copyW).Y + frame.Units(4f));
+            var title = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
+                new Vector2(viewport.Width, frame.Units(22f)));
+            var note = Rect.FromSize(new Vector2(viewport.Min.X + frame.Units(8f), cursor + frame.Units(24f)),
+                new Vector2(copyW, hintH));
+            if (title.Overlaps(viewport))
+            {
+                frame.Text.DrawIn(title, "No photos yet",
+                    new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink, TextAlign.Center));
+            }
+
+            if (note.Overlaps(viewport))
+            {
+                frame.Text.DrawWrapped(note, hint, new TextStyle(FontRole.Caption, PhotosChrome.Mute));
+            }
+
+            total += frame.Units(28f) + hintH + frame.Units(12f);
             frame.Paint.PopClip();
-            return viewport.Height;
+            return MathF.Max(total, viewport.Height);
         }
 
         for (var album = 0; album < albums.Count; album++)

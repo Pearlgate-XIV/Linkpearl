@@ -4,6 +4,8 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using FFXIVClientStructs.FFXIV.Client.Graphics.Scene;
+using NativeObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
@@ -13,6 +15,7 @@ using ItemSheet = Lumina.Excel.Sheets.Item;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
 using WeatherSheet = Lumina.Excel.Sheets.Weather;
 using RaceSheet = Lumina.Excel.Sheets.Race;
+using TribeSheet = Lumina.Excel.Sheets.Tribe;
 using WorldSheet = Lumina.Excel.Sheets.World;
 
 namespace Linkpearl.Platform.Ffxiv;
@@ -35,6 +38,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     private string jobName = string.Empty;
     private string raceName = string.Empty;
     private byte raceId;
+    private string tribeName = string.Empty;
+    private byte tribeId;
     private int phoneCountry;
     private string zoneName = string.Empty;
     private string weatherName = string.Empty;
@@ -89,6 +94,10 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
     public string RaceName => raceName;
 
     public byte RaceId => raceId;
+
+    public string TribeName => tribeName;
+
+    public byte TribeId => tribeId;
 
     public int PhoneCountry => phoneCountry;
 
@@ -343,6 +352,8 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             jobName = string.Empty;
             raceName = string.Empty;
             raceId = 0;
+            tribeName = string.Empty;
+            tribeId = 0;
             phoneCountry = 0;
             zoneName = string.Empty;
             weatherName = string.Empty;
@@ -392,6 +403,9 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         jobIconId = 0;
         jobName = string.Empty;
         raceName = string.Empty;
+        raceId = 0;
+        tribeName = string.Empty;
+        tribeId = 0;
         phoneCountry = 0;
         zoneName = string.Empty;
         weatherName = string.Empty;
@@ -423,13 +437,21 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
                 jobIconId = jobs.IconFor(jobId);
             }
 
-            raceId = localPlayer.Customize[(int)CustomizeIndex.Race];
-            raceName = RaceTitle(raceId, localPlayer.Customize[(int)CustomizeIndex.Gender]);
+            var race = localPlayer.Customize[(int)CustomizeIndex.Race];
+            var tribe = localPlayer.Customize[(int)CustomizeIndex.Tribe];
+            var gender = localPlayer.Customize[(int)CustomizeIndex.Gender];
+            AbsorbDrawnLook(localPlayer.Address, ref race, ref tribe);
+            raceId = race;
+            tribeId = tribe;
+            raceName = RaceTitle(race, gender);
+            tribeName = TribeTitle(tribe, gender);
         }
         else
         {
             raceId = 0;
             raceName = string.Empty;
+            tribeId = 0;
+            tribeName = string.Empty;
         }
 
         var territoryId = clientState.TerritoryType;
@@ -552,11 +574,59 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         return string.Empty;
     }
 
+    private static unsafe void AbsorbDrawnLook(nint address, ref byte race, ref byte tribe)
+    {
+        if (address == 0)
+        {
+            return;
+        }
+
+        var draw = ((NativeObject*)address)->DrawObject;
+        if (draw == null)
+        {
+            return;
+        }
+
+        var human = (Human*)draw;
+        var drawnRace = human->Customize.Race;
+        var drawnTribe = human->Customize.Tribe;
+        if (drawnRace is >= 1 and <= 8)
+        {
+            race = drawnRace;
+        }
+
+        if (drawnTribe is >= 1 and <= 16)
+        {
+            tribe = drawnTribe;
+        }
+
+        var family = human->RaceSexId / 100;
+        if (family is 11 or 12 or 13 or 14)
+        {
+            race = 3;
+            tribe = family is 11 or 12 ? (byte)5 : (byte)6;
+        }
+    }
+
     private string RaceTitle(byte raceId, byte gender)
     {
         if (raceId != 0 && data.GetExcelSheet<RaceSheet>().TryGetRow(raceId, out var race))
         {
             var title = gender == 1 ? race.Feminine.ExtractText() : race.Masculine.ExtractText();
+            if (title.Length > 0)
+            {
+                return title;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private string TribeTitle(byte tribeRow, byte gender)
+    {
+        if (tribeRow != 0 && data.GetExcelSheet<TribeSheet>().TryGetRow(tribeRow, out var tribe))
+        {
+            var title = gender == 1 ? tribe.Feminine.ExtractText() : tribe.Masculine.ExtractText();
             if (title.Length > 0)
             {
                 return title;
@@ -619,7 +689,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     private void RememberWeather(uint territoryId)
     {
-        var weatherId = ReadWeatherId(territoryId);
+        var weatherId = territoryId == 0 ? (byte)0 : FfxivWeatherSense.Live((ushort)territoryId);
         if (weatherId == cachedWeatherId)
         {
             return;
@@ -627,22 +697,6 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
         cachedWeatherId = weatherId;
         weatherName = WeatherTitle(weatherId);
-    }
-
-    private static unsafe byte ReadWeatherId(uint territoryId)
-    {
-        if (territoryId == 0)
-        {
-            return 0;
-        }
-
-        var manager = WeatherManager.Instance();
-        if (manager is null)
-        {
-            return 0;
-        }
-
-        return manager->GetCurrentWeather();
     }
 
     private string WeatherTitle(byte weatherId)

@@ -4,6 +4,7 @@ using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Cards;
 using Linkpearl.Chassis;
+using Linkpearl.Destinations.Home;
 using Linkpearl.Destinations.Profile;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
@@ -232,25 +233,25 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             searchPinned = string.Empty;
         }
         DrawPreviewCard(frame, stack.Take(frame.Units(108f)));
-        DrawTopic(frame, ref stack, "General", "Lock, combat, and how the phone behaves",
+        DrawTopic(frame, ref stack, "General", PhoneLanguages.T("set.general.blurb"),
             "lock pin combat portraits cutscenes motion behavior", OptionBand(frame, 6), DrawGeneralPage);
-        DrawTopic(frame, ref stack, "Appearance", "Themes, display, wallpaper, and home",
+        DrawTopic(frame, ref stack, "Appearance", PhoneLanguages.T("set.appearance.blurb"),
             "theme display wallpaper dim home status accent text default", AppearanceInnerHeight(frame),
             DrawAppearancePage);
-        DrawTopic(frame, ref stack, "Sounds", "Speaker, microphone, and volume",
+        DrawTopic(frame, ref stack, "Sounds", PhoneLanguages.T("set.sounds.blurb"),
             "sound speaker mic volume silent vibration", SoundsHeight(frame), DrawSoundsPage);
-        DrawTopic(frame, ref stack, "Notifications", "Do not disturb and badges",
+        DrawTopic(frame, ref stack, "Notifications", PhoneLanguages.T("set.notifications.blurb"),
             "notify quiet silent duty badge", OptionBand(frame, 3), DrawNotificationsPage);
-        DrawTopic(frame, ref stack, "Feed", "Which live channels appear",
+        DrawTopic(frame, ref stack, "Feed", PhoneLanguages.T("set.feed.blurb"),
             "feed say shout yell party chat live", OptionBand(frame, 4), DrawFeedPage);
-        DrawTopic(frame, ref stack, "Phone calls", "Calls, wake, and portraits",
+        DrawTopic(frame, ref stack, "Phone calls", PhoneLanguages.T("set.calls.blurb"),
             "phone call phonecalls wake portrait cutscene", OptionBand(frame, 3), DrawPhonePage);
         DrawTopic(frame, ref stack, "Language & Time", PhoneLanguages.T("set.language.blurb"),
             "language languages english clock 12 24 eorzea time timezone", LanguagePageHeight(frame),
             DrawLanguagesPage);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("set.version") + " " + environment.Version,
             new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center));
-        DrawTopic(frame, ref stack, "Terms of service", "How this phone may be used", "tos terms legal",
+        DrawTopic(frame, ref stack, "Terms of service", PhoneLanguages.T("set.tos.blurb"), "tos terms legal",
             frame.Units(220f), DrawTosPage);
         DrawBoxedLink(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.discord"),
             () => OpenSite("https://discord.gg/KBf4wrzS6F"));
@@ -259,72 +260,73 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawAppearancePage(AppletFrame frame, ref Stack stack)
     {
-        DrawTopic(frame, ref stack, "Themes", "Default theme, accent color, and text size",
+        DrawTopic(frame, ref stack, "Themes", PhoneLanguages.T("set.themes.blurb"),
             "theme color accent text default", InkGroupHeight(frame), DrawInkControls);
-        DrawTopic(frame, ref stack, "Display", "Size, miniature, case, layout, and brightness",
+        DrawTopic(frame, ref stack, "Display", PhoneLanguages.T("set.display.blurb"),
             "display size miniature minimized case layout brightness", DisplayInnerHeight(frame), DrawDisplayPage);
-        DrawTopic(frame, ref stack, "Wallpaper", "Bundled plates and Gallery background",
+        DrawTopic(frame, ref stack, "Wallpaper", PhoneLanguages.T("set.wallpaper.blurb"),
             "wallpaper plate photo gallery desktop background", PlateGroupHeight(frame), DrawPlateControls);
-        DrawTopic(frame, ref stack, "Dim", "Light, medium, or dark overlay",
+        DrawTopic(frame, ref stack, "Dim", PhoneLanguages.T("set.dim.blurb"),
             "dim shade overlay light medium dark", DimGroupHeight(frame), DrawDimControls);
-        DrawTopic(frame, ref stack, "Home screen", "Greeting banner and extra screens",
+        DrawTopic(frame, ref stack, "Home screen", PhoneLanguages.T("set.homescreen.blurb"),
             "home banner greeting screens extra", BannerGroupHeight(frame), DrawBannerControls);
-        DrawTopic(frame, ref stack, "Status bar", "World name and status icons",
+        DrawTopic(frame, ref stack, "Status bar", PhoneLanguages.T("set.statusbar.blurb"),
             "status world icons", StatusGroupHeight(frame), DrawStripControls);
-        DrawTopic(frame, ref stack, "Interactive tuner", "Touch the phone preview to edit parts",
+        DrawTopic(frame, ref stack, "Interactive tuner", PhoneLanguages.T("set.tuner.blurb"),
             "tuner touch preview", TunerInnerHeight(frame), DrawTouch);
     }
 
     private void DrawGeneralPage(AppletFrame frame, ref Stack stack)
     {
         DrawPinControls(frame, ref stack);
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Reduce motion", display.ReduceMotion,
-            value => display.ReduceMotion = value, "Limit motion on the screen.");
-        ExclusiveRow(frame, ref stack, "Stay on screen", display.Fight == FightPresence.Stay,
-            () => display.Fight = FightPresence.Stay, "Keep the phone up in combat.");
-        ExclusiveRow(frame, ref stack, "Minimize in combat", display.Fight == FightPresence.Pocket,
-            () => display.Fight = FightPresence.Pocket, "Minimize the phone in combat.");
-        ExclusiveRow(frame, ref stack, "Hide in combat", display.Fight == FightPresence.Vanish,
-            () => display.Fight = FightPresence.Vanish, "Hide the phone in combat.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.motion"), display.ReduceMotion,
+            value => display.ReduceMotion = value, PhoneLanguages.T("set.motion.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.stay"), display.Fight == FightPresence.Stay,
+            () => display.Fight = FightPresence.Stay, PhoneLanguages.T("set.fight.stay.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.pocket"), display.Fight == FightPresence.Pocket,
+            () => display.Fight = FightPresence.Pocket, PhoneLanguages.T("set.fight.pocket.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.hide"), display.Fight == FightPresence.Vanish,
+            () => display.Fight = FightPresence.Vanish, PhoneLanguages.T("set.fight.hide.hint"));
     }
 
     private void DrawDisplayPage(AppletFrame frame, ref Stack stack)
     {
-        DrawSliderRow(frame, ref stack, "Brightness", display.Brightness, value => display.Brightness = value);
+        DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.brightness"), display.Brightness,
+            value => display.Brightness = value);
         DrawBodyControls(frame, ref stack);
     }
 
     private void DrawFeedPage(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show Say", display.FeedShowSay,
-            value => display.FeedShowSay = value, "Nearby Say lines in Feed.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show Shout", display.FeedShowShout,
-            value => display.FeedShowShout = value, "Shout lines in Feed.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show Yell", display.FeedShowYell,
-            value => display.FeedShowYell = value, "Yell lines in Feed.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show Party", display.FeedShowParty,
-            value => display.FeedShowParty = value, "Party lines in Feed.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.feed.say"), display.FeedShowSay,
+            value => display.FeedShowSay = value, PhoneLanguages.T("set.feed.say.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.feed.shout"), display.FeedShowShout,
+            value => display.FeedShowShout = value, PhoneLanguages.T("set.feed.shout.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.feed.yell"), display.FeedShowYell,
+            value => display.FeedShowYell = value, PhoneLanguages.T("set.feed.yell.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.feed.party"), display.FeedShowParty,
+            value => display.FeedShowParty = value, PhoneLanguages.T("set.feed.party.hint"));
     }
 
     private void DrawNotificationsPage(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Do not disturb", display.Quiet,
-            value => display.Quiet = value, "Silence alerts on this phone.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Do not disturb in duties", display.QuietWhenBusy,
-            value => display.QuietWhenBusy = value, "Silence automatically while you are in a duty.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "App icon badges", display.ShowMarks,
-            value => display.ShowMarks = value, "Show marks on the status bar.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.quiet"), display.Quiet,
+            value => display.Quiet = value, PhoneLanguages.T("set.quiet.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.quiet.duty"), display.QuietWhenBusy,
+            value => display.QuietWhenBusy = value, PhoneLanguages.T("set.quiet.duty.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.badges"), display.ShowMarks,
+            value => display.ShowMarks = value, PhoneLanguages.T("set.badges.hint"));
     }
 
     private void DrawPhonePage(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Wake for calls", display.WakeInPocket,
-            value => display.WakeInPocket = value, "Wake the minimized phone for a call.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Keep phone on in portraits",
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.wake.calls"), display.WakeInPocket,
+            value => display.WakeInPocket = value, PhoneLanguages.T("set.wake.calls.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.portraits"),
             display.StayInPortraits, value => display.StayInPortraits = value,
-            "Stay on screen during portraits.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Hide during cutscenes", display.TuckForCutscenes,
-            value => display.TuckForCutscenes = value, "Put the phone away for cutscenes.");
+            PhoneLanguages.T("set.portraits.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.cutscenes"), display.TuckForCutscenes,
+            value => display.TuckForCutscenes = value, PhoneLanguages.T("set.cutscenes.hint"));
     }
 
     private void DrawLanguagesPage(AppletFrame frame, ref Stack stack)
@@ -347,24 +349,24 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         frame.Text.DrawWrapped(stack.Take(frame.Units(32f)), PhoneLanguages.T("set.app.language.hint"),
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.hour12"), !display.Use24HourClock,
-            () => display.Use24HourClock = false, "1:00 PM.");
+            () => display.Use24HourClock = false, PhoneLanguages.T("set.hour12.hint"));
         ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.hour24"), display.Use24HourClock,
-            () => display.Use24HourClock = true, "13:00.");
+            () => display.Use24HourClock = true, PhoneLanguages.T("set.hour24.hint"));
         ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.local"), display.ClockFace == ClockFace.Local,
-            () => display.ClockFace = ClockFace.Local, "Your real-world clock.");
+            () => display.ClockFace = ClockFace.Local, PhoneLanguages.T("set.clock.local.hint"));
         ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.eorzea"), display.ClockFace == ClockFace.Eorzea,
-            () => display.ClockFace = ClockFace.Eorzea, "In-world clock.");
+            () => display.ClockFace = ClockFace.Eorzea, PhoneLanguages.T("set.clock.eorzea.hint"));
         ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.clock.both"), display.ClockFace == ClockFace.Both,
-            () => display.ClockFace = ClockFace.Both, "Local and Eorzea time together.");
+            () => display.ClockFace = ClockFace.Both, PhoneLanguages.T("set.clock.both.hint"));
     }
 
     private void DrawSoundsPage(AppletFrame frame, ref Stack stack)
     {
         RefreshPorts();
-        DrawSliderRow(frame, ref stack, "Listen volume", display.Volume, value => display.Volume = value);
-        DrawSliderRow(frame, ref stack, "Microphone volume", display.MicVolume, value => display.MicVolume = value);
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Mute phone sounds", display.Quiet,
-            value => display.Quiet = value, "Turn off ringtones and alerts.");
+        DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.vol.listen"), display.Volume, value => display.Volume = value);
+        DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.vol.mic"), display.MicVolume, value => display.MicVolume = value);
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.sounds.mute"), display.Quiet,
+            value => display.Quiet = value, PhoneLanguages.T("set.silent.hint"));
         ActionRow(frame, ref stack, "Rescan audio devices", audioPorts.Status, () =>
         {
             lastPortScan = 0;
@@ -867,14 +869,28 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var hovered = frame.Input.IsHovering(row);
         var coral = new Vector4(1.00f, 0.42f, 0.40f, 1f);
         var peach = new Vector4(1.00f, 0.72f, 0.38f, 1f);
-        var rose = new Vector4(0.96f, 0.28f, 0.52f, 1f);
-        var ember = new Vector4(1.00f, 0.34f, 0.32f, 1f);
         frame.Paint.Glow(row, coral with { W = hovered ? 0.48f : 0.30f }, radius, frame.Units(hovered ? 12f : 9f));
-        frame.Paint.FillSquircleGradient(row, coral, peach, rose, ember, radius);
+        frame.Paint.Fill(row, hovered ? peach : coral, radius);
         frame.Paint.Stroke(row, new Vector4(1f, 0.92f, 0.86f, hovered ? 0.55f : 0.32f), frame.Units(1.2f), radius);
-        frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f, frame.Units(10f), 0f)),
-            PhoneLanguages.T("set.patreon"),
-            new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
+
+        var label = PhoneLanguages.T("set.patreon");
+        var heart = frame.Units(18f);
+        var gap = frame.Units(8f);
+        var textW = frame.Text.Measure(label, FontRole.BodyStrong).X;
+        var pack = heart + gap + textW;
+        var start = row.Center.X - pack * 0.5f;
+        start = MathF.Max(row.Min.X + frame.Units(10f), start);
+        var mark = Rect.FromSize(new Vector2(start, row.Center.Y - heart * 0.5f),
+            new Vector2(heart, heart));
+        if (!HomeMarks.TryDrawGlyph(frame.Paint, frame.Textures, frame.Paths, mark, "vybe-like.png", Vector4.One))
+        {
+            frame.Text.DrawIn(mark, "♥", new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
+        }
+
+        frame.Text.DrawEllipsized(
+            new Rect(new Vector2(start + heart + gap, row.Min.Y),
+                new Vector2(row.Max.X - frame.Units(10f), row.Max.Y)),
+            label, new TextStyle(FontRole.BodyStrong, Vector4.One));
         if (frame.Input.ConsumeClick(row))
         {
             OpenSite("https://www.patreon.com/c/LinkPearl_XIV/membership");
@@ -988,7 +1004,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawCreditSite(frame, ref stack, "Plugin page", credit.PluginPage);
         DrawCreditSite(frame, ref stack, "GitHub", credit.GitHubPage);
 
-        if (credit.ProfileId.Length > 0)
+        if (credit.Kind != CreditKind.Person && credit.ProfileId.Length > 0)
         {
             var gate = stack.Take(frame.Units(44f));
             CardChrome.DrawGold(frame, gate);
@@ -1113,7 +1129,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         DrawLetteringRow(frame, stack.Take(frame.Units(36f)));
         frame.Text.DrawWrapped(stack.Take(frame.Units(40f)),
-            "Name, honorific, photo, banner, time zone, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and VYBE.",
+            "Name, title, photo, banner, time zone, and Dreams typeface live on the profile in the top-left. Sync copies them to Music and VYBE.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
@@ -1369,7 +1385,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var sizeMin = HandsetSizeCatalog.MinScale;
         var sizeMax = Math.Max(HandsetSizeCatalog.MaxScale, shape.ScaleStep);
         var sizeSpan = MathF.Max(sizeMax - sizeMin, 0.01f);
-        DrawSliderRow(frame, ref stack, "Phone size", (shape.ScaleStep - sizeMin) / sizeSpan, value =>
+        DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.size"), (shape.ScaleStep - sizeMin) / sizeSpan, value =>
             shape.ScaleStep = HandsetSizeCatalog.ClampFree(sizeMin + Math.Clamp(value, 0f, 1f) * sizeSpan,
                 HandsetSizeCatalog.FreeCeiling));
         DrawPhoneSizeRow(frame, stack.Take(frame.Units(36f)));
@@ -1381,40 +1397,40 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawStripControls(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show world name", display.ShowWorld,
-            value => display.ShowWorld = value, "World name in the status bar.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show status icons", display.ShowMarks,
-            value => display.ShowMarks = value, "Signal, wifi, and battery.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.world"), display.ShowWorld,
+            value => display.ShowWorld = value, PhoneLanguages.T("set.world.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.icons"), display.ShowMarks,
+            value => display.ShowMarks = value, PhoneLanguages.T("set.icons.hint"));
     }
 
     private void DrawPinControls(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Lock position", shape.PositionLocked,
-            value => shape.PositionLocked = value, "Keep the phone from sliding.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Show lock button", shape.ShowLockTab,
-            value => shape.ShowLockTab = value, "Show the lock tab on the screen.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.lock.pos"), shape.PositionLocked,
+            value => shape.PositionLocked = value, PhoneLanguages.T("set.lock.pos.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.lock.tab"), shape.ShowLockTab,
+            value => shape.ShowLockTab = value, PhoneLanguages.T("set.lock.tab.hint"));
     }
 
     private void DrawPresenceControls(AppletFrame frame, ref Stack stack)
     {
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Wake when minimized", display.WakeInPocket,
-            value => display.WakeInPocket = value, "Wake the phone while it is minimized.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Keep open in portraits", display.StayInPortraits,
-            value => display.StayInPortraits = value, "Stay on screen during portraits.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Hide during cutscenes", display.TuckForCutscenes,
-            value => display.TuckForCutscenes = value, "Put the phone away for cutscenes.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Silent", display.Quiet, value => display.Quiet = value,
-            "Mute phone sounds.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Silent in duties", display.QuietWhenBusy,
-            value => display.QuietWhenBusy = value, "Mute automatically in duties.");
-        ToggleRow(frame, stack.Take(OptionHeight(frame)), "Reduce motion", display.ReduceMotion,
-            value => display.ReduceMotion = value, "Limit motion on the screen.");
-        ExclusiveRow(frame, ref stack, "Stay on screen", display.Fight == FightPresence.Stay,
-            () => display.Fight = FightPresence.Stay, "Keep the phone up in combat.");
-        ExclusiveRow(frame, ref stack, "Minimize in combat", display.Fight == FightPresence.Pocket,
-            () => display.Fight = FightPresence.Pocket, "Minimize the phone in combat.");
-        ExclusiveRow(frame, ref stack, "Hide in combat", display.Fight == FightPresence.Vanish,
-            () => display.Fight = FightPresence.Vanish, "Hide the phone in combat.");
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.wake.mini"), display.WakeInPocket,
+            value => display.WakeInPocket = value, PhoneLanguages.T("set.wake.mini.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.portraits.open"), display.StayInPortraits,
+            value => display.StayInPortraits = value, PhoneLanguages.T("set.portraits.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.cutscenes"), display.TuckForCutscenes,
+            value => display.TuckForCutscenes = value, PhoneLanguages.T("set.cutscenes.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.silent"), display.Quiet,
+            value => display.Quiet = value, PhoneLanguages.T("set.silent.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.silent.duty"), display.QuietWhenBusy,
+            value => display.QuietWhenBusy = value, PhoneLanguages.T("set.quiet.duty.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.motion"), display.ReduceMotion,
+            value => display.ReduceMotion = value, PhoneLanguages.T("set.motion.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.stay"), display.Fight == FightPresence.Stay,
+            () => display.Fight = FightPresence.Stay, PhoneLanguages.T("set.fight.stay.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.pocket"), display.Fight == FightPresence.Pocket,
+            () => display.Fight = FightPresence.Pocket, PhoneLanguages.T("set.fight.pocket.hint"));
+        ExclusiveRow(frame, ref stack, PhoneLanguages.T("set.fight.hide"), display.Fight == FightPresence.Vanish,
+            () => display.Fight = FightPresence.Vanish, PhoneLanguages.T("set.fight.hide.hint"));
     }
 
     private static string TopicLabel(string title) => title switch
@@ -1427,6 +1443,13 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         "Phone calls" => PhoneLanguages.T("set.calls"),
         "Languages" or "Language & Time" => PhoneLanguages.T("set.language"),
         "Terms of service" => PhoneLanguages.T("set.tos"),
+        "Themes" => PhoneLanguages.T("set.themes"),
+        "Display" => PhoneLanguages.T("set.display"),
+        "Wallpaper" => PhoneLanguages.T("set.wallpaper"),
+        "Dim" => PhoneLanguages.T("set.dim"),
+        "Home screen" => PhoneLanguages.T("set.homescreen"),
+        "Status bar" => PhoneLanguages.T("set.statusbar"),
+        "Interactive tuner" => PhoneLanguages.T("set.tuner"),
         _ => title,
     };
 
@@ -1497,7 +1520,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var inner = head.Inset(new Edges(frame.Units(12f), 0f, frame.Units(12f), 0f));
         frame.Text.DrawIn(inner.LeftSlice(inner.Width * 0.7f), TopicLabel(title),
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(inner.RightSlice(inner.Width * 0.3f), open ? "Close" : "Open",
+        frame.Text.DrawIn(inner.RightSlice(inner.Width * 0.3f),
+            open ? PhoneLanguages.T("ui.close") : PhoneLanguages.T("ui.open"),
             new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
         Note(frame, head, blurb);
         if (frame.Input.ConsumeClick(head))
@@ -1555,6 +1579,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
 
         return title.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+               TopicLabel(title).Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                blurb.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
     }

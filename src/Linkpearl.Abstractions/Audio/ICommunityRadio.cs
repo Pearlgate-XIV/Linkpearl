@@ -12,7 +12,13 @@ public readonly record struct CommunityStation(
     string ArtPath = "",
     string Mount = "",
     int Likes = 0,
-    bool Liked = false);
+    bool Liked = false,
+    string WatchUrl = "",
+    int Viewers = 0,
+    string TwitchLogin = "",
+    string VenueLine = "",
+    string Lifestream = "",
+    string Source = "");
 
 public interface ICommunityRadio
 {

@@ -196,6 +196,12 @@ internal static class NoticeLaunch
             return;
         }
 
+        if (kind == NoticeKind.Venue)
+        {
+            hub.OpenApplet("venues", targetId);
+            return;
+        }
+
         if (targetId.Length > 0 && tab == DestinationTab.Social && section == SocialPane.Messages)
         {
             hub.OpenTalk(targetId);
@@ -229,6 +235,12 @@ internal static class NoticeLaunch
         {
             return new ControlCenterResult(false, false, false, false, null, 0, "music",
                 RouteHint: item.TargetId.Length > 0 ? "live:" + item.TargetId : "player");
+        }
+
+        if (item.Kind == NoticeKind.Venue)
+        {
+            return new ControlCenterResult(false, false, false, false, null, 0, "venues",
+                RouteHint: item.TargetId);
         }
 
         return new ControlCenterResult(false, false, false, false, item.Tab, item.Section, string.Empty,

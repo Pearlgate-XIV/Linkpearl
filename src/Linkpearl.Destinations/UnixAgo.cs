@@ -11,7 +11,16 @@ internal static class UnixAgo
             return string.Empty;
         }
 
-        var then = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+        DateTimeOffset then;
+        try
+        {
+            then = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return string.Empty;
+        }
+
         var delta = now - then;
         if (delta.TotalSeconds < 45)
         {
@@ -38,6 +47,13 @@ internal static class UnixAgo
             return string.Empty;
         }
 
-        return Format(then.ToUnixTimeSeconds(), now);
+        try
+        {
+            return Format(then.ToUnixTimeSeconds(), now);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return string.Empty;
+        }
     }
 }

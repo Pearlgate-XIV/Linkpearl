@@ -10,7 +10,7 @@ namespace Linkpearl.Applets.Life.Music;
 public sealed partial class MusicApplet
 {
     private IReadOnlyList<MusicPerson> Roster() =>
-        MusicRoster.Directory(state, pearl.Current, community.Live, community.Mine, community.Directory,
+        MusicRoster.Directory(state, pearl.Current, MergedLive(), community.Mine, community.Directory,
             community.Broadcasting, MarkedName(), display.OwnTimeZoneId);
 
     private void DrawPersonSection(in AppletFrame frame, ref Stack stack, string title, IReadOnlyList<MusicPerson> rows)
@@ -78,15 +78,24 @@ public sealed partial class MusicApplet
             ? Math.Max(pearl.Current.Followers, 0)
             : MusicState.PublicFollowers(person.Id, FollowsProfile(person));
 
-    private void OpenFollowList(bool followers)
+    private void OpenFollowList(bool followers, string ownerId = "")
     {
         state.FollowListFollowers = followers;
+        state.FollowListOwnerId = ownerId;
         state.Open(MusicPage.FollowList);
+    }
+
+    private bool FollowListIsMine()
+    {
+        var owner = state.FollowListOwnerId;
+        return owner.Length == 0 ||
+               string.Equals(owner, MusicRoster.SelfId(pearl.Current), StringComparison.OrdinalIgnoreCase);
     }
 
     private void DrawFollowList(in AppletFrame frame, Rect area)
     {
         var followers = state.FollowListFollowers;
+        var mine = FollowListIsMine();
         var stack = MusicChrome.BeginSheet(frame, area, state, frame.Units(10f));
         try
         {
@@ -96,15 +105,25 @@ public sealed partial class MusicApplet
                 return;
             }
 
-            var rows = followers ? FollowerProfiles() : FollowingProfiles();
+            var rows = followers
+                ? mine ? FollowerProfiles() : OtherFollowerProfiles(state.FollowListOwnerId)
+                : mine ? FollowingProfiles() : OtherFollowingProfiles(state.FollowListOwnerId);
+            var owner = mine ? default(MusicPerson?) : MusicRoster.Find(Roster(), state.FollowListOwnerId);
+            var shown = followers && owner is { } person
+                ? ShownFollowers(person, false)
+                : rows.Count;
             frame.Text.DrawIn(stack.Take(frame.Units(16f)),
-                rows.Count == 1 ? "1 profile" : rows.Count + " profiles",
+                shown == 1 ? "1 profile" : shown + " profiles",
                 new TextStyle(FontRole.Caption, MusicChrome.Mute));
             if (rows.Count == 0)
             {
                 DrawHint(frame, ref stack, followers
-                    ? "People who follow you on Pearlgate will land here."
-                    : "Follow a profile and they show up here.");
+                    ? mine
+                        ? "People who follow you on Pearlgate will land here."
+                        : "No one from your circle shows on this list yet."
+                    : mine
+                        ? "Follow a profile and they show up here."
+                        : "Their following is not on your roster yet.");
                 return;
             }
 
@@ -148,7 +167,7 @@ public sealed partial class MusicApplet
                 "@" + (snap.Host.Length > 0 ? snap.Host : snap.Name).Replace(" ", string.Empty,
                     StringComparison.Ordinal).ToLowerInvariant(),
                 snap.Bio, "DJ", snap.Name, snap.Genre, false, snap.ListenUrl, 0, false,
-                WorldZones.PickFor(id)));
+                WorldZones.PickFor(id), snap.TwitchLogin, 0, snap.WatchUrl));
         }
 
         return rows;
@@ -171,5 +190,67 @@ public sealed partial class MusicApplet
         }
 
         return rows;
+    }
+
+    private IReadOnlyList<MusicPerson> OtherFollowerProfiles(string ownerId)
+    {
+        var people = Roster();
+        var owner = MusicRoster.Find(people, ownerId);
+        var rows = new List<MusicPerson>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ownerId, MusicRoster.SelfId(pearl.Current) };
+        if (owner is { } person && FollowsProfile(person))
+        {
+            rows.Add(MusicRoster.Self(state, pearl.Current, community.Broadcasting, MarkedName(),
+                display.OwnTimeZoneId));
+        }
+
+        AddRosterCircle(rows, seen, people, ownerId, "/followers");
+        return rows;
+    }
+
+    private IReadOnlyList<MusicPerson> OtherFollowingProfiles(string ownerId)
+    {
+        var people = Roster();
+        var rows = new List<MusicPerson>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ownerId };
+        AddRosterCircle(rows, seen, people, ownerId, "/following");
+        return rows;
+    }
+
+    private static void AddRosterCircle(List<MusicPerson> rows, HashSet<string> seen,
+        IReadOnlyList<MusicPerson> people, string ownerId, string salt)
+    {
+        var picks = new List<MusicPerson>();
+        for (var index = 0; index < people.Count; index++)
+        {
+            var person = people[index];
+            if (person.Mine || !seen.Add(person.Id))
+            {
+                continue;
+            }
+
+            picks.Add(person);
+        }
+
+        if (picks.Count <= 4)
+        {
+            rows.AddRange(picks);
+            return;
+        }
+
+        for (var index = 0; index < picks.Count && rows.Count < 12; index++)
+        {
+            var person = picks[index];
+            var hash = StringComparer.OrdinalIgnoreCase.GetHashCode(ownerId + salt + person.Id);
+            if (Math.Abs(hash) % 3 == 0)
+            {
+                rows.Add(person);
+            }
+        }
+
+        if (rows.Count == 0 && picks.Count > 0)
+        {
+            rows.Add(picks[0]);
+        }
     }
 }

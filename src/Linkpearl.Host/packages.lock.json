@@ -108,6 +108,9 @@
           "NLayer": "1.15.0"
         }
       },
+      "echomix.shared": {
+        "type": "Project"
+      },
       "linkpearl.abstractions": {
         "type": "Project",
         "dependencies": {
@@ -156,6 +159,12 @@
           "Linkpearl.Abstractions": "[0.1.0, )",
           "Linkpearl.Canvas": "[0.1.0, )",
           "Linkpearl.Destinations": "[0.1.0, )"
+        }
+      },
+      "linkpearl.echomix": {
+        "type": "Project",
+        "dependencies": {
+          "EchoMix.Shared": "[1.0.0, )"
         }
       },
       "linkpearl.net": {
