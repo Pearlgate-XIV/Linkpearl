@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# Cut a public Dalamud drop testers can Update against.
-# Custom repo: https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json
-# Same listing is committed to linkpearl.json for GitHub raw.
+# Cut a Dalamud drop and attach it to the GitHub `dev` release.
+# Testers add: https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-host="${PLUGIN_SSH_HOST:-root@194.113.211.29}"
-base_url="${PLUGIN_BASE_URL:-https://pearlgate.194.113.211.29.sslip.io}"
-remote_root="/opt/pearlgate/plugin-public"
 rev_file="$root/tools/.plugin-revision"
 dalamud_home="${DALAMUD_HOME:-$HOME/.xlcore/dalamud/Hooks/dev}"
 
@@ -73,19 +69,18 @@ with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compressle
 print("zip", zip_path, zip_path.stat().st_size)
 PY
 
-zip_url="$base_url/plugin/Linkpearl.zip"
-json_url="$base_url/plugin/pluginmaster.json"
+zip_url="https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/Linkpearl.zip"
 now="$(date +%s)"
-python3 - "$stage/pluginmaster.json" "$root/linkpearl.json" "$version" "$zip_url" "$now" <<'PY'
+python3 - "$root/linkpearl.json" "$version" "$zip_url" "$now" <<'PY'
 import json, sys
 from pathlib import Path
 
-dest, repo, version, zip_url, now = sys.argv[1:]
+repo, version, zip_url, now = sys.argv[1:]
 listing = [
     {
         "Author": "Pearlgate",
         "Name": "Linkpearl",
-        "Description": "Pearlgate phone. Sign in with XIVAuth. Disable any other plugin named Linkpearl first.",
+        "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
         "Punchline": "A pearl in your pocket.",
         "InternalName": "Linkpearl",
         "AssemblyVersion": version,
@@ -100,15 +95,9 @@ listing = [
         "LastUpdate": now,
     }
 ]
-text = json.dumps(listing, indent=2) + "\n"
-Path(dest).write_text(text)
-Path(repo).write_text(text)
+Path(repo).write_text(json.dumps(listing, indent=2) + "\n")
 PY
 
-ssh -o BatchMode=yes "$host" "mkdir -p '$remote_root'; chmod 755 '$remote_root'"
-scp -q "$stage/pluginmaster.json" "$stage/Linkpearl.zip" "$host:$remote_root/"
-ssh -o BatchMode=yes "$host" "chmod 644 '$remote_root/pluginmaster.json' '$remote_root/Linkpearl.zip'"
-
+gh release upload dev "$zip_path" --clobber
 echo "version $version"
-echo "repo $json_url"
-echo "github https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/linkpearl.json"
+echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"

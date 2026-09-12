@@ -2,7 +2,7 @@
   {
     "Author": "Pearlgate",
     "Name": "Linkpearl",
-    "Description": "Pearlgate phone. Sign in with XIVAuth. Disable any other plugin named Linkpearl first.",
+    "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
     "Punchline": "A pearl in your pocket.",
     "InternalName": "Linkpearl",
     "AssemblyVersion": "0.1.1.1",
@@ -11,9 +11,9 @@
     "DalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
-    "DownloadLinkUpdate": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
-    "DownloadLinkTesting": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
-    "LastUpdate": "1789187443"
+    "DownloadLinkInstall": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/Linkpearl.zip",
+    "DownloadLinkUpdate": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/Linkpearl.zip",
+    "DownloadLinkTesting": "https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/Linkpearl.zip",
+    "LastUpdate": "1789188109"
   }
 ]
