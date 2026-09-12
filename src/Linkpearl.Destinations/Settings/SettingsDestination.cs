@@ -720,35 +720,21 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private static float PlateGroupHeight(in AppletFrame frame)
-    {
-        var rows = new List<float>();
-        for (var index = 0; index < WallpaperCatalog.All.Count; index++)
-        {
-            rows.Add(OptionHeight(frame));
-        }
-
-        rows.Add(frame.Units(16f));
-        rows.Add(frame.Units(32f));
-        return StackRun(frame, rows) + frame.Units(8f);
-    }
+    private static float PlateGroupHeight(in AppletFrame frame) =>
+        StackRun(frame, OptionBand(frame, WallpaperCatalog.All.Count), frame.Units(16f), frame.Units(32f)) +
+        frame.Units(8f);
 
     private static float DimGroupHeight(in AppletFrame frame) =>
         StackRun(frame, frame.Units(16f), frame.Units(36f)) + frame.Units(8f);
 
-    private float InkGroupHeight(in AppletFrame frame)
-    {
-        var rows = new List<float>
-        {
+    private static float InkGroupHeight(in AppletFrame frame) =>
+        StackRun(frame,
             frame.Units(16f),
             frame.Units(16f),
             frame.Units(36f),
             frame.Units(16f),
             frame.Units(36f),
-            frame.Units(40f),
-        };
-        return StackRun(frame, rows) + frame.Units(8f);
-    }
+            frame.Units(40f)) + frame.Units(8f);
 
     private float BannerGroupHeight(in AppletFrame frame)
     {
@@ -787,19 +773,25 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void RefreshPorts()
     {
         var now = Environment.TickCount64;
-        var empty = audioPorts.Speakers.Count == 0 && audioPorts.Microphones.Count == 0;
-        if (!empty && now - lastPortScan < 2000)
+        if (lastPortScan == 0)
+        {
+            lastPortScan = now;
+            if (audioPorts.Speakers.Count > 0 || audioPorts.Microphones.Count > 0)
+            {
+                return;
+            }
+        }
+        else if (now - lastPortScan < 15_000)
         {
             return;
         }
 
-        audioPorts.Refresh();
         lastPortScan = now;
+        audioPorts.Refresh();
     }
 
-    private float SoundsHeight(in AppletFrame frame)
+    private static float SoundsHeight(in AppletFrame frame)
     {
-        RefreshPorts();
         var gap = frame.Units(8f);
         return frame.Units(56f) + gap + frame.Units(56f) + gap + OptionHeight(frame) + gap +
             OptionHeight(frame) + gap +

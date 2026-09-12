@@ -4,6 +4,9 @@ public sealed class StreamDesk : IStreamDesk
 {
     private readonly IStreamDesk accounts;
     private readonly RolladeckDesk rolla;
+    private IReadOnlyList<StreamInfo>? lastAccounts;
+    private IReadOnlyList<StreamInfo>? lastRolla;
+    private StreamInfo[] merged = [];
 
     public StreamDesk(IStreamDesk accounts, RolladeckDesk rolla)
     {
@@ -11,7 +14,23 @@ public sealed class StreamDesk : IStreamDesk
         this.rolla = rolla;
     }
 
-    public IReadOnlyList<StreamInfo> Live => MergeLive(accounts.Live, rolla.Live);
+    public IReadOnlyList<StreamInfo> Live
+    {
+        get
+        {
+            var left = accounts.Live;
+            var right = rolla.Live;
+            if (ReferenceEquals(lastAccounts, left) && ReferenceEquals(lastRolla, right))
+            {
+                return merged;
+            }
+
+            lastAccounts = left;
+            lastRolla = right;
+            merged = MergeLive(left, right);
+            return merged;
+        }
+    }
 
     public IReadOnlyList<StreamScheduleMark> CommunitySchedule => rolla.Schedule;
 

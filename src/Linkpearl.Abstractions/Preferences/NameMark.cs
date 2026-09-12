@@ -31,9 +31,10 @@ public static class NameMark
             return;
         }
 
+        _ = fallbackInk;
         if (!fancy)
         {
-            frame.Text.DrawEllipsized(area, title, new TextStyle(FontRole.CaptionStrong, fallbackInk));
+            frame.Text.DrawEllipsized(area, title, new TextStyle(FontRole.CaptionStrong, Vector4.One));
             return;
         }
 

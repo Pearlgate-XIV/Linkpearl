@@ -21,6 +21,12 @@ public sealed partial class MusicApplet
 
     private CommunityStation[] BroadcastBoard()
     {
+        var now = Environment.TickCount64;
+        if (broadcastBoardAt != 0 && now - broadcastBoardAt < 1000)
+        {
+            return broadcastBoard;
+        }
+
         var byId = new Dictionary<string, CommunityStation>(StringComparer.OrdinalIgnoreCase);
         void Put(CommunityStation station)
         {
@@ -54,18 +60,28 @@ public sealed partial class MusicApplet
             Put(owned);
         }
 
-        return byId.Values
+        broadcastBoard = byId.Values
             .OrderByDescending(static row => row.Live)
             .ThenBy(static row => row.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        broadcastBoardAt = now;
+        return broadcastBoard;
     }
 
     private CommunityStation[] TwitchBoard()
     {
+        var now = Environment.TickCount64;
+        if (twitchBoardAt != 0 && now - twitchBoardAt < 1000)
+        {
+            return twitchBoard;
+        }
+
         var board = streams.Live;
         if (board.Count == 0)
         {
-            return [];
+            twitchBoard = [];
+            twitchBoardAt = now;
+            return twitchBoard;
         }
 
         var rows = new List<CommunityStation>(board.Count);
@@ -81,10 +97,12 @@ public sealed partial class MusicApplet
             rows.Add(station);
         }
 
-        return rows
+        twitchBoard = rows
             .OrderByDescending(static row => row.Viewers)
             .ThenBy(static row => row.Host, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        twitchBoardAt = now;
+        return twitchBoard;
     }
 
     private static bool IsBroadcast(CommunityStation station) =>
@@ -94,6 +112,12 @@ public sealed partial class MusicApplet
 
     private CommunityStation[] MergedBoard()
     {
+        var now = Environment.TickCount64;
+        if (mergedBoardAt != 0 && now - mergedBoardAt < 1000)
+        {
+            return mergedBoard;
+        }
+
         var byId = new Dictionary<string, CommunityStation>(StringComparer.OrdinalIgnoreCase);
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -158,12 +182,14 @@ public sealed partial class MusicApplet
             byId[station.Id] = station;
         }
 
-        return byId.Values
+        mergedBoard = byId.Values
             .OrderByDescending(static row => row.Live)
             .ThenByDescending(static row => row.Listeners)
             .ThenByDescending(static row => row.Viewers)
             .ThenBy(static row => row.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        mergedBoardAt = now;
+        return mergedBoard;
     }
 
     private StreamInfo? MatchStream(CommunityStation station)

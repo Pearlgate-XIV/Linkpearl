@@ -19,6 +19,10 @@ public sealed class FfxivSkyDesk : ISkyDesk
     private bool weatherLocked;
     private int lockedMinute;
     private byte lockedWeather;
+    private ushort lookTerritory;
+    private byte lookWeather;
+    private int lookMinute = -1;
+    private SkyLook look;
 
     public FfxivSkyDesk(IDalamudPluginInterface plugins, IDataManager data, IGameSession game, IClock clock,
         IFrameLoop loop)
@@ -63,8 +67,18 @@ public sealed class FfxivSkyDesk : ISkyDesk
         var weatherId = weatherLocked && lockedWeather != 0
             ? lockedWeather
             : FfxivWeatherSense.Live(territoryId);
+        var minute = bells.Hour * 60 + bells.Minute;
+        if (lookTerritory == territoryId && lookWeather == weatherId && lookMinute == minute)
+        {
+            return look with { Bells = bells };
+        }
+
         Title(weatherId, out var name, out var icon);
-        return new SkyLook(bells, name, icon, weatherId);
+        look = new SkyLook(bells, name, icon, weatherId);
+        lookTerritory = territoryId;
+        lookWeather = weatherId;
+        lookMinute = minute;
+        return look;
     }
 
     public IReadOnlyList<SkyChoice> ZoneChoices(ushort territoryId)

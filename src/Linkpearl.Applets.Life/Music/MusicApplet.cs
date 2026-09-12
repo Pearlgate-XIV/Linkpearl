@@ -62,7 +62,16 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
     private long lastCaptureTry;
     private long lastPushTry;
     private long lastCommunityRefresh;
+    private long lastFollowWatch;
     private long lastPortScan;
+    private long mergedBoardAt;
+    private CommunityStation[] mergedBoard = [];
+    private long twitchBoardAt;
+    private CommunityStation[] twitchBoard = [];
+    private long broadcastBoardAt;
+    private CommunityStation[] broadcastBoard = [];
+    private long followedBoardAt;
+    private CommunityStation[] followedBoard = [];
     private string lastSoundTap = string.Empty;
     private bool photoDrag;
     private string playerWaveId = string.Empty;
@@ -332,14 +341,19 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private void OnFrame(float _)
     {
-        if (Environment.TickCount64 - lastCommunityRefresh > 8000)
+        var now = Environment.TickCount64;
+        if (now - lastCommunityRefresh > 8000)
         {
-            lastCommunityRefresh = Environment.TickCount64;
+            lastCommunityRefresh = now;
             community.Refresh();
             streams.Refresh();
         }
 
-        WatchFollowedLive();
+        if (now - lastFollowWatch > 2000)
+        {
+            lastFollowWatch = now;
+            WatchFollowedLive();
+        }
     }
 
     private void WatchFollowedLive()
@@ -582,12 +596,6 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             publicRadio.Ensure(state.Genre);
             SyncBroadcastTap();
             PullOwnedStation();
-            if (Environment.TickCount64 - lastCommunityRefresh > 8000)
-            {
-                lastCommunityRefresh = Environment.TickCount64;
-                community.Refresh();
-                streams.Refresh();
-            }
         }
         catch (Exception)
         {
@@ -1668,7 +1676,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
         for (var index = 0; index < board.Length; index++)
         {
-            DrawBroadcastRow(frame, stack.Take(frame.Units(84f)), board[index]);
+            var row = stack.Take(frame.Units(84f));
+            if (!RowOnScreen(frame, row))
+            {
+                continue;
+            }
+
+            DrawBroadcastRow(frame, row, board[index]);
         }
     }
 
@@ -1688,7 +1702,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         {
             for (var index = 0; index < live.Length; index++)
             {
-                DrawTwitchDjRow(frame, stack.Take(frame.Units(84f)), live[index]);
+                var row = stack.Take(frame.Units(84f));
+                if (!RowOnScreen(frame, row))
+                {
+                    continue;
+                }
+
+                DrawTwitchDjRow(frame, row, live[index]);
             }
         }
 
@@ -1713,7 +1733,13 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
         for (var index = 0; index < board.Length; index++)
         {
-            DrawFeedLiveCard(frame, stack.Take(frame.Units(220f)), board[index]);
+            var row = stack.Take(frame.Units(220f));
+            if (!RowOnScreen(frame, row))
+            {
+                continue;
+            }
+
+            DrawFeedLiveCard(frame, row, board[index]);
         }
     }
 
@@ -1730,6 +1756,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private CommunityStation[] FollowedBoard()
     {
+        var now = Environment.TickCount64;
+        if (followedBoardAt != 0 && now - followedBoardAt < 1000)
+        {
+            return followedBoard;
+        }
+
         var byId = new Dictionary<string, CommunityStation>(StringComparer.OrdinalIgnoreCase);
         void Put(CommunityStation station)
         {
@@ -1762,10 +1794,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             byId[snap.Id] = snap.ToStation(false, 0, community.StationLikes(snap.Id), community.StationLiked(snap.Id));
         }
 
-        return byId.Values
+        followedBoard = byId.Values
             .OrderByDescending(static row => row.Live)
             .ThenBy(static row => row.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        followedBoardAt = now;
+        return followedBoard;
     }
 
     private CommunityStation FindCommunity(string id)
@@ -3043,6 +3077,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             state.StationArtPath);
     }
 
+    private static bool RowOnScreen(in AppletFrame frame, Rect row) =>
+        row.Max.Y >= frame.Content.Min.Y - 12f && row.Min.Y <= frame.Content.Max.Y + 12f;
+
+    private bool WantsCapture() =>
+        community.Broadcasting || booth.Mixing || state.Page == MusicPage.SetupDj;
+
     private void SyncBroadcastTap()
     {
         community.UseIcecast(state.IcecastHost, "source", state.IcecastPassword);
@@ -3051,6 +3091,16 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         if (!community.Broadcasting)
         {
             push.Stop();
+        }
+
+        if (!WantsCapture())
+        {
+            if (sense.Listening)
+            {
+                sense.Stop();
+            }
+
+            return;
         }
 
         if (booth.Mixing)

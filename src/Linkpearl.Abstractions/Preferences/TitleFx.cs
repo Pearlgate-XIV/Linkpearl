@@ -21,10 +21,8 @@ public readonly struct MarkLook
 
     public static MarkLook ForTitle(DisplayPreferences display) =>
         new(
-            display.NameInkCustom
-                ? new Vector4(display.NameInkR, display.NameInkG, display.NameInkB, 1f)
-                : new Vector4(1f, 1f, 1f, 1f),
-            new Vector4(display.NameGlowR, display.NameGlowG, display.NameGlowB, 1f),
+            new Vector4(1f, 1f, 1f, 1f),
+            new Vector4(display.TitleGlowR, display.TitleGlowG, display.TitleGlowB, 1f),
             false,
             display.TitleMotion,
             display.TitleGlowWeight);

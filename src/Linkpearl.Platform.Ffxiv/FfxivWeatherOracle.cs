@@ -10,6 +10,13 @@ public sealed class FfxivWeatherOracle : IWeatherOracle
 {
     private readonly IDataManager data;
     private readonly IClock clock;
+    private readonly string[] titles = new string[256];
+    private readonly uint[] icons = new uint[256];
+    private readonly bool[] named = new bool[256];
+    private ushort forecastTerritory;
+    private int forecastCount;
+    private long forecastAt;
+    private WeatherWindow[] forecast = [];
 
     public FfxivWeatherOracle(IDataManager data, IClock clock)
     {
@@ -32,7 +39,14 @@ public sealed class FfxivWeatherOracle : IWeatherOracle
         }
 
         var now = clock.UtcNow;
-        var bells = EorzeaTime.FromUnix(now.ToUnixTimeSeconds());
+        var stamp = now.ToUnixTimeSeconds();
+        if (forecastTerritory == territoryId && forecastCount == count && forecast.Length == count &&
+            stamp - forecastAt < 2)
+        {
+            return forecast;
+        }
+
+        var bells = EorzeaTime.FromUnix(stamp);
         var intoHour = TimeSpan.FromSeconds(bells.Minute * (3600.0 / EorzeaTime.EarthToEorzea) / 60.0);
         var hourLength = TimeSpan.FromSeconds(3600.0 / EorzeaTime.EarthToEorzea);
         var result = new WeatherWindow[count];
@@ -43,6 +57,10 @@ public sealed class FfxivWeatherOracle : IWeatherOracle
             result[offset] = new WeatherWindow(Title(weatherId), Icon(weatherId), starts, starts + hourLength);
         }
 
+        forecastTerritory = territoryId;
+        forecastCount = count;
+        forecastAt = stamp;
+        forecast = result;
         return result;
     }
 
@@ -59,21 +77,28 @@ public sealed class FfxivWeatherOracle : IWeatherOracle
 
     private string Title(byte weatherId)
     {
-        if (weatherId != 0 && data.GetExcelSheet<WeatherSheet>().TryGetRow(weatherId, out var weather))
-        {
-            return weather.Name.ExtractText() ?? string.Empty;
-        }
-
-        return string.Empty;
+        Remember(weatherId);
+        return titles[weatherId] ?? string.Empty;
     }
 
     private uint Icon(byte weatherId)
     {
-        if (weatherId != 0 && data.GetExcelSheet<WeatherSheet>().TryGetRow(weatherId, out var weather))
+        Remember(weatherId);
+        return icons[weatherId];
+    }
+
+    private void Remember(byte weatherId)
+    {
+        if (named[weatherId])
         {
-            return (uint)weather.Icon;
+            return;
         }
 
-        return 0u;
+        named[weatherId] = true;
+        if (weatherId != 0 && data.GetExcelSheet<WeatherSheet>().TryGetRow(weatherId, out var weather))
+        {
+            titles[weatherId] = weather.Name.ExtractText() ?? string.Empty;
+            icons[weatherId] = (uint)weather.Icon;
+        }
     }
 }

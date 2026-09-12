@@ -3004,8 +3004,8 @@ public sealed partial class VybeApplet
         }
 
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "ROLE SURVEY", night);
-        VybeChrome.Mute(frame, stack.Take(frame.Units(40f)),
-            "VYBE's own role map. bdsmtest.org cannot be used here — no public API — so this survey is original.",
+        VybeChrome.Mute(frame, stack.Take(frame.Units(48f)),
+            "Thirty-two private questions. Each one is first-person and about how you like a scene to feel — lead or follow, sting or soothe, rope, hunt, display, keep. Your map stays on this phone.",
             night);
         var go = stack.Take(frame.Units(40f));
         VybeChrome.Primary(frame, go, state.LaneDone ? "Retake role survey" : "Take role survey", night);
@@ -3049,7 +3049,7 @@ public sealed partial class VybeApplet
         }
 
         var done = state.LaneAsk >= asks.Length;
-        VybeChrome.Wheel(frame, area, state, frame.Units(done ? 720f : 640f));
+        VybeChrome.Wheel(frame, area, state, frame.Units(done ? 720f : 680f));
         var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Role survey", night))
         {
@@ -3092,7 +3092,7 @@ public sealed partial class VybeApplet
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)),
             (step + 1).ToString(CultureInfo.InvariantCulture) + " / " +
             asks.Length.ToString(CultureInfo.InvariantCulture), night);
-        frame.Text.DrawWrapped(stack.Take(frame.Units(72f)), asks[step],
+        frame.Text.DrawWrapped(stack.Take(frame.Units(88f)), asks[step],
             new TextStyle(FontRole.BodyStrong, tone.Ink));
         for (var index = 0; index < VybeLaneMap.Scale.Length; index++)
         {

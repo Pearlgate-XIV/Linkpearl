@@ -508,7 +508,7 @@ public sealed class ProfileChrome
         CardChrome.DrawGold(frame, honorRow);
         var honorPad = honorRow.Inset(new Edges(frame.Units(14f), frame.Units(6f)));
         frame.Text.DrawIn(honorPad.TopSlice(frame.Units(14f)), "TITLE",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+            new TextStyle(FontRole.Caption, Vector4.One));
         display.OwnTitle = frame.TextField.Draw("profile-own-title",
             honorPad.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
             display.OwnTitle, "Shown above your name", ShownName.OwnTitleLimit, out _);

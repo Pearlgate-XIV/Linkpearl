@@ -222,7 +222,7 @@ public static class AppGround
             return;
         }
 
-        const int bands = 20;
+        const int bands = 6;
         var height = area.Height;
         var overlap = MathF.Max(1.2f, height / bands * 0.35f);
         for (var index = 0; index < bands; index++)

@@ -10,6 +10,7 @@ public sealed class WindowsAudioPorts : IAudioPorts
     private string defaultSpeakerId = string.Empty;
     private string defaultMicId = string.Empty;
     private string status = "No devices scanned yet.";
+    private long lastRefresh;
 
     public WindowsAudioPorts() => Refresh();
 
@@ -25,6 +26,13 @@ public sealed class WindowsAudioPorts : IAudioPorts
 
     public void Refresh()
     {
+        var now = Environment.TickCount64;
+        if (lastRefresh != 0 && now - lastRefresh < 750)
+        {
+            return;
+        }
+
+        lastRefresh = now;
         try
         {
             speakers = Map(WasapiDeviceScan.Render());

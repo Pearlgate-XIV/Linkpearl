@@ -69,14 +69,17 @@ public static partial class PhoneLanguages
     public static void Apply(string? id)
     {
         var next = Sanitize(id);
+        if (string.Equals(CurrentId, next, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         CurrentId = next;
         try
         {
             var culture = CultureInfo.GetCultureInfo(All[IndexOf(next)].Culture);
             CultureInfo.CurrentCulture = culture;
             CultureInfo.CurrentUICulture = culture;
-            CultureInfo.DefaultThreadCurrentCulture = culture;
-            CultureInfo.DefaultThreadCurrentUICulture = culture;
         }
         catch (CultureNotFoundException)
         {

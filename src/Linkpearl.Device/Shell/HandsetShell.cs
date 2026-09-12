@@ -126,7 +126,6 @@ public sealed class HandsetShell
 
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
-        PhoneLanguages.Apply(preferences.LanguageId);
         router.RevokeDisallowed();
         var scale = outerFrame.Scale;
         var hush = preferences.Hushed(game.IsInDuty || game.IsInCutscene);

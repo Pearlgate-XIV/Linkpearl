@@ -2282,13 +2282,12 @@ public sealed partial class MusicApplet
 
     private void EnsurePorts()
     {
-        var now = Environment.TickCount64;
-        if (lastPortScan != 0 && now - lastPortScan < 2500)
+        if (lastPortScan != 0)
         {
             return;
         }
 
-        lastPortScan = now;
+        lastPortScan = Environment.TickCount64;
         ports.Refresh();
         sense.RescanPoints();
     }

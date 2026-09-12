@@ -182,7 +182,7 @@ public sealed partial class PearlHub
     {
         lock (gate)
         {
-            return mediaPaths.TryGetValue(url, out var path) && File.Exists(path) ? path : null;
+            return mediaPaths.TryGetValue(url, out var path) ? path : null;
         }
     }
 
