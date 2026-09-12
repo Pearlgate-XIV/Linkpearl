@@ -537,7 +537,9 @@ public sealed class PearlCommunityRadio : ICommunityRadio, IDisposable
                 lock (gate)
                 {
                     ApplyRelayLocked(FindOwnedLocked());
-                    notice = start.StatusCode == System.Net.HttpStatusCode.NotFound
+                    notice = start.StatusCode == System.Net.HttpStatusCode.Forbidden
+                        ? "Staff muted this handset. You cannot go live."
+                        : start.StatusCode == System.Net.HttpStatusCode.NotFound
                         ? (FindOwnedLocked()?.IngestUrl.Length > 0
                             ? "Pearlgate live route is down. Pushing to the Icecast URL we already have."
                             : "Pearlgate did not open the mount. Sign in, or set Icecast on DJ setup as a fallback.")

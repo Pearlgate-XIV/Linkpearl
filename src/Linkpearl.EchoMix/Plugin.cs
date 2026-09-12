@@ -41,6 +41,7 @@ public sealed class Plugin : IDisposable
     private readonly ProximityTracker proximityTracker;
     public AutoJoinTracker AutoJoinTracker { get; }
     private int connectingFlag;
+    private DateTime nextConnectUtc = DateTime.MinValue;
     private bool settingsRestored;
     private bool? lastSentMuteState;
     private float lastSentListenVolume = -1f;
@@ -117,8 +118,6 @@ public sealed class Plugin : IDisposable
 
         Framework.Update += OnFrameworkUpdate;
         focusMuteTimer = new System.Threading.Timer(CheckFocusMute, null, 0, 15);
-
-        _ = EnsureAudioHostConnectedAsync();
     }
 
     public bool IsDeckOpen => djDeckWindow.IsOpen;
@@ -139,6 +138,8 @@ public sealed class Plugin : IDisposable
     {
         djDeckWindow.ShowDeckImmediately();
         djDeckWindow.IsOpen = true;
+        nextConnectUtc = DateTime.MinValue;
+        _ = EnsureAudioHostConnectedAsync();
     }
 
     public void CloseDeck() => djDeckWindow.IsOpen = false;
@@ -184,12 +185,15 @@ public sealed class Plugin : IDisposable
     {
         if (!AudioHostClient.IsConnected)
         {
-            _ = EnsureAudioHostConnectedAsync();
+            if (djDeckWindow.IsOpen && DateTime.UtcNow >= nextConnectUtc)
+            {
+                _ = EnsureAudioHostConnectedAsync();
+            }
         }
         else if (AudioHostClient.IsStale)
         {
-            Log.Warning("[EchoMix] AudioHost stopped responding - forcing a reconnect.");
             AudioHostClient.ForceDisconnect();
+            nextConnectUtc = DateTime.UtcNow.AddSeconds(30);
         }
 
         var characterName = ObjectTable.LocalPlayer?.Name.TextValue;
@@ -398,6 +402,10 @@ public sealed class Plugin : IDisposable
             Directory.CreateDirectory(echoDir);
 
             await AudioHostLauncher.ConnectOrLaunchAsync(AudioHostClient, assemblyDirectory, echoDir, Log);
+            if (!AudioHostClient.IsConnected)
+            {
+                nextConnectUtc = DateTime.UtcNow.AddSeconds(20);
+            }
 
             if (AudioHostClient.IsConnected && !settingsRestored)
             {
@@ -430,7 +438,8 @@ public sealed class Plugin : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "[EchoMix] Error while connecting to AudioHost");
+            nextConnectUtc = DateTime.UtcNow.AddSeconds(20);
+            Log.Warning("[EchoMix] AudioHost connect failed ({0}). Retrying in 20s.", ex.Message);
         }
         finally
         {

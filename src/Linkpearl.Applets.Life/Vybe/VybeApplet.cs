@@ -3427,7 +3427,15 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             new TextStyle(FontRole.Title, tone.Mute, TextAlign.Center));
         if (!SheetBlocking() && frame.Input.ConsumeClick(more.Expand(frame.Units(8f))))
         {
-            state.DropPostId = post.Id;
+            if (post.Mine)
+            {
+                state.DropPostId = post.Id;
+            }
+            else
+            {
+                OpenStaffReport("vybe_post", post.Id, post.AuthorName + ": " + post.Body);
+            }
+
             return;
         }
         var plusLane = IsPlusLane(post);
@@ -4290,24 +4298,16 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         frame.Paint.Image(texture, dest, crop.Min, crop.Max, Vector4.One);
     }
 
-    private static readonly string[] ProfileReportReasons =
-    {
-        "Select reason",
-        "Spam",
-        "Harassment or bullying",
-        "Hate speech",
-        "Inappropriate content",
-        "Impersonation",
-        "Scam or fraud",
-        "Something else",
-    };
+    private void OpenProfileReport(string target, string title) =>
+        OpenStaffReport("user", target, title);
 
-    private void OpenProfileReport(string target, string title)
+    private void OpenStaffReport(string kind, string target, string title)
     {
         state.ReportOpen = true;
         state.ReportFresh = true;
         state.ReportReason = 0;
         state.ReportDetail = string.Empty;
+        state.ReportKind = kind;
         state.ReportTarget = target;
         state.ReportTitle = title;
     }
@@ -4318,23 +4318,37 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         state.ReportFresh = false;
         state.ReportReason = 0;
         state.ReportDetail = string.Empty;
+        state.ReportKind = "user";
         state.ReportTarget = string.Empty;
         state.ReportTitle = string.Empty;
     }
 
     private void SubmitProfileReport()
     {
-        if (state.ReportReason <= 0 || desk.Busy)
+        if (state.ReportReason <= 0)
         {
             return;
         }
 
-        var reason = ProfileReportReasons[Math.Clamp(state.ReportReason, 1, ProfileReportReasons.Length - 1)];
-        var body = "Profile: " + (state.ReportTitle.Length > 0 ? state.ReportTitle : "Unknown") +
-                   "\nId: " + state.ReportTarget +
-                   (state.ReportDetail.Trim().Length > 0 ? "\n\n" + state.ReportDetail.Trim() : string.Empty);
-        desk.Send(new FeedbackNote("VYBE profile report · " + reason, body, game.Character.Name,
-            game.Character.WorldName));
+        var target = state.ReportTarget.Trim();
+        var reason = StaffReports.ReasonAt(state.ReportReason);
+        var kind = state.ReportKind.Length > 0 ? state.ReportKind : "user";
+        var detail = kind + ": " + (state.ReportTitle.Length > 0 ? state.ReportTitle : "Unknown") +
+                     (state.ReportDetail.Trim().Length > 0 ? "\n\n" + state.ReportDetail.Trim() : string.Empty);
+        if (target.Length == 0 || (kind == "user" && (target.Length < 8 || target.StartsWith("demo:", StringComparison.Ordinal))))
+        {
+            CloseProfileReport();
+            return;
+        }
+
+        IReadOnlyList<PearlReportLine>? lines = null;
+        if (kind == "chat")
+        {
+            lines = StaffReports.ChatWindow(pearl, target);
+        }
+
+        StaffReportDispatch.File(pearl, desk, game.Character.Name, game.Character.WorldName, kind, target, reason,
+            detail, lines);
         CloseProfileReport();
     }
 
@@ -4353,7 +4367,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         var reason = stack.Take(frame.Units(40f));
         frame.Paint.Fill(reason, tone.CardHi, frame.Units(10f));
         state.ReportReason = frame.TextField.Combo("vybe-report-reason", reason.Inset(frame.Units(6f)),
-            ProfileReportReasons, state.ReportReason);
+            StaffReports.Reasons, state.ReportReason);
         VybeChrome.Mute(frame, stack.Take(frame.Units(28f)), "Add additional information (optional)", night);
         var note = stack.Take(frame.Units(72f));
         frame.Paint.Fill(note, tone.CardHi, frame.Units(10f));
@@ -4365,8 +4379,8 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         VybeChrome.Glow(frame, cancel, frame.Units(12f), false, night);
         frame.Text.DrawIn(cancel, "Cancel",
             new TextStyle(FontRole.CaptionStrong, tone.Ink, TextAlign.Center));
-        var ready = state.ReportReason > 0 && !desk.Busy;
-        VybeChrome.Primary(frame, send, desk.Busy ? "Sending…" : "Submit", night);
+        var ready = state.ReportReason > 0;
+        VybeChrome.Primary(frame, send, "Submit", night);
         var dismiss = !state.ReportFresh &&
             (frame.Input.WasClicked(cancel) ||
              (!card.Contains(frame.Input.Pointer) && frame.Input.WasClicked(area)));

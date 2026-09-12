@@ -316,6 +316,12 @@ public sealed class HandsetShell
         if (controlResult.Tab is { } openedTab)
         {
             quickApps.Close();
+            if (controlResult.NoticeId.Length > 0 &&
+                (openedTab == DestinationTab.Settings || controlResult.NoticeId.StartsWith("staff:", StringComparison.Ordinal)))
+            {
+                pearl.MarkStaffNotice(controlResult.NoticeId);
+            }
+
             OpenDestination(openedTab, controlResult.Section, controlResult.TalkId, controlResult.ProfileId,
                 controlResult.NoticeId);
         }

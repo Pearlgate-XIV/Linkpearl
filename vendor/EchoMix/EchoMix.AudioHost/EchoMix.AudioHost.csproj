@@ -9,6 +9,12 @@
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Linux SDK emits an ELF apphost named EchoMix.AudioHost; the plugin (under Wine)
+         looks for EchoMix.AudioHost.exe. Force a Windows apphost on Unix builds. -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux'))">win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <UseAppHost>true</UseAppHost>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
 
   <PropertyGroup>

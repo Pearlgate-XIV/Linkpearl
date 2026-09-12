@@ -1008,8 +1008,9 @@ public sealed partial class VybeApplet
             if (frame.Input.ConsumeClick(report))
             {
                 state.StoryMoreOpen = false;
-                OpenProfileReport(person.GateId.Length > 0 ? person.GateId : person.Id.ToString(CultureInfo.InvariantCulture),
-                    person.Name);
+                OpenStaffReport("vybe_story",
+                    person.GateId.Length > 0 ? person.GateId : person.Id.ToString(CultureInfo.InvariantCulture),
+                    person.Name + " story");
                 return;
             }
         }
@@ -1250,7 +1251,7 @@ public sealed partial class VybeApplet
         ResolveStoryCommentFace(comment, out var url, out var wash);
         DrawFace(frame, face.Center, faceR, url, wash, night,
             comment.Mine ? state.ProfileFacePath : string.Empty);
-        var copy = area.Inset(new Edges(faceR * 2.6f, frame.Units(10f), frame.Units(12f), frame.Units(10f)));
+        var copy = area.Inset(new Edges(faceR * 2.6f, frame.Units(10f), frame.Units(36f), frame.Units(10f)));
         var who = copy.TopSlice(frame.Units(16f));
         frame.Text.DrawEllipsized(who.LeftSlice(who.Width * 0.70f), comment.Author,
             new TextStyle(FontRole.BodyStrong, tone.Ink));
@@ -1258,6 +1259,17 @@ public sealed partial class VybeApplet
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Right));
         frame.Text.DrawWrapped(copy.Inset(new Edges(0f, frame.Units(18f), 0f, 0f)), comment.Body,
             new TextStyle(FontRole.Caption, new Vector4(1f, 1f, 1f, 0.86f)));
+        if (!comment.Mine)
+        {
+            var flag = area.RightSlice(frame.Units(28f)).TopSlice(frame.Units(28f));
+            VybeChrome.ReportFlag(frame, flag, tone.Mute);
+            if (frame.Input.ConsumeClick(flag.Expand(frame.Units(6f))))
+            {
+                OpenStaffReport("vybe_comment",
+                    comment.Id.Length > 0 ? comment.Id : state.PostKey,
+                    comment.Author + ": " + comment.Body);
+            }
+        }
     }
 
     private void DrawCommentComposer(in AppletFrame frame, Rect area, string fieldId, bool night, Action sent)
@@ -2573,13 +2585,24 @@ public sealed partial class VybeApplet
         DrawFace(frame, face.Center, frame.Units(16f), avatar, wash, night);
         VybeChrome.LivePip(frame, face.Center, frame.Units(16f), live);
 
-        var copy = area.Inset(new Edges(frame.Units(82f), frame.Units(8f), frame.Units(8f), frame.Units(8f)));
+        var copy = area.Inset(new Edges(frame.Units(82f), frame.Units(8f), frame.Units(36f), frame.Units(8f)));
         frame.Text.DrawEllipsized(copy.TopSlice(frame.Units(22f)), title,
             new TextStyle(FontRole.BodyStrong, tone.Ink));
         if (status.Length > 0)
         {
             frame.Text.DrawEllipsized(copy.BottomSlice(frame.Units(16f)), status,
                 new TextStyle(FontRole.Caption, live ? VybeChrome.Online : tone.Mute));
+        }
+
+        if (state.ChatKey.Length > 0)
+        {
+            var flag = area.RightSlice(frame.Units(28f));
+            VybeChrome.ReportFlag(frame, flag, tone.Mute);
+            if (frame.Input.ConsumeClick(flag.Expand(frame.Units(6f))))
+            {
+                OpenStaffReport("chat", state.ChatKey, title);
+                return true;
+            }
         }
 
         if (openProfile is not null &&

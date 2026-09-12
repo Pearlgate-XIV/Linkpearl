@@ -8,6 +8,20 @@ internal sealed record ChallengeReplyDto(string ChallengeId, string Code, string
 
 internal sealed record VerifyRequestDto(string ChallengeId);
 
+internal sealed record XivAuthStartRequestDto(string Name, string World);
+
+internal sealed record XivAuthStartReplyDto(
+    bool Ok,
+    string? Reason,
+    string? FlowId,
+    string? UserCode,
+    string? VerificationUri,
+    string? VerificationUriComplete,
+    int IntervalSeconds,
+    int ExpiresInSeconds);
+
+internal sealed record XivAuthPollRequestDto(string FlowId);
+
 internal sealed record GateUserDto(
     string? Id,
     string? Name,
@@ -175,6 +189,33 @@ internal sealed record MarketPageDto(MarketWatchDto[]? Items);
 
 internal sealed record MarketWatchBodyDto(int ItemId, string? World, string? Label);
 
+internal sealed record BanSnapshotDto(
+    bool Banned,
+    string? BanReason,
+    long BanUntilUnix,
+    bool Muted,
+    long MuteUntilUnix,
+    int WarnCount);
+
+internal sealed record AccountNoticeDto(
+    string? Id,
+    string? Kind,
+    string? Title,
+    string? Body,
+    long CreatedAtUnix,
+    bool Read);
+
+internal sealed record AccountNoticePageDto(AccountNoticeDto[]? Items);
+
+internal sealed record ReportBodyDto(
+    string TargetType,
+    string TargetId,
+    string? Reason,
+    string? Detail = null,
+    RevealedChatLineDto[]? RevealedMessages = null);
+
+internal sealed record RevealedChatLineDto(string MessageId, string PlainText, string? FrankingKey = null);
+
 internal sealed record GifRowDto(
     string? Id,
     string? Title,
@@ -189,6 +230,9 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(ChallengeRequestDto))]
 [JsonSerializable(typeof(ChallengeReplyDto))]
 [JsonSerializable(typeof(VerifyRequestDto))]
+[JsonSerializable(typeof(XivAuthStartRequestDto))]
+[JsonSerializable(typeof(XivAuthStartReplyDto))]
+[JsonSerializable(typeof(XivAuthPollRequestDto))]
 [JsonSerializable(typeof(VerifyReplyDto))]
 [JsonSerializable(typeof(GateUserDto))]
 [JsonSerializable(typeof(ConversationDto))]
@@ -226,6 +270,11 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(MarketWatchBodyDto))]
 [JsonSerializable(typeof(GifRowDto))]
 [JsonSerializable(typeof(GifPageDto))]
+[JsonSerializable(typeof(BanSnapshotDto))]
+[JsonSerializable(typeof(AccountNoticeDto))]
+[JsonSerializable(typeof(AccountNoticePageDto))]
+[JsonSerializable(typeof(ReportBodyDto))]
+[JsonSerializable(typeof(RevealedChatLineDto))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal sealed partial class GateJson : JsonSerializerContext

@@ -34,7 +34,7 @@ public readonly record struct PearlAnnouncement(
 
 public readonly record struct PearlHit(string Kind, string Title, string Subtitle, string Id);
 
-public readonly record struct PearlChatLine(bool Mine, string Body, string When, string Author);
+public readonly record struct PearlChatLine(bool Mine, string Body, string When, string Author, string Id = "");
 
 public readonly record struct PearlMedia(string Id, string Url, int Width, int Height);
 
@@ -61,7 +61,15 @@ public readonly record struct PearlPost(
     string[]? Descriptors = null,
     string[]? Hashtags = null);
 
-public readonly record struct PearlComment(string Author, string Body, string When, bool Mine);
+public readonly record struct PearlComment(string Author, string Body, string When, bool Mine, string Id = "");
+
+public readonly record struct PearlStaffNotice(
+    string Id,
+    string Kind,
+    string Title,
+    string Body,
+    long CreatedAtUnix,
+    bool Read);
 
 public readonly record struct PearlNote(
     string Id,
@@ -153,6 +161,14 @@ public sealed record PearlSnapshot
 
     public PearlMarketWatch[] MarketWatches { get; init; } = [];
 
+    public PearlStaffNotice[] StaffNotices { get; init; } = [];
+
+    public bool Banned { get; init; }
+
+    public bool Muted { get; init; }
+
+    public long MuteUntilUnix { get; init; }
+
     public string WatchedUserId { get; init; } = string.Empty;
 
     public string WatchedPostId { get; init; } = string.Empty;
@@ -160,6 +176,40 @@ public sealed record PearlSnapshot
     public int UnreadTotal { get; init; }
 
     public int Generation { get; init; }
+}
+
+public readonly record struct PearlReportLine(string Id, string Body);
+
+public static class StaffReports
+{
+    public static readonly string[] Reasons =
+    {
+        "Select reason",
+        "Spam",
+        "Harassment or bullying",
+        "Hate speech",
+        "Inappropriate content",
+        "Impersonation",
+        "Scam or fraud",
+        "Something else",
+    };
+
+    public static PearlReportLine[] ChatWindow(IPearlHub pearl, string chatId)
+    {
+        var lines = pearl.LinesFor(chatId);
+        var start = Math.Max(0, lines.Count - 30);
+        var packed = new PearlReportLine[lines.Count - start];
+        for (var index = 0; index < packed.Length; index++)
+        {
+            var line = lines[start + index];
+            packed[index] = new PearlReportLine(line.Id, line.Author + ": " + line.Body);
+        }
+
+        return packed;
+    }
+
+    public static string ReasonAt(int index) =>
+        Reasons[Math.Clamp(index, 1, Reasons.Length - 1)];
 }
 
 public interface IPearlHub
@@ -217,4 +267,11 @@ public interface IPearlHub
     void WatchMarket(uint itemId, string label);
 
     void UnwatchMarket(uint itemId);
+
+    void MarkStaffNotice(string id);
+
+    void Report(string targetType, string targetId, string reason, string detail);
+
+    void Report(string targetType, string targetId, string reason, string detail,
+        IReadOnlyList<PearlReportLine> messages);
 }

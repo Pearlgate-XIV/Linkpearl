@@ -212,7 +212,8 @@ public sealed class HandsetHost : IDisposable
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
         // stays a destination. RouteStack is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
-            provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>());
+            provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>(),
+            provider.GetRequiredService<IFeedbackDesk>());
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));

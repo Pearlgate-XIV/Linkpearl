@@ -1,5 +1,6 @@
 using System.Numerics;
 using Linkpearl.Applets;
+using Linkpearl.Feedback;
 using Linkpearl.Cards;
 using Linkpearl.Chat;
 using Linkpearl.Geometry;
@@ -37,18 +38,40 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private int selectedSection = SocialPane.Messages;
     private string peopleQuery = string.Empty;
     private float peopleScroll;
+    private readonly IGameSession game;
+    private readonly IFeedbackDesk desk;
     private FriendMenu? menu;
+    private bool reportOpen;
+    private bool reportFresh;
+    private int reportReason;
+    private string reportDetail = string.Empty;
+    private string reportName = string.Empty;
+    private string reportWorld = string.Empty;
+    private string reportId = string.Empty;
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
-        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks)
+        ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks,
+        IFeedbackDesk desk)
     {
         this.pearl = pearl;
         this.talk = talk;
         this.chat = chat;
         this.display = display;
+        this.game = game;
+        this.desk = desk;
         friendsBook = new FriendBook(paths);
-        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks);
-        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs, marks);
+        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks, desk);
+        feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs, marks,
+            (name, world, body) =>
+            {
+                reportOpen = true;
+                reportFresh = true;
+                reportReason = 0;
+                reportDetail = body;
+                reportName = name;
+                reportWorld = world;
+                reportId = FindGatePerson(name)?.Id ?? name;
+            });
     }
 
     public DestinationTab Tab => DestinationTab.Social;
@@ -88,10 +111,16 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public void OpenProfile(string peerId) => messages.OpenProfile(peerId);
 
-    public bool CanGoBack => menu is not null || feed.HasMenu || messages.ProfileOpen || messages.ThreadOpen;
+    public bool CanGoBack => reportOpen || menu is not null || feed.HasMenu || messages.ProfileOpen || messages.ThreadOpen;
 
     public bool Back()
     {
+        if (reportOpen)
+        {
+            reportOpen = false;
+            return true;
+        }
+
         if (menu is not null)
         {
             menu = null;
@@ -108,6 +137,28 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public float Compose(in AppletFrame frame)
     {
+        if (reportOpen)
+        {
+            var result = HandsetReportSheet.Draw(frame, frame.Content, "Report", "social-report",
+                ref reportReason, ref reportDetail, ref reportFresh);
+            if (result == ReportSheetResult.Cancel)
+            {
+                reportOpen = false;
+            }
+            else if (result == ReportSheetResult.Submit)
+            {
+                var reason = StaffReports.ReasonAt(reportReason);
+                var detail = reportName + (reportWorld.Length > 0 ? " @ " + reportWorld : string.Empty) +
+                             (reportDetail.Trim().Length > 0 ? "\n\n" + reportDetail.Trim() : string.Empty);
+                var id = reportId.Length > 0 ? reportId : (reportName.Length > 0 ? reportName : "unknown");
+                StaffReportDispatch.File(pearl, desk, game.Character.Name, game.Character.WorldName, "user", id, reason,
+                    detail);
+                reportOpen = false;
+            }
+
+            return frame.Content.Height;
+        }
+
         if (messages.ProfileOpen)
         {
             return messages.Compose(frame);
@@ -708,7 +759,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             return;
         }
 
-        var labels = new List<string> { "Send tell", "Invite to party" };
+        var labels = new List<string> { "Send tell", "Invite to party", "Report" };
         if (open.ContactId.Length > 0)
         {
             labels.Add("Linkpearl contact");
@@ -770,6 +821,22 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         if (label == "Linkpearl contact" && open.ContactId.Length > 0)
         {
             messages.OpenProfile(open.ContactId);
+            return;
+        }
+
+        if (label == "Report")
+        {
+            reportOpen = true;
+            reportFresh = true;
+            reportReason = 0;
+            reportDetail = string.Empty;
+            reportName = open.Name;
+            reportWorld = open.World;
+            reportId = BareUserId(open.ContactId);
+            if (reportId.Length == 0)
+            {
+                reportId = FindGatePerson(open.Name)?.Id ?? open.Name;
+            }
         }
     }
 
@@ -794,6 +861,17 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             {
                 return peers[index].Id;
             }
+        }
+
+        return string.Empty;
+    }
+
+    private static string BareUserId(string contactId)
+    {
+        const string prefix = "person:";
+        if (contactId.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return contactId[prefix.Length..];
         }
 
         return string.Empty;

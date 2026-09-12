@@ -72,6 +72,11 @@ public sealed partial class PearlHub
             return;
         }
 
+        if (BlockMuted())
+        {
+            return;
+        }
+
         Enqueue(new SocialWrite(SocialKind.Publish, string.Empty, text, everyone, files, quote));
     }
 
@@ -79,6 +84,11 @@ public sealed partial class PearlHub
     {
         var id = postId.Trim();
         if (id.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        if (BlockMuted())
         {
             return;
         }
@@ -96,6 +106,11 @@ public sealed partial class PearlHub
             return;
         }
 
+        if (BlockMuted())
+        {
+            return;
+        }
+
         Enqueue(new SocialWrite(SocialKind.Comment, id, text, true, [], string.Empty));
     }
 
@@ -103,6 +118,11 @@ public sealed partial class PearlHub
     {
         var id = postId.Trim();
         if (id.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        if (BlockMuted())
         {
             return;
         }
@@ -118,6 +138,11 @@ public sealed partial class PearlHub
             return;
         }
 
+        if (BlockMuted())
+        {
+            return;
+        }
+
         Enqueue(new SocialWrite(follow ? SocialKind.Follow : SocialKind.Unfollow, id, string.Empty, true, [],
             string.Empty));
     }
@@ -125,6 +150,11 @@ public sealed partial class PearlHub
     public void SetAvatar(string mediaPath)
     {
         if (!File.Exists(mediaPath) || !Current.SignedIn)
+        {
+            return;
+        }
+
+        if (BlockMuted())
         {
             return;
         }
@@ -139,8 +169,28 @@ public sealed partial class PearlHub
             return;
         }
 
+        if (BlockMuted())
+        {
+            return;
+        }
+
         var files = File.Exists(mediaPath) ? new[] { mediaPath } : [];
         Enqueue(new SocialWrite(SocialKind.Story, string.Empty, body.Trim(), true, files, string.Empty));
+    }
+
+    private bool BlockMuted()
+    {
+        if (!Current.Muted)
+        {
+            return false;
+        }
+
+        Replace(Current with
+        {
+            Notice = "Staff muted this handset.",
+            Generation = NextGeneration(),
+        });
+        return true;
     }
 
     public IReadOnlyList<PearlComment> CommentsFor(string postId)
@@ -397,12 +447,16 @@ public sealed partial class PearlHub
                 return;
             }
 
+            var muted = status == 403;
             var missing = status is 404 or 405 or 501;
             Replace(Current with
             {
-                Notice = missing
-                    ? "Pearlgate does not host this yet (" + write.Kind + ")."
-                    : "Pearlgate refused that (" + status + ").",
+                Notice = muted
+                    ? "Staff muted this handset."
+                    : missing
+                        ? "Pearlgate does not host this yet (" + write.Kind + ")."
+                        : "Pearlgate refused that (" + status + ").",
+                Muted = muted || Current.Muted,
                 Generation = NextGeneration(),
             });
             log.Write(LogSeverity.Warning, "Pearlgate " + write.Kind + " returned HTTP " + status);
@@ -580,7 +634,7 @@ public sealed partial class PearlHub
             var when = item.CreatedAtUnix > 0
                 ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
                 : "now";
-            mapped.Add(new PearlComment(item.AuthorDisplayName ?? "Someone", body, when, item.Mine));
+            mapped.Add(new PearlComment(item.AuthorDisplayName ?? "Someone", body, when, item.Mine, item.Id ?? string.Empty));
         }
 
         return mapped;

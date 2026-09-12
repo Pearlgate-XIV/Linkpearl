@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Plugin.Services;
 
@@ -9,7 +10,7 @@ namespace EchoMix.Plugin.Ipc;
 /// Finds and launches the companion EchoMix.AudioHost process if nothing's already listening on its pipe.
 public static class AudioHostLauncher
 {
-    private const int MaxLaunchAttempts = 4;
+    private const int MaxLaunchAttempts = 1;
     private static readonly TimeSpan RelaunchBackoff = TimeSpan.FromMilliseconds(500);
 
     public static async Task ConnectOrLaunchAsync(
@@ -38,7 +39,7 @@ public static class AudioHostLauncher
             }
             catch (Exception ex)
             {
-                log.Error(ex, "[EchoMix] Failed to launch AudioHost.exe");
+                log.Warning("[EchoMix] Failed to launch AudioHost.exe: {0}", ex.Message);
                 return;
             }
 
@@ -89,13 +90,24 @@ public static class AudioHostLauncher
         log.Warning("[EchoMix] Gave up trying to connect to AudioHost after launch.");
     }
 
+    private static int missingHostLogged;
+
     private static string? ResolveAudioHostPath(string pluginAssemblyDirectory, IPluginLog log)
     {
-        var path = Path.Combine(pluginAssemblyDirectory, "AudioHost", "EchoMix.AudioHost.exe");
-        if (File.Exists(path))
-            return path;
+        var dir = Path.Combine(pluginAssemblyDirectory, "AudioHost");
+        var exe = Path.Combine(dir, "EchoMix.AudioHost.exe");
+        if (File.Exists(exe))
+            return exe;
 
-        log.Error($"[EchoMix] AudioHost.exe not found at expected path: {path}");
+        var unixHost = Path.Combine(dir, "EchoMix.AudioHost");
+        if (OperatingSystem.IsWindows() && File.Exists(unixHost))
+            return unixHost;
+
+        if (Interlocked.Exchange(ref missingHostLogged, 1) == 0)
+        {
+            log.Warning($"[EchoMix] AudioHost.exe not found at {exe}. Radio mixing stays off until that file is present.");
+        }
+
         return null;
     }
 }

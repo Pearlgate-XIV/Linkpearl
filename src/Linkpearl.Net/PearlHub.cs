@@ -23,6 +23,10 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private float sinceRefresh = RefreshSeconds;
     private bool refreshQueued;
     private bool signInQueued;
+    private string xivFlowId = string.Empty;
+    private float xivPollWait;
+    private float xivPollInterval = 2f;
+    private bool xivPollBusy;
     private bool signOutQueued;
     private bool patronLinkQueued;
     private string pendingQuery = string.Empty;
@@ -46,6 +50,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly Queue<SocialWrite> writes = new();
     private readonly Queue<(bool Add, uint ItemId, string Label)> marketWrites = new();
     private readonly Queue<(bool Add, string UserId, string Number)> friendWrites = new();
+    private readonly Queue<string> staffReads = new();
+    private readonly Queue<(string Type, string Id, string Reason, string Detail, PearlReportLine[] Lines)> reports = new();
 
     public PearlHub(string baseUrl, string? savedToken, IGameSession game, IFrameLoop frames, ILinkpearlLog log,
         Action<string?> persistToken, string? mediaCache = null)
@@ -86,10 +92,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
     public void BeginPatronLink() => patronLinkQueued = true;
 
-    public void OpenPatronLink()
+    public void OpenPatronLink() => OpenBrowser(Current.PatronLinkUrl);
+
+    private void OpenBrowser(string url)
     {
-        var url = Current.PatronLinkUrl;
-        if (url.Length == 0)
+        if (url.Length == 0 ||
+            url.StartsWith("https://localhost", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -100,7 +109,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
         catch (Exception failure)
         {
-            log.Write(LogSeverity.Warning, failure, "Could not open Patreon link");
+            log.Write(LogSeverity.Warning, failure, "Could not open browser");
         }
     }
 
@@ -109,6 +118,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         var id = userId.Trim();
         var digits = Digits(number);
         if ((id.Length == 0 && digits.Length == 0) || !Current.SignedIn)
+        {
+            return;
+        }
+
+        if (BlockMuted())
         {
             return;
         }
@@ -128,6 +142,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         var id = userId.Trim();
         if (id.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        if (BlockMuted())
         {
             return;
         }
@@ -162,6 +181,67 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         {
             marketWrites.Enqueue((false, itemId, string.Empty));
         }
+    }
+
+    public void MarkStaffNotice(string id)
+    {
+        var noticeId = id.Trim();
+        if (noticeId.StartsWith("staff:", StringComparison.Ordinal))
+        {
+            noticeId = noticeId["staff:".Length..];
+        }
+
+        if (noticeId.Length == 0)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            staffReads.Enqueue(noticeId);
+        }
+    }
+
+    public void Report(string targetType, string targetId, string reason, string detail) =>
+        Report(targetType, targetId, reason, detail, []);
+
+    public void Report(string targetType, string targetId, string reason, string detail,
+        IReadOnlyList<PearlReportLine> messages)
+    {
+        var type = targetType.Trim();
+        var id = targetId.Trim();
+        var why = reason.Trim();
+        if (type.Length == 0 || id.Length == 0 || why.Length == 0)
+        {
+            return;
+        }
+
+        if (!Current.SignedIn)
+        {
+            Replace(Current with
+            {
+                Notice = "Sign in on You to send a report to staff.",
+                Generation = NextGeneration(),
+            });
+            return;
+        }
+
+        var packed = new PearlReportLine[Math.Min(messages.Count, 40)];
+        for (var index = 0; index < packed.Length; index++)
+        {
+            packed[index] = messages[index];
+        }
+
+        lock (gate)
+        {
+            reports.Enqueue((type, id, why, detail.Trim(), packed));
+        }
+
+        Replace(Current with
+        {
+            Notice = "Report sent to Pearlgate staff.",
+            Generation = NextGeneration(),
+        });
     }
 
     public void NoteQuery(string query)
@@ -203,6 +283,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             return;
         }
 
+        if (BlockMuted())
+        {
+            return;
+        }
+
         RememberLine(id, new PearlChatLine(true, text, "now", Current.MeName.Length > 0 ? Current.MeName : "You"));
         lock (gate)
         {
@@ -233,6 +318,18 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         {
             signInQueued = false;
             Start(RunSignInAsync);
+        }
+
+        if (xivFlowId.Length > 0 && !Current.SignedIn && !Current.Busy)
+        {
+            xivPollWait -= deltaSeconds;
+            if (!xivPollBusy && xivPollWait <= 0f)
+            {
+                xivPollBusy = true;
+                xivPollWait = xivPollInterval;
+                var flowId = xivFlowId;
+                Start(token => RunXivAuthPollAsync(flowId, token));
+            }
         }
 
         if (signOutQueued)
@@ -301,6 +398,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         (bool Add, uint ItemId, string Label)? market = null;
         (bool Add, string UserId, string Number)? friend = null;
         string? mediaUrl = null;
+        string? staffNotice = null;
+        (string Type, string Id, string Reason, string Detail, PearlReportLine[] Lines)? report = null;
         lock (gate)
         {
             if (writes.Count > 0)
@@ -321,6 +420,16 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             if (mediaWanted.Count > 0)
             {
                 mediaUrl = mediaWanted.Dequeue();
+            }
+
+            if (staffReads.Count > 0)
+            {
+                staffNotice = staffReads.Dequeue();
+            }
+
+            if (reports.Count > 0)
+            {
+                report = reports.Dequeue();
             }
         }
 
@@ -350,6 +459,21 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             Start(token => RunMediaAsync(url, token));
         }
 
+        if (staffNotice is { Length: > 0 } noticeId)
+        {
+            Start(token => RunStaffReadAsync(noticeId, token));
+        }
+
+        if (report is { } filed)
+        {
+            var type = filed.Type;
+            var targetId = filed.Id;
+            var reason = filed.Reason;
+            var detail = filed.Detail;
+            var lines = filed.Lines;
+            Start(token => RunReportAsync(type, targetId, reason, detail, lines, token));
+        }
+
         if (refreshQueued || (Current.SignedIn && sinceRefresh >= RefreshSeconds))
         {
             refreshQueued = false;
@@ -375,53 +499,86 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             return;
         }
 
-        Replace(Current with { Busy = true, Notice = "Signing in..." });
+        xivFlowId = string.Empty;
+        Replace(Current with { Busy = true, ChallengeCode = string.Empty, Notice = "Signing in..." });
         try
         {
-            var challengeBody = GateClient.JsonBody(new ChallengeRequestDto(character.Name, character.WorldName),
-                GateJson.Default.ChallengeRequestDto);
-            var (challenge, challengeStatus) =
-                await client.PostAsync("/auth/challenge", challengeBody, GateJson.Default.ChallengeReplyDto, token)
-                    .ConfigureAwait(false);
-            if (challenge is null || challengeStatus is < 200 or >= 300)
+            var startBody = GateClient.JsonBody(new XivAuthStartRequestDto(character.Name, character.WorldName),
+                GateJson.Default.XivAuthStartRequestDto);
+            var (start, startStatus) = await client
+                .PostAsync("/auth/xivauth/start", startBody, GateJson.Default.XivAuthStartReplyDto, token)
+                .ConfigureAwait(false);
+            if (start is { Ok: true, FlowId: { Length: > 0 } flowId })
             {
-                Replace(Current with
-                {
-                    Busy = false, Notice = "Could not reach Pearlgate. Check the network and try again.",
-                });
-                return;
-            }
-
-            var verifyBody = GateClient.JsonBody(new VerifyRequestDto(challenge.ChallengeId),
-                GateJson.Default.VerifyRequestDto);
-            var (verify, verifyStatus) =
-                await client.PostAsync("/auth/verify", verifyBody, GateJson.Default.VerifyReplyDto, token)
-                    .ConfigureAwait(false);
-            if (verify is { Ok: true, Token: { Length: > 0 } })
-            {
-                AcceptSession(verify.Token, verify.User, "Signed in.");
-                QueueRefresh();
-                return;
-            }
-
-            var reason = verify?.Reason ?? $"http {verifyStatus}";
-            if (string.Equals(reason, "pending", StringComparison.OrdinalIgnoreCase))
-            {
+                xivFlowId = flowId;
+                xivPollInterval = start.IntervalSeconds > 0 ? start.IntervalSeconds : 2f;
+                xivPollWait = 0f;
+                var url = start.VerificationUriComplete ?? start.VerificationUri ?? string.Empty;
+                OpenBrowser(url);
                 Replace(Current with
                 {
                     Busy = false,
-                    ChallengeCode = challenge.Code,
-                    Notice = challenge.Instructions,
+                    ChallengeCode = start.UserCode ?? string.Empty,
+                    Notice = url.Length > 0
+                        ? "Confirm this character in the XIVAuth page that opened."
+                        : "Confirm this character on XIVAuth, then wait here.",
                 });
                 return;
             }
 
-            Replace(Current with { Busy = false, ChallengeCode = challenge.Code, Notice = SignInFailure(reason) });
+            var reason = start?.Reason ?? $"http {startStatus}";
+            Replace(Current with { Busy = false, ChallengeCode = string.Empty, Notice = SignInFailure(reason) });
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             log.Write(LogSeverity.Warning, failure, "Pearlgate sign-in failed");
             Replace(Current with { Busy = false, Notice = "Sign-in failed. Try again in a moment." });
+        }
+    }
+
+    private async Task RunXivAuthPollAsync(string flowId, CancellationToken token)
+    {
+        try
+        {
+            var body = GateClient.JsonBody(new XivAuthPollRequestDto(flowId), GateJson.Default.XivAuthPollRequestDto);
+            var (verify, status) = await client
+                .PostAsync("/auth/xivauth/poll", body, GateJson.Default.VerifyReplyDto, token)
+                .ConfigureAwait(false);
+            if (verify is { Ok: true, Token: { Length: > 0 } })
+            {
+                xivFlowId = string.Empty;
+                AcceptSession(verify.Token, verify.User, "Signed in.");
+                QueueRefresh();
+                return;
+            }
+
+            var reason = verify?.Reason ?? $"http {status}";
+            if (string.Equals(reason, "pending", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (string.Equals(reason, "slow_down", StringComparison.OrdinalIgnoreCase))
+            {
+                xivPollInterval = Math.Min(10f, xivPollInterval + 1f);
+                return;
+            }
+
+            xivFlowId = string.Empty;
+            Replace(Current with
+            {
+                Busy = false,
+                ChallengeCode = string.Empty,
+                Notice = SignInFailure(reason),
+            });
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate XIVAuth poll failed");
+        }
+        finally
+        {
+            xivPollBusy = false;
         }
     }
 
@@ -438,6 +595,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
         client.SetBearer(string.Empty);
         persistToken(null);
+        xivFlowId = string.Empty;
+        xivPollBusy = false;
         lock (gate)
         {
             ForgetSessionLocked();
@@ -460,6 +619,12 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             if (meStatus == 401)
             {
                 DropSession("Session expired. Sign in again.");
+                return;
+            }
+
+            if (meStatus == 403)
+            {
+                DropSession("This account is banned.");
                 return;
             }
 
@@ -496,6 +661,14 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var (marketPage, marketStatus) = await client
                 .GetAsync("/market", GateJson.Default.MarketPageDto, token)
                 .ConfigureAwait(false);
+            var meId = me.Id ?? string.Empty;
+            var (bans, _) = meId.Length == 0
+                ? (null, 0)
+                : await client.GetAsync("/bans/" + Uri.EscapeDataString(meId), GateJson.Default.BanSnapshotDto, token)
+                    .ConfigureAwait(false);
+            var (noticesPage, _) = await client
+                .GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
+                .ConfigureAwait(false);
 
             var chats = MapChats(chatsPage?.Items);
             var people = MapPeople(contacts?.Contacts);
@@ -507,7 +680,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             {
                 SignedIn = true,
                 Busy = false,
-                Notice = string.Empty,
+                Notice = bans?.Banned == true
+                    ? "This account is banned."
+                    : bans?.Muted == true
+                        ? "Staff muted this handset."
+                        : string.Empty,
                 MeId = me.Id ?? string.Empty,
                 MeName = Display(me.DisplayName, me.Name),
                 MeWorld = me.World ?? string.Empty,
@@ -535,6 +712,10 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 ProfilePosts = prior.ProfilePosts,
                 Retainers = retainersStatus is >= 200 and < 300 ? MapRetainers(retainersPage?.Items) : prior.Retainers,
                 MarketWatches = marketStatus is >= 200 and < 300 ? MapMarket(marketPage?.Items) : prior.MarketWatches,
+                StaffNotices = MapStaffNotices(noticesPage?.Items),
+                Banned = bans?.Banned == true,
+                Muted = bans?.Muted == true,
+                MuteUntilUnix = bans?.MuteUntilUnix ?? 0,
                 WatchedUserId = watchedUser,
                 WatchedPostId = watchedPost,
                 UnreadTotal = CountUnread(chats),
@@ -635,6 +816,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         client.SetBearer(string.Empty);
         persistToken(null);
+        xivFlowId = string.Empty;
+        xivPollBusy = false;
         lock (gate)
         {
             ForgetSessionLocked();
@@ -716,6 +899,17 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 return;
             }
 
+            if (status == 403)
+            {
+                Replace(Current with
+                {
+                    Notice = "Staff muted this handset.",
+                    Muted = true,
+                    Generation = NextGeneration(),
+                });
+                return;
+            }
+
             if (status is >= 200 and < 300)
             {
                 chatFetchQueued = true;
@@ -767,7 +961,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
                 : "now";
             mapped.Add(new PearlChatLine(item.Mine, body, when,
-                item.AuthorDisplayName ?? (item.Mine ? "You" : "Them")));
+                item.AuthorDisplayName ?? (item.Mine ? "You" : "Them"), item.Id ?? string.Empty));
         }
 
         return mapped;
@@ -875,6 +1069,34 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             }
 
             mapped.Add(new PearlAnnouncement(item.Id, item.Title, item.Body ?? string.Empty, item.CreatedAtUnix));
+        }
+
+        return mapped.ToArray();
+    }
+
+    private static PearlStaffNotice[] MapStaffNotices(AccountNoticeDto[]? items)
+    {
+        if (items is null || items.Length == 0)
+        {
+            return [];
+        }
+
+        var mapped = new List<PearlStaffNotice>(items.Length);
+        for (var index = 0; index < items.Length; index++)
+        {
+            var item = items[index];
+            if (string.IsNullOrWhiteSpace(item.Id))
+            {
+                continue;
+            }
+
+            mapped.Add(new PearlStaffNotice(
+                item.Id,
+                item.Kind ?? "",
+                item.Title ?? "Notice",
+                item.Body ?? "",
+                item.CreatedAtUnix,
+                item.Read));
         }
 
         return mapped.ToArray();
@@ -993,6 +1215,71 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             {
                 Busy = false,
                 Notice = "Could not reach Patreon through Pearlgate. Try again in a moment.",
+            });
+        }
+    }
+
+    private async Task RunStaffReadAsync(string noticeId, CancellationToken token)
+    {
+        try
+        {
+            await client
+                .PostAsync("/account/notices/" + Uri.EscapeDataString(noticeId) + "/read", null, token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate staff notice read failed");
+        }
+    }
+
+    private async Task RunReportAsync(string targetType, string targetId, string reason, string detail,
+        PearlReportLine[] lines, CancellationToken token)
+    {
+        try
+        {
+            RevealedChatLineDto[]? revealed = null;
+            if (lines.Length > 0)
+            {
+                revealed = new RevealedChatLineDto[lines.Length];
+                for (var index = 0; index < lines.Length; index++)
+                {
+                    var line = lines[index];
+                    revealed[index] = new RevealedChatLineDto(
+                        line.Id.Length > 0 ? line.Id : (index + 1).ToString(CultureInfo.InvariantCulture),
+                        line.Body);
+                }
+            }
+
+            var body = new ReportBodyDto(targetType, targetId, reason, detail.Length == 0 ? null : detail, revealed);
+            var status = await client
+                .PostAsync("/reports", GateClient.JsonBody(body, GateJson.Default.ReportBodyDto), token)
+                .ConfigureAwait(false);
+            if (status == 401)
+            {
+                DropSession("Session expired. Sign in again.");
+                return;
+            }
+
+            if (status is >= 200 and < 300)
+            {
+                return;
+            }
+
+            Replace(Current with
+            {
+                Notice = "Could not send that report (" + status + ").",
+                Generation = NextGeneration(),
+            });
+            log.Write(LogSeverity.Warning, "Pearlgate report returned HTTP " + status);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate report failed");
+            Replace(Current with
+            {
+                Notice = "Could not reach Pearlgate to send that report.",
+                Generation = NextGeneration(),
             });
         }
     }
@@ -1180,6 +1467,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private static string SignInFailure(string reason) => reason switch
     {
         "banned" => "This character is suspended on Pearlgate.",
+        "denied" => "XIVAuth was cancelled. Try sign-in again.",
+        "expired" => "That XIVAuth sign-in expired. Try again.",
+        "character_mismatch" => "XIVAuth confirmed a different character than the one logged in.",
         "code_not_found" => "That sign-in code expired. Try again.",
         "xivauth_unconfigured" => "XIVAuth is not configured on the server yet.",
         _ => "Pearlgate refused sign-in (" + reason + ").",

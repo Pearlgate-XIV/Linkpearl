@@ -14,6 +14,7 @@ public enum NoticeKind : byte
     Music = 3,
     Calendar = 4,
     Venue = 5,
+    Staff = 6,
 }
 
 public static class NoticeMarks
@@ -25,6 +26,7 @@ public static class NoticeMarks
         NoticeKind.Music => "music",
         NoticeKind.Calendar => "calendar",
         NoticeKind.Venue => "venues",
+        NoticeKind.Staff => "events",
         _ => "pearlchat",
     };
 }
@@ -102,6 +104,7 @@ public sealed class NoticeLedger : INoticeTray
 
     public void Ingest(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
+        IngestStaff(snapshot, clock);
         var unread = talk.UnreadTotal + snapshot.UnreadTotal;
         if (!seeded)
         {
@@ -170,6 +173,28 @@ public sealed class NoticeLedger : INoticeTray
                     person.IsMutual ? "On the glass" : person.Handle, Stamp(clock),
                     DestinationTab.Social, SocialPane.People, TalkIds.Person(person.Id)));
             }
+        }
+    }
+
+    private void IngestStaff(PearlSnapshot snapshot, IClock clock)
+    {
+        var notices = snapshot.StaffNotices ?? [];
+        for (var index = 0; index < notices.Length; index++)
+        {
+            var item = notices[index];
+            if (item.Read || item.Id.Length == 0)
+            {
+                continue;
+            }
+
+            var id = "staff:" + item.Id;
+            if (!seen.Add(id))
+            {
+                continue;
+            }
+
+            Keep(new GlassNotice(id, NoticeKind.Staff, item.Title, Snippet(item.Body),
+                Stamp(clock), DestinationTab.Settings, 0, item.Id));
         }
     }
 

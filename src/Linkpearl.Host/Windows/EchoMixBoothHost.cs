@@ -10,8 +10,15 @@ namespace Linkpearl.Host.Windows;
 // using Music's capture path when this booth is not mixing.
 public sealed class EchoMixBoothHost : IEchoMixBooth, IDisposable
 {
-    private readonly EchoMixPlugin echo;
+    private readonly IDalamudPluginInterface pluginInterface;
+    private readonly IPluginLog pluginLog;
+    private readonly IGameConfig gameConfig;
+    private readonly IFramework framework;
+    private readonly IObjectTable objectTable;
+    private readonly ITextureProvider textureProvider;
+    private readonly IClientState clientState;
     private readonly IEchoMixStation station;
+    private EchoMixPlugin? echo;
     private bool lastLive;
     private bool stationFromEcho;
 
@@ -25,23 +32,38 @@ public sealed class EchoMixBoothHost : IEchoMixBooth, IDisposable
         IClientState clientState,
         IEchoMixStation station)
     {
+        this.pluginInterface = pluginInterface;
+        this.pluginLog = pluginLog;
+        this.gameConfig = gameConfig;
+        this.framework = framework;
+        this.objectTable = objectTable;
+        this.textureProvider = textureProvider;
+        this.clientState = clientState;
         this.station = station;
-        echo = new EchoMixPlugin(pluginInterface, pluginLog, gameConfig, framework, objectTable, textureProvider,
-            clientState);
     }
 
-    public bool IsOpen => echo.IsDeckOpen;
+    public bool IsOpen => echo?.IsDeckOpen ?? false;
 
-    public bool Mixing => echo.Mixing;
+    public bool Mixing => echo?.Mixing ?? false;
 
-    public void Open() => echo.OpenDeck();
+    public void Open()
+    {
+        echo ??= new EchoMixPlugin(pluginInterface, pluginLog, gameConfig, framework, objectTable,
+            textureProvider, clientState);
+        echo.OpenDeck();
+    }
 
-    public void Close() => echo.CloseDeck();
+    public void Close() => echo?.CloseDeck();
 
-    public void Draw() => echo.Draw();
+    public void Draw() => echo?.Draw();
 
     public void SyncStation()
     {
+        if (echo is null)
+        {
+            return;
+        }
+
         var live = echo.IsLive;
         if (live && !lastLive)
         {
@@ -57,5 +79,5 @@ public sealed class EchoMixBoothHost : IEchoMixBooth, IDisposable
         lastLive = live;
     }
 
-    public void Dispose() => echo.Dispose();
+    public void Dispose() => echo?.Dispose();
 }

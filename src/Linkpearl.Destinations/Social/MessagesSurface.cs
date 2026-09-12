@@ -3,7 +3,9 @@ using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Chat;
+using Linkpearl.Destinations;
 using Linkpearl.Emoji;
+using Linkpearl.Feedback;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
@@ -28,6 +30,7 @@ internal sealed class MessagesSurface
     private readonly IFilePicker files;
     private readonly IGifDesk gifs;
     private readonly ChatMarks marks;
+    private readonly IFeedbackDesk desk;
     private readonly ChatTray tray = new();
     private string openId = string.Empty;
     private string profileId = string.Empty;
@@ -44,9 +47,16 @@ internal sealed class MessagesSurface
     private int inboxPane = SocialPane.Messages;
     private float inboxScroll;
     private InboxMenu? inboxMenu;
+    private bool reportOpen;
+    private bool reportFresh;
+    private int reportReason;
+    private string reportDetail = string.Empty;
+    private string reportType = "chat";
+    private string reportId = string.Empty;
+    private string reportTitle = string.Empty;
 
     public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display, IPearlHub pearl,
-        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs, ChatMarks marks)
+        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs, ChatMarks marks, IFeedbackDesk desk)
     {
         this.talk = talk;
         this.clock = clock;
@@ -57,6 +67,7 @@ internal sealed class MessagesSurface
         this.files = files;
         this.gifs = gifs;
         this.marks = marks;
+        this.desk = desk;
     }
 
     public bool ThreadOpen => openId.Length > 0 && profileId.Length == 0;
@@ -130,6 +141,12 @@ internal sealed class MessagesSurface
             return true;
         }
 
+        if (reportOpen)
+        {
+            reportOpen = false;
+            return true;
+        }
+
         if (profileId.Length > 0)
         {
             RememberNote();
@@ -151,6 +168,22 @@ internal sealed class MessagesSurface
 
     public float Compose(in AppletFrame frame)
     {
+        if (reportOpen)
+        {
+            var result = HandsetReportSheet.Draw(frame, frame.Content, "Report", "msg-report",
+                ref reportReason, ref reportDetail, ref reportFresh);
+            if (result == ReportSheetResult.Cancel)
+            {
+                reportOpen = false;
+            }
+            else if (result == ReportSheetResult.Submit)
+            {
+                SubmitThreadReport();
+            }
+
+            return frame.Content.Height;
+        }
+
         if (profileId.Length > 0)
         {
             return DrawProfile(frame);
@@ -343,26 +376,31 @@ internal sealed class MessagesSurface
         var remove = inboxPane == SocialPane.Linkshells ? "Remove chat" : "Remove from Direct";
         var width = frame.Units(176f);
         var rowH = frame.Units(34f);
+        var height = rowH * 2f + frame.Units(8f);
         var box = Rect.FromSize(
             new Vector2(
                 Math.Clamp(open.At.X, bounds.Min.X, bounds.Max.X - width),
-                Math.Clamp(open.At.Y, bounds.Min.Y, bounds.Max.Y - rowH - frame.Units(8f))),
-            new Vector2(width, rowH + frame.Units(8f)));
+                Math.Clamp(open.At.Y, bounds.Min.Y, bounds.Max.Y - height)),
+            new Vector2(width, height));
         var gold = frame.Theme.Palette.WarmAccent;
         var radius = frame.Units(10f);
         frame.Paint.Fill(box, frame.Theme.Palette.SurfaceRaised with { W = 0.98f }, radius);
         frame.Paint.Stroke(box, gold with { W = 0.55f }, frame.Theme.Metrics.Hairline, radius);
-        var row = box.Inset(new Edges(frame.Units(4f), frame.Units(4f)));
-        var hover = frame.Input.IsHovering(row);
-        if (hover)
+        var reportRow = Rect.FromSize(box.Min + new Vector2(0f, frame.Units(4f)),
+            new Vector2(width, rowH)).Inset(new Edges(frame.Units(4f), 0f));
+        var removeRow = Rect.FromSize(box.Min + new Vector2(0f, frame.Units(4f) + rowH),
+            new Vector2(width, rowH)).Inset(new Edges(frame.Units(4f), 0f));
+        DrawInboxMenuRow(frame, reportRow, "Report", false);
+        DrawInboxMenuRow(frame, removeRow, remove, true);
+        if (frame.Input.ConsumeClick(reportRow))
         {
-            frame.Paint.Fill(row, frame.Theme.Palette.Negative with { W = 0.18f }, frame.Units(8f));
+            var thread = talk.Find(open.Id);
+            inboxMenu = null;
+            OpenThreadReport(thread, open.Title);
+            return;
         }
 
-        frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f)), remove,
-            new TextStyle(FontRole.CaptionStrong,
-                hover ? frame.Theme.Palette.Negative : frame.Theme.Palette.Ink));
-        if (frame.Input.ConsumeClick(row))
+        if (frame.Input.ConsumeClick(removeRow))
         {
             talk.HideThread(open.Id);
             if (string.Equals(openId, open.Id, StringComparison.Ordinal))
@@ -381,6 +419,20 @@ internal sealed class MessagesSurface
         {
             inboxMenu = null;
         }
+    }
+
+    private static void DrawInboxMenuRow(in AppletFrame frame, Rect row, string label, bool danger)
+    {
+        var hover = frame.Input.IsHovering(row);
+        if (hover)
+        {
+            var wash = danger ? frame.Theme.Palette.Negative with { W = 0.18f } : frame.Theme.Palette.Accent with { W = 0.16f };
+            frame.Paint.Fill(row, wash, frame.Units(8f));
+        }
+
+        var ink = hover && danger ? frame.Theme.Palette.Negative : frame.Theme.Palette.Ink;
+        frame.Text.DrawIn(row.Inset(new Edges(frame.Units(10f), 0f)), label,
+            new TextStyle(FontRole.CaptionStrong, ink));
     }
 
     private readonly record struct InboxMenu(string Id, string Title, Vector2 At);
@@ -468,7 +520,7 @@ internal sealed class MessagesSurface
 
         var title = thread?.Title ?? "Messages";
         var subtitle = thread?.Subtitle ?? string.Empty;
-        var textArea = header.Inset(new Edges(frame.Units(32f), 0f, frame.Units(22f), 0f));
+        var textArea = header.Inset(new Edges(frame.Units(32f), 0f, frame.Units(56f), 0f));
         frame.Text.DrawEllipsized(textArea.TopSlice(frame.Units(20f)), title,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         if (subtitle.Length > 0)
@@ -477,9 +529,18 @@ internal sealed class MessagesSurface
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
 
+        var flag = header.RightSlice(frame.Units(28f));
+        frame.Text.DrawIn(flag, "⚑",
+            new TextStyle(FontRole.Title, frame.Theme.Palette.InkMuted, TextAlign.Center));
+        if (frame.Input.ConsumeClick(flag.Expand(frame.Units(4f))))
+        {
+            OpenThreadReport(thread, title);
+            return;
+        }
+
         if (thread is { Kind: TalkKind.Tell })
         {
-            var open = header.RightSlice(frame.Units(22f));
+            var open = header.Inset(new Edges(0f, 0f, frame.Units(30f), 0f)).RightSlice(frame.Units(22f));
             frame.Text.DrawIn(open, "›",
                 new TextStyle(FontRole.Title, frame.Theme.Palette.WarmAccent, TextAlign.Center));
             if (frame.Input.ConsumeClick(textArea) || frame.Input.ConsumeClick(open))
@@ -487,6 +548,35 @@ internal sealed class MessagesSurface
                 OpenProfile(thread.Value.Id);
             }
         }
+    }
+
+    private void OpenThreadReport(TalkThread? thread, string title)
+    {
+        reportOpen = true;
+        reportFresh = true;
+        reportReason = 0;
+        reportDetail = string.Empty;
+        reportTitle = title;
+        var chat = thread is { } row ? ChatOf(row.Id) : null;
+        if (chat is { } pearlChat)
+        {
+            reportType = "chat";
+            reportId = pearlChat.Id;
+            return;
+        }
+
+        reportType = "user";
+        reportId = thread?.Title ?? title;
+    }
+
+    private void SubmitThreadReport()
+    {
+        var reason = StaffReports.ReasonAt(reportReason);
+        var detail = reportTitle + (reportDetail.Trim().Length > 0 ? "\n\n" + reportDetail.Trim() : string.Empty);
+        IReadOnlyList<PearlReportLine>? lines = reportType == "chat" ? StaffReports.ChatWindow(pearl, reportId) : null;
+        StaffReportDispatch.File(pearl, desk, game.Character.Name, game.Character.WorldName, reportType, reportId,
+            reason, detail, lines);
+        reportOpen = false;
     }
 
     private void RememberFriendLookup(TalkThread? thread)

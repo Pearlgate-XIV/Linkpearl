@@ -246,6 +246,6 @@ internal static class NoticeLaunch
         return new ControlCenterResult(false, false, false, false, item.Tab, item.Section, string.Empty,
             TalkId: item.Kind == NoticeKind.Chat ? item.TargetId : string.Empty,
             ProfileId: item.Kind == NoticeKind.People ? item.TargetId : string.Empty,
-            NoticeId: item.Kind == NoticeKind.Announcement ? item.TargetId : string.Empty);
+            NoticeId: item.Kind is NoticeKind.Announcement or NoticeKind.Staff ? item.TargetId : string.Empty);
     }
 }

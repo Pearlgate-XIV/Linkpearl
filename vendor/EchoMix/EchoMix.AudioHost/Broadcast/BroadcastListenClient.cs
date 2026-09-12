@@ -25,7 +25,7 @@ public sealed class BroadcastListenClient : IAsyncDisposable
     private OpusDecoderStream? decoder;
     private QueueSampleProvider? playbackQueue;
     private VolumeSampleProvider? volumeStage;
-    private WasapiOut? output;
+    private IWavePlayer? output;
     private CancellationTokenSource? cts;
     private Task? receiveLoopTask;
     private Task? reconnectLoopTask;
@@ -171,8 +171,8 @@ public sealed class BroadcastListenClient : IAsyncDisposable
         playbackQueue = new QueueSampleProvider("listener playback", WaveFormat.CreateIeeeFloatWaveFormat(OpusEncoderStream.SampleRate, OpusEncoderStream.Channels), prefillSamples);
         volumeStage = new VolumeSampleProvider(playbackQueue) { Volume = 1f };
 
-        output = new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 100);
-        output.Init(volumeStage);
+        output = HostPlayback.Create(100);
+        HostPlayback.Init(output, volumeStage);
         output.Play();
 
         cts = new CancellationTokenSource();

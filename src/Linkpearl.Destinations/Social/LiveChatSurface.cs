@@ -33,9 +33,10 @@ internal sealed class LiveChatSurface
 
     private readonly IGifDesk gifs;
     private readonly ChatMarks marks;
+    private readonly Action<string, string, string>? reportLine;
 
     public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell,
-        IGifDesk gifs, ChatMarks marks)
+        IGifDesk gifs, ChatMarks marks, Action<string, string, string>? reportLine = null)
     {
         this.talk = talk;
         this.display = display;
@@ -43,6 +44,7 @@ internal sealed class LiveChatSurface
         this.openTell = openTell;
         this.gifs = gifs;
         this.marks = marks;
+        this.reportLine = reportLine;
     }
 
     public bool HasMenu => menu is not null;
@@ -443,7 +445,9 @@ internal sealed class LiveChatSurface
 
         var labels = open.Mine || open.Name.Length == 0
             ? new[] { "React", "Reply" }
-            : new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend" };
+            : reportLine is null
+                ? new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend" }
+                : new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend", "Report" };
         var width = frame.Units(176f);
         var rowH = frame.Units(34f);
         var height = rowH * labels.Length + frame.Units(8f);
@@ -506,6 +510,12 @@ internal sealed class LiveChatSurface
         if (label == "Invite to party")
         {
             chat.InviteToParty(open.Name, open.World);
+            return;
+        }
+
+        if (label == "Report")
+        {
+            reportLine?.Invoke(open.Name, open.World, open.Body);
             return;
         }
 

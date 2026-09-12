@@ -34,7 +34,7 @@ public sealed class MixerEngine : IDisposable
     private SmoothedVolumeSampleProvider? attachedPreviewSource;
     private EventHandler<SampleProviderEventArgs>? previewEndedHandler;
     private WaveStream? previewReader;
-    private WasapiOut? output;
+    private IWavePlayer? output;
     private MMDeviceEnumerator? deviceEnumerator;
     private MMDevice? device;
     private SimpleAudioVolume? sessionVolume;
@@ -757,11 +757,14 @@ public sealed class MixerEngine : IDisposable
         if (output != null)
             return;
 
-        output = new WasapiOut(AudioClientShareMode.Shared, WasapiBufferMs);
-        output.Init(outputGate);
+        output = HostPlayback.Create(WasapiBufferMs);
+        HostPlayback.Init(output, outputGate);
         output.Play();
 
-        EnsureSessionVolumeControl();
+        if (!WineProbe.IsWine)
+        {
+            EnsureSessionVolumeControl();
+        }
     }
 
     /// Stops local deck playback without tearing down the whole engine - used while entering Listener mode
@@ -776,8 +779,10 @@ public sealed class MixerEngine : IDisposable
 
     private void EnsureSessionVolumeControl()
     {
-        if (sessionVolume != null)
+        if (WineProbe.IsWine || sessionVolume != null)
+        {
             return;
+        }
 
         try
         {

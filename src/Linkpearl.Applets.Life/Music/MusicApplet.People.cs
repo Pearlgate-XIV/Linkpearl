@@ -35,8 +35,9 @@ public sealed partial class MusicApplet
         frame.Paint.FillCircle(face.Center, frame.Units(14f), MusicChrome.Purple);
         frame.Text.DrawIn(face, person.Name.Length > 0 ? char.ToUpperInvariant(person.Name[0]).ToString() : "♪",
             new TextStyle(FontRole.CaptionStrong, MusicChrome.GroundHi, TextAlign.Center));
-        var follow = !person.Mine ? inset.RightSlice(frame.Units(78f)) : Rect.Empty;
-        var body = inset.Inset(new Edges(frame.Units(42f), 0f, person.Mine ? 0f : frame.Units(82f), 0f));
+        var follow = !person.Mine ? inset.RightSlice(frame.Units(108f)).LeftSlice(frame.Units(78f)) : Rect.Empty;
+        var flag = !person.Mine ? inset.RightSlice(frame.Units(28f)) : Rect.Empty;
+        var body = inset.Inset(new Edges(frame.Units(42f), 0f, person.Mine ? 0f : frame.Units(112f), 0f));
         frame.Text.DrawEllipsized(body.TopSlice(frame.Units(18f)), person.Name,
             new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
         var zone = WorldZones.ForPerson(person.TimeZoneId, person.Id);
@@ -53,6 +54,13 @@ public sealed partial class MusicApplet
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
         if (!person.Mine)
         {
+            MusicChrome.ReportFlag(frame, flag);
+            if (Tap(frame, flag.Expand(frame.Units(4f))))
+            {
+                OpenPersonReport(person);
+                return;
+            }
+
             if (MusicChrome.FollowChip(frame, follow, FollowsProfile(person)))
             {
                 FollowPerson(person);

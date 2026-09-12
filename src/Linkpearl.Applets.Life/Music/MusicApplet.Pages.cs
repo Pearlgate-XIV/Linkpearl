@@ -928,8 +928,8 @@ public sealed partial class MusicApplet
         MusicChrome.Plate(frame, cancel, frame.Units(12f));
         frame.Text.DrawIn(cancel, "Cancel",
             new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink, TextAlign.Center));
-        var ready = state.ReportReason > 0 && !desk.Busy;
-        MusicChrome.Primary(frame, send, desk.Busy ? "Sending…" : "Submit");
+        var ready = state.ReportReason > 0;
+        MusicChrome.Primary(frame, send, "Submit");
         // The player already claimed the screen so this sheet can sit on top. ConsumeClick
         // would fail; a raw click on Cancel (or the dimmer) drops the report. Skip the
         // same release that opened the sheet so it does not blink shut.
@@ -1824,6 +1824,14 @@ public sealed partial class MusicApplet
             if (Tap(frame, followers))
             {
                 OpenFollowList(followers: true, person.Id);
+                return;
+            }
+
+            var report = stack.Take(frame.Units(40f));
+            MusicChrome.Ghost(frame, report, "Report");
+            if (Tap(frame, report))
+            {
+                OpenPersonReport(person);
                 return;
             }
 

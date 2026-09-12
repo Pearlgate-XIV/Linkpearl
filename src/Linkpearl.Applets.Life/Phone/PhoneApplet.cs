@@ -5,6 +5,7 @@ using Linkpearl.Audio;
 using Linkpearl.Chat;
 using Linkpearl.Emoji;
 using Linkpearl.Badges;
+using Linkpearl.Feedback;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -69,6 +70,7 @@ public sealed class PhoneApplet : IApplet
     private readonly IGameSession game;
     private readonly IFilePicker files;
     private readonly IGifDesk gifs;
+    private readonly IFeedbackDesk desk;
     private readonly ChatTray tray = new();
     private int tab;
     private string openNumber = string.Empty;
@@ -85,9 +87,15 @@ public sealed class PhoneApplet : IApplet
     private string composeNumber = string.Empty;
     private float listScroll;
     private float noteScroll;
+    private bool reportOpen;
+    private bool reportFresh;
+    private int reportReason;
+    private string reportDetail = string.Empty;
+    private string reportTitle = string.Empty;
+    private string reportId = string.Empty;
 
     public PhoneApplet(IHandsetLine line, IBroadcastSense sense, DisplayPreferences display, IPearlHub pearl,
-        BadgeBook badges, IGameSession game, IFilePicker files, IGifDesk gifs)
+        BadgeBook badges, IGameSession game, IFilePicker files, IGifDesk gifs, IFeedbackDesk desk)
     {
         this.line = line;
         this.sense = sense;
@@ -97,6 +105,7 @@ public sealed class PhoneApplet : IApplet
         this.game = game;
         this.files = files;
         this.gifs = gifs;
+        this.desk = desk;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -111,7 +120,7 @@ public sealed class PhoneApplet : IApplet
     };
 
     public bool CanGoBack =>
-        addingContact || composing || openNumber.Length > 0 || line.State != LineState.Idle;
+        reportOpen || addingContact || composing || openNumber.Length > 0 || line.State != LineState.Idle;
 
     public void Enter(AppletEntry entry)
     {
@@ -131,6 +140,12 @@ public sealed class PhoneApplet : IApplet
 
     public bool Back()
     {
+        if (reportOpen)
+        {
+            reportOpen = false;
+            return true;
+        }
+
         if (openNumber.Length > 0)
         {
             openNumber = string.Empty;
@@ -164,6 +179,27 @@ public sealed class PhoneApplet : IApplet
     public void Compose(in AppletFrame frame)
     {
         line.Tick(frame.DeltaSeconds);
+        if (reportOpen)
+        {
+            var result = HandsetReportSheet.Draw(frame, frame.Content, "Report", "phone-report",
+                ref reportReason, ref reportDetail, ref reportFresh);
+            if (result == ReportSheetResult.Cancel)
+            {
+                reportOpen = false;
+            }
+            else if (result == ReportSheetResult.Submit)
+            {
+                var reason = StaffReports.ReasonAt(reportReason);
+                var detail = reportTitle +
+                             (reportDetail.Trim().Length > 0 ? "\n\n" + reportDetail.Trim() : string.Empty);
+                StaffReportDispatch.File(pearl, desk, game.Character.Name, game.Character.WorldName, "user",
+                    reportId, reason, detail);
+                reportOpen = false;
+            }
+
+            return;
+        }
+
         var content = frame.Content.Inset(new Edges(frame.Units(10f), frame.Units(6f), frame.Units(10f),
             frame.Units(4f)));
         if (line.State != LineState.Idle)
@@ -673,8 +709,17 @@ public sealed class PhoneApplet : IApplet
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));
         DrawAvatar(frame, header.Translate(new Vector2(frame.Units(28f), 0f)).WithWidth(frame.Units(32f)),
             line.TitleOf(number), chat: false);
-        frame.Text.DrawEllipsized(header.Inset(new Edges(frame.Units(64f), 0f, 0f, 0f)), line.TitleOf(number),
+        var flag = header.RightSlice(frame.Units(28f));
+        frame.Text.DrawIn(flag, "⚑", new TextStyle(FontRole.Title, Muted, TextAlign.Center));
+        frame.Text.DrawEllipsized(header.Inset(new Edges(frame.Units(64f), 0f, frame.Units(32f), 0f)),
+            line.TitleOf(number),
             new TextStyle(FontRole.BodyStrong, Ink));
+        if (frame.Input.ConsumeClick(flag.Expand(frame.Units(6f))))
+        {
+            OpenPersonReport(number, line.TitleOf(number));
+            return;
+        }
+
         if (frame.Input.ConsumeClick(header.LeftSlice(frame.Units(40f))))
         {
             openNumber = string.Empty;
@@ -772,7 +817,9 @@ public sealed class PhoneApplet : IApplet
             var extras = ContactFacts(person);
             var row = cursor.Take(frame.Units(extras.Length > 0 ? 68f : 56f));
             DrawAvatar(frame, row.LeftSlice(frame.Units(52f)).Inset(frame.Units(8f)), person.Name, chat: false);
-            var text = row.Inset(new Edges(frame.Units(56f), frame.Units(8f), frame.Units(8f), frame.Units(8f)));
+            var flag = row.RightSlice(frame.Units(28f)).TopSlice(frame.Units(28f));
+            frame.Text.DrawIn(flag, "⚑", new TextStyle(FontRole.CaptionStrong, Muted, TextAlign.Center));
+            var text = row.Inset(new Edges(frame.Units(56f), frame.Units(8f), frame.Units(32f), frame.Units(8f)));
             var mark = person.FromGate ? "Pearlgate · " : "";
             frame.Text.DrawEllipsized(text.TopSlice(frame.Units(18f)), person.Name,
                 new TextStyle(FontRole.BodyStrong, Ink));
@@ -782,6 +829,12 @@ public sealed class PhoneApplet : IApplet
             {
                 frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(16f)), extras,
                     new TextStyle(FontRole.Caption, Muted));
+            }
+
+            if (frame.Input.ConsumeClick(flag.Expand(frame.Units(4f))))
+            {
+                OpenPersonReport(person.Number, person.Name);
+                continue;
             }
 
             if (frame.Input.ConsumeClick(row))
@@ -940,6 +993,37 @@ public sealed class PhoneApplet : IApplet
             var pin = area.Center + new Vector2(radius * 0.62f, radius * 0.62f);
             frame.Paint.FillCircle(pin, frame.Units(7f), Bubble);
         }
+    }
+
+    private void OpenPersonReport(string number, string name)
+    {
+        reportOpen = true;
+        reportFresh = true;
+        reportReason = 0;
+        reportDetail = string.Empty;
+        reportTitle = name + " · " + LineNumbers.Show(number);
+        reportId = GateUserId(number, name);
+    }
+
+    private string GateUserId(string number, string name)
+    {
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            var person = people[index];
+            if (person.PhoneNumber.Length > 0 && LineNumbers.Same(person.PhoneNumber, number))
+            {
+                return person.Id;
+            }
+
+            if (person.DisplayName.Length > 0 &&
+                string.Equals(person.DisplayName, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return person.Id;
+            }
+        }
+
+        return name.Length > 0 ? name : number;
     }
 
     private static Vector4 FaceOf(string name)

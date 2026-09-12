@@ -261,6 +261,9 @@ internal sealed class MusicState
     public string GenreTagDraft { get; set; } = string.Empty;
 
     [JsonIgnore]
+    public string ReportKind { get; set; } = "radio_station";
+
+    [JsonIgnore]
     public bool ReportOpen { get; set; }
 
     [JsonIgnore]

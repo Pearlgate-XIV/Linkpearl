@@ -144,7 +144,7 @@ public sealed class ControlCenter
             ShadeSlider.Draw(paint, live, theme, stack.Take(scale * 46f), display.Volume, ref draggingVolume,
                 value => display.Volume = value, sun: false, ShadeGlyph(frame, "volume-low.png"),
                 ShadeGlyph(frame, "volume-high.png"));
-            DrawNotices(frame, live, stack.Remaining, scale, snapshot, talk, clock, pending);
+            DrawNotices(frame, live, stack.Remaining, scale, snapshot, talk, clock, pending, pearl);
             DragSheet(input, sheet, fullHeight, scale);
 
             var result = pending.Result;
@@ -293,7 +293,7 @@ public sealed class ControlCenter
     }
 
     private void DrawNotices(in AppletFrame frame, IInputProbe input, Rect area,
-        float scale, PearlSnapshot snapshot, ITalk talk, IClock clock, Pending pending)
+        float scale, PearlSnapshot snapshot, ITalk talk, IClock clock, Pending pending, IPearlHub pearl)
     {
         if (area.Height < scale * 36f)
         {
@@ -326,7 +326,7 @@ public sealed class ControlCenter
             var lift = string.Equals(noticeHoldId, item.Id, StringComparison.Ordinal) ? noticeLift : 0f;
             var card = row.Translate(new Vector2(0f, -lift));
             DrawNotice(frame, card, scale, NoticeMarks.For(item.Kind), item.Title, item.Detail, item.When);
-            SteerNotice(input, row, item, scale, pending);
+            SteerNotice(input, row, item, scale, pending, pearl);
             drawn++;
         }
 
@@ -337,7 +337,8 @@ public sealed class ControlCenter
         }
     }
 
-    private void SteerNotice(IInputProbe input, Rect row, in GlassNotice item, float scale, Pending pending)
+    private void SteerNotice(IInputProbe input, Rect row, in GlassNotice item, float scale, Pending pending,
+        IPearlHub pearl)
     {
         if (row.Contains(input.Pointer))
         {
@@ -373,6 +374,11 @@ public sealed class ControlCenter
         if (toss)
         {
             ledger.Dismiss(item.Id);
+            if (item.Kind == NoticeKind.Staff)
+            {
+                pearl.MarkStaffNotice(item.TargetId);
+            }
+
             return;
         }
 

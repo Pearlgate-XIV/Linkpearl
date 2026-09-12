@@ -169,6 +169,10 @@ public sealed class IpcServer
             {
                 return;
             }
+            catch (IOException)
+            {
+                continue;
+            }
 
             clientConnected = true;
             lastClientSeenUtc = DateTime.UtcNow;

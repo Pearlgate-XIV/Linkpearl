@@ -2042,13 +2042,28 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         "Something else",
     };
 
-    private void OpenReport(string stationId, string title)
+    private void OpenPersonReport(MusicPerson person)
+    {
+        if (person.Id.StartsWith("live:", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenReport("radio_station", MusicState.BareStationId(person.Id), person.Name);
+            return;
+        }
+
+        OpenReport("user", person.Id.Length > 0 ? person.Id : person.Name, person.Name);
+    }
+
+    private void OpenReport(string stationId, string title) =>
+        OpenReport("radio_station", stationId, title);
+
+    private void OpenReport(string kind, string targetId, string title)
     {
         state.ReportOpen = true;
         state.ReportFresh = true;
         state.ReportReason = 0;
         state.ReportDetail = string.Empty;
-        state.ReportTarget = stationId;
+        state.ReportKind = kind;
+        state.ReportTarget = targetId;
         state.ReportTitle = title;
     }
 
@@ -2058,22 +2073,34 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         state.ReportFresh = false;
         state.ReportReason = 0;
         state.ReportDetail = string.Empty;
+        state.ReportKind = "radio_station";
         state.ReportTarget = string.Empty;
         state.ReportTitle = string.Empty;
     }
 
     private void SubmitReport()
     {
-        if (state.ReportReason <= 0 || desk.Busy)
+        if (state.ReportReason <= 0)
         {
             return;
         }
 
-        var reason = ReportReasons[Math.Clamp(state.ReportReason, 1, ReportReasons.Length - 1)];
-        var body = "Station: " + (state.ReportTitle.Length > 0 ? state.ReportTitle : "Unknown") +
-                   "\nId: " + state.ReportTarget +
-                   (state.ReportDetail.Trim().Length > 0 ? "\n\n" + state.ReportDetail.Trim() : string.Empty);
-        desk.Send(new FeedbackNote("Station report · " + reason, body, game.Character.Name, game.Character.WorldName));
+        var target = state.ReportKind == "radio_station"
+            ? MusicState.BareStationId(state.ReportTarget)
+            : state.ReportTarget.Trim();
+        var reason = StaffReports.ReasonAt(state.ReportReason);
+        var kind = state.ReportKind.Length > 0 ? state.ReportKind : "radio_station";
+        var detail = kind + ": " + (state.ReportTitle.Length > 0 ? state.ReportTitle : "Unknown") +
+                     "\nId: " + target +
+                     (state.ReportDetail.Trim().Length > 0 ? "\n\n" + state.ReportDetail.Trim() : string.Empty);
+        if (target.Length == 0)
+        {
+            CloseReport();
+            return;
+        }
+
+        StaffReportDispatch.File(pearl, desk, game.Character.Name, game.Character.WorldName, kind, target, reason,
+            detail);
         CloseReport();
     }
 

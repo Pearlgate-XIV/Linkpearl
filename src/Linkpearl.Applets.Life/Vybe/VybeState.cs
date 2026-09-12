@@ -279,6 +279,9 @@ internal sealed class VybeState
     public int MessagePane { get; set; }
 
     [JsonIgnore]
+    public string ReportKind { get; set; } = "user";
+
+    [JsonIgnore]
     public bool ReportOpen { get; set; }
 
     [JsonIgnore]

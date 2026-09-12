@@ -969,7 +969,7 @@ public sealed class ProfileChrome
         CardChrome.DrawGold(frame, row);
         var pad = row.Inset(new Edges(frame.Units(14f), frame.Units(8f)));
         var stack = new Stack(pad, StackAxis.Vertical, frame.Units(2f));
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Enter this code on Pearlgate",
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "XIVAuth code",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), code,
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink, TextAlign.Center));

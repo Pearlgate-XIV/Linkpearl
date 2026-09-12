@@ -247,17 +247,25 @@ public sealed class AudioHostClient : IDisposable
             return false;
         }
 
-        pipe = client;
-        writer = new StreamWriter(client, Encoding.UTF8) { AutoFlush = true, NewLine = "\n" };
-        lastMessageUtc = DateTime.UtcNow;
+        try
+        {
+            pipe = client;
+            writer = new StreamWriter(client, Encoding.UTF8) { AutoFlush = true, NewLine = "\n" };
+            lastMessageUtc = DateTime.UtcNow;
 
-        readCts = new CancellationTokenSource();
-        _ = Task.Run(() => ReadLoop(client, readCts.Token));
+            readCts = new CancellationTokenSource();
+            _ = Task.Run(() => ReadLoop(client, readCts.Token));
 
-        Send(MessageType.RequestPlaylists, new object());
-        Send(MessageType.RequestSoundPads, new object());
-        Send(MessageType.RequestAudioInputDevices, new object());
-        return true;
+            Send(MessageType.RequestPlaylists, new object());
+            Send(MessageType.RequestSoundPads, new object());
+            Send(MessageType.RequestAudioInputDevices, new object());
+            return true;
+        }
+        catch (Exception)
+        {
+            CleanupConnection();
+            return false;
+        }
     }
 
     private async Task ReadLoop(NamedPipeClientStream client, CancellationToken token)
