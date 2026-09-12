@@ -156,6 +156,51 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         return trimmed.StartsWith("@", StringComparison.Ordinal) ? trimmed : "@" + trimmed;
     }
 
+    private void EnsureVybeSeat()
+    {
+        if (state.HasAccount)
+        {
+            return;
+        }
+
+        var snap = pearl.Current;
+        var name = HandsetName();
+        if (name.Length == 0)
+        {
+            name = snap.MeName.Length > 0 ? snap.MeName : game.Character.Name;
+        }
+
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        if (name.Length > 24)
+        {
+            name = name[..24];
+        }
+
+        var handle = snap.MeHandle.Length > 0 ? snap.MeHandle : name;
+        if (book.TryHandle(handle, out var seat))
+        {
+            profileStamp++;
+            state.EnterSeat(seat);
+            state.Save(paths);
+            return;
+        }
+
+        var pass = book.TryJoin(name, handle);
+        if (!pass.Ok || pass.Seat is null)
+        {
+            return;
+        }
+
+        book.Save(paths);
+        profileStamp++;
+        state.EnterSeat(pass.Seat);
+        state.Save(paths);
+    }
+
     private void DrawProfileIdentity(in AppletFrame frame, ref Stack stack, string name, string handle, string meta,
         string about, bool night, bool plusMember = false, string time = "", string honorific = "")
     {
@@ -389,6 +434,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     public void Enter(AppletEntry entry)
     {
         pearl.WatchFeed(state.FeedEveryone ? "foryou" : "following");
+        EnsureVybeSeat();
         if (!state.HasAccount)
         {
             state.Page = state.OnAuthSheet ? state.Page : NightPage.Auth;
@@ -535,6 +581,8 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             state.Mode = SocialMode.Daylight;
             state.Save(paths);
         }
+
+        EnsureVybeSeat();
 
         if (!state.Night)
         {

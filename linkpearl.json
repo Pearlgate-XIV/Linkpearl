@@ -1,15 +1,15 @@
 [
   {
-    "Author": "Alpha Channel",
+    "Author": "Pearlgate",
     "Name": "Linkpearl",
-    "Description": "This public GitHub repo JSON is not a plugin install. Testers use the private Pearlgate URL.",
+    "Description": "An in-game communicator for FINAL FANTASY XIV. Add this JSON as a custom plugin repository, then install Linkpearl. Disable any other plugin named Linkpearl first.",
     "Punchline": "A pearl in your pocket.",
     "InternalName": "Linkpearl",
     "AssemblyVersion": "0.0.0.0",
     "RepoUrl": "https://github.com/Pearlgate-XIV/Linkpearl",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
-    "IsHide": true,
+    "IsHide": false,
     "IsTestingExclusive": false,
     "DownloadLinkInstall": "",
     "DownloadLinkUpdate": "",

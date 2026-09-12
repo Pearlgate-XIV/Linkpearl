@@ -500,7 +500,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
 
         xivFlowId = string.Empty;
-        Replace(Current with { Busy = true, ChallengeCode = string.Empty, Notice = "Signing in..." });
+        Replace(Current with { Busy = true, ChallengeCode = string.Empty, SignInUrl = string.Empty, Notice = "Signing in..." });
         try
         {
             var startBody = GateClient.JsonBody(new XivAuthStartRequestDto(character.Name, character.WorldName),
@@ -515,19 +515,21 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 xivPollWait = 0f;
                 var url = start.VerificationUriComplete ?? start.VerificationUri ?? string.Empty;
                 OpenBrowser(url);
+                var who = character.Name + " on " + character.WorldName;
                 Replace(Current with
                 {
                     Busy = false,
                     ChallengeCode = start.UserCode ?? string.Empty,
+                    SignInUrl = url,
                     Notice = url.Length > 0
-                        ? "Confirm this character in the XIVAuth page that opened."
-                        : "Confirm this character on XIVAuth, then wait here.",
+                        ? "Confirm " + who + " in the XIVAuth page. If no browser opened, open " + url
+                        : "Confirm " + who + " on XIVAuth, then wait here.",
                 });
                 return;
             }
 
             var reason = start?.Reason ?? $"http {startStatus}";
-            Replace(Current with { Busy = false, ChallengeCode = string.Empty, Notice = SignInFailure(reason) });
+            Replace(Current with { Busy = false, ChallengeCode = string.Empty, SignInUrl = string.Empty, Notice = SignInFailure(reason) });
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
@@ -569,6 +571,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             {
                 Busy = false,
                 ChallengeCode = string.Empty,
+                SignInUrl = string.Empty,
                 Notice = SignInFailure(reason),
             });
         }
@@ -1469,9 +1472,10 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         "banned" => "This character is suspended on Pearlgate.",
         "denied" => "XIVAuth was cancelled. Try sign-in again.",
         "expired" => "That XIVAuth sign-in expired. Try again.",
-        "character_mismatch" => "XIVAuth confirmed a different character than the one logged in.",
+        "character_mismatch" => "XIVAuth confirmed a different character than the one logged in. Pick the character you are playing.",
         "code_not_found" => "That sign-in code expired. Try again.",
         "xivauth_unconfigured" => "XIVAuth is not configured on the server yet.",
+        _ when reason.Contains(' ', StringComparison.Ordinal) => reason,
         _ => "Pearlgate refused sign-in (" + reason + ").",
     };
 }

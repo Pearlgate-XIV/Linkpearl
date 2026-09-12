@@ -89,7 +89,7 @@ now="$(date +%s)"
 cat > "$stage/pluginmaster.json" <<EOF
 [
   {
-    "Author": "Alpha Channel",
+    "Author": "Pearlgate",
     "Name": "Linkpearl",
     "Description": "Pearlgate beta. Sign in with XIVAuth. Disable any other plugin named Linkpearl first.",
     "Punchline": "A pearl in your pocket.",

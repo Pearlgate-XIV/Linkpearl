@@ -896,6 +896,13 @@ public sealed class ProfileChrome
         DrawStat(frame, stack.Take(frame.Units(40f)), "In game", inGame.Length > 0 ? inGame : "—");
         DrawStat(frame, stack.Take(frame.Units(40f)), "Number",
             snapshot.MyNumber.Length > 0 ? LineNumbers.Show(snapshot.MyNumber) : "—");
+        if (!snapshot.SignedIn && game.Character.IsKnown)
+        {
+            DrawNotice(frame, stack.Take(frame.Units(48f)),
+                "Sign in as " + game.Character.Name + " on " + game.Character.WorldName
+                + ". Pick that character on XIVAuth.");
+        }
+
         if (snapshot.Busy)
         {
             DrawNotice(frame, stack.Take(frame.Units(36f)), "Working…");
@@ -903,12 +910,12 @@ public sealed class ProfileChrome
 
         if (snapshot.Notice.Length > 0)
         {
-            DrawNotice(frame, stack.Take(frame.Units(56f)), snapshot.Notice);
+            DrawNotice(frame, stack.Take(frame.Units(72f)), snapshot.Notice);
         }
 
         if (snapshot.ChallengeCode.Length > 0)
         {
-            DrawChallenge(frame, stack.Take(frame.Units(56f)), snapshot.ChallengeCode);
+            DrawChallenge(frame, stack.Take(frame.Units(snapshot.SignInUrl.Length > 0 ? 72f : 56f)), snapshot);
         }
 
         DrawAccount(frame, stack.Take(frame.Units(44f)), snapshot);
@@ -964,15 +971,20 @@ public sealed class ProfileChrome
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private static void DrawChallenge(in AppletFrame frame, Rect row, string code)
+    private static void DrawChallenge(in AppletFrame frame, Rect row, PearlSnapshot snapshot)
     {
         CardChrome.DrawGold(frame, row);
         var pad = row.Inset(new Edges(frame.Units(14f), frame.Units(8f)));
         var stack = new Stack(pad, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "XIVAuth code",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        frame.Text.DrawIn(stack.Take(frame.Units(22f)), code,
+        frame.Text.DrawIn(stack.Take(frame.Units(22f)), snapshot.ChallengeCode,
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink, TextAlign.Center));
+        if (snapshot.SignInUrl.Length > 0)
+        {
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)), snapshot.SignInUrl,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
+        }
     }
 
     private static string TitleCase(string value)

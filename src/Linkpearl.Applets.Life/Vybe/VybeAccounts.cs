@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Linkpearl.Modules;
 
@@ -7,12 +5,6 @@ namespace Linkpearl.Applets.Life.Vybe;
 
 internal sealed class VybeBook
 {
-    public const int MinSecret = 4;
-    public const int MaxSecret = 64;
-    private const int Rounds = 120_000;
-    private const int SaltBytes = 16;
-    private const int KeyBytes = 32;
-
     public List<VybeSeat> Seats { get; } = new();
 
     public static VybeBook Load(HostPaths paths)
@@ -95,7 +87,7 @@ internal sealed class VybeBook
         return false;
     }
 
-    public VybePass TryJoin(string name, string handle, string secret, string again)
+    public VybePass TryJoin(string name, string handle)
     {
         var shown = name.Trim();
         if (shown.Length == 0)
@@ -119,30 +111,11 @@ internal sealed class VybeBook
             return VybePass.Fail("That handle is already taken.");
         }
 
-        if (secret.Length < MinSecret)
-        {
-            return VybePass.Fail("Password needs " + MinSecret + " or more characters.");
-        }
-
-        if (secret.Length > MaxSecret)
-        {
-            return VybePass.Fail("Keep the password under " + MaxSecret + " characters.");
-        }
-
-        if (!string.Equals(secret, again, StringComparison.Ordinal))
-        {
-            return VybePass.Fail("Passwords do not match.");
-        }
-
-        Pack(secret, out var salt, out var hash);
         var seat = new VybeSeat
         {
             Id = Guid.NewGuid().ToString("N"),
             Handle = "@" + tag,
             DisplayName = shown,
-            Salt = salt,
-            Secret = hash,
-            Rounds = Rounds,
             Born = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Face = new VybeFace { DisplayName = shown, Handle = "@" + tag },
         };
@@ -155,11 +128,6 @@ internal sealed class VybeBook
         if (!TryHandle(handle, out var seat))
         {
             return VybePass.Fail("That handle is not on this handset.");
-        }
-
-        if (!Matches(seat, secret))
-        {
-            return VybePass.Fail("Password does not match.");
         }
 
         return new VybePass(true, string.Empty, seat);
@@ -207,39 +175,6 @@ internal sealed class VybeBook
     {
         var tag = Tag(handle);
         return tag.Length == 0 ? string.Empty : "@" + tag;
-    }
-
-    private static void Pack(string secret, out string salt, out string hash)
-    {
-        var seed = RandomNumberGenerator.GetBytes(SaltBytes);
-        var key = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(secret), seed, Rounds,
-            HashAlgorithmName.SHA256, KeyBytes);
-        salt = Convert.ToBase64String(seed);
-        hash = Convert.ToBase64String(key);
-    }
-
-    private static bool Matches(VybeSeat seat, string secret)
-    {
-        if (seat.Rounds < 10_000 || seat.Salt.Length == 0 || seat.Secret.Length == 0)
-        {
-            return false;
-        }
-
-        byte[] seed;
-        byte[] expected;
-        try
-        {
-            seed = Convert.FromBase64String(seat.Salt);
-            expected = Convert.FromBase64String(seat.Secret);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        var actual = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(secret), seed, seat.Rounds,
-            HashAlgorithmName.SHA256, expected.Length);
-        return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 
     private sealed class BookSave

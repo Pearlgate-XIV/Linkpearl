@@ -107,6 +107,8 @@ public sealed record PearlSnapshot
 
     public string ChallengeCode { get; init; } = string.Empty;
 
+    public string SignInUrl { get; init; } = string.Empty;
+
     public string MeId { get; init; } = string.Empty;
 
     public string MeName { get; init; } = string.Empty;

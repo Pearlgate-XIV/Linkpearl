@@ -2,10 +2,10 @@
 
   <PropertyGroup Label="Identity">
     <Version>0.1.0.0</Version>
-    <Authors>Alpha Channel</Authors>
-    <Company>Alpha Channel</Company>
+    <Authors>Pearlgate</Authors>
+    <Company>Pearlgate</Company>
     <Product>Linkpearl</Product>
-    <Copyright>Copyright (c) Alpha Channel</Copyright>
+    <Copyright>Copyright (c) Pearlgate</Copyright>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Pearlgate-XIV/Linkpearl</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

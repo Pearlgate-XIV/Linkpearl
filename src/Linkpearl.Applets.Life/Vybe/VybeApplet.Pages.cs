@@ -52,8 +52,8 @@ public sealed partial class VybeApplet
         var card = stack.Take(frame.Units(80f));
         VybeChrome.Plate(frame, card, frame.Units(14f), true);
         var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
-        DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "Create a handle and password on this handset");
-        DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "Sign out and log back in as often as you need");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "Use your Pearlgate sign-in on this handset");
+        DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "No VYBE password. Sign in on Pearlgate first");
 
         var have = book.Seats.Count > 0;
         var enter = stack.Take(frame.Units(44f));
@@ -102,14 +102,10 @@ public sealed partial class VybeApplet
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "HANDLE", true);
         state.EnterHandle = frame.TextField.Draw("vybe-in-handle",
             VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.EnterHandle, "@handle");
-        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "PASSWORD", true);
-        state.EnterSecret = frame.TextField.Draw("vybe-in-secret",
-            VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.EnterSecret, "Password", 64,
-            out var submitted, false, true);
         DrawAuthNote(frame, ref stack, tone);
         var go = stack.Take(frame.Units(44f));
         VybeChrome.Primary(frame, go, "Log in", true);
-        if (submitted || frame.Input.ConsumeClick(go))
+        if (frame.Input.ConsumeClick(go))
         {
             EnterVybe();
             return;
@@ -141,7 +137,7 @@ public sealed partial class VybeApplet
         }
 
         frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
-            "Pick a handle and a password. You can sign out and use them again anytime.",
+            "Pick a handle. No password for now — Pearlgate sign-in is enough.",
             new TextStyle(FontRole.Caption, tone.Mute));
         DrawHandsetSeats(frame, ref stack, true);
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "DISPLAY NAME", true);
@@ -153,19 +149,12 @@ public sealed partial class VybeApplet
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "HANDLE", true);
         state.JoinHandle = frame.TextField.Draw("vybe-join-handle",
             VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.JoinHandle, "@handle");
-        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "PASSWORD", true);
-        state.JoinSecret = frame.TextField.Draw("vybe-join-secret",
-            VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.JoinSecret, "Password", true);
-        VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "CONFIRM", true);
-        state.JoinAgain = frame.TextField.Draw("vybe-join-again",
-            VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.JoinAgain, "Confirm password", 64,
-            out var submitted, false, true);
 
         var steps = new Stack(dock, StackAxis.Vertical, frame.Units(6f));
         DrawAuthNote(frame, ref steps, tone);
         var go = steps.Take(frame.Units(44f));
         VybeChrome.Primary(frame, go, "Create account", true);
-        if (submitted || frame.Input.ConsumeClick(go))
+        if (frame.Input.ConsumeClick(go))
         {
             JoinVybe();
             return;
@@ -209,7 +198,7 @@ public sealed partial class VybeApplet
     private void JoinVybe()
     {
         var handle = state.JoinHandle.Trim().Length > 0 ? state.JoinHandle : state.JoinName;
-        var pass = book.TryJoin(state.JoinName, handle, state.JoinSecret, state.JoinAgain);
+        var pass = book.TryJoin(state.JoinName, handle);
         if (!pass.Ok || pass.Seat is null)
         {
             state.AuthNote = pass.Note;
@@ -301,12 +290,9 @@ public sealed partial class VybeApplet
             {
                 if (frame.Input.ConsumeClick(row))
                 {
-                    state.EnterHandle = seat.Handle;
-                    state.EnterSecret = string.Empty;
-                    state.AuthNote = string.Empty;
-                    state.DropSeatId = string.Empty;
-                    state.Page = NightPage.AuthLogin;
-                    state.Scroll = 0f;
+                    profileStamp++;
+                    state.EnterSeat(seat);
+                    state.Save(paths);
                 }
 
                 continue;
@@ -324,11 +310,9 @@ public sealed partial class VybeApplet
             if (frame.Input.ConsumeClick(inner.Inset(new Edges(0f, 0f, frame.Units(70f), 0f))))
             {
                 state.DropSeatId = string.Empty;
-                state.EnterHandle = seat.Handle;
-                state.EnterSecret = string.Empty;
-                state.AuthNote = string.Empty;
-                state.Page = NightPage.AuthLogin;
-                state.Scroll = 0f;
+                profileStamp++;
+                state.EnterSeat(seat);
+                state.Save(paths);
                 return;
             }
         }

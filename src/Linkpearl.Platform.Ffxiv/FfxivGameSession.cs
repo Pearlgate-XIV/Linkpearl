@@ -1,4 +1,5 @@
 using System.Globalization;
+using Dalamud.Game;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility;
@@ -566,7 +567,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
 
     private string WorldName(uint rowId)
     {
-        if (rowId != 0 && data.GetExcelSheet<WorldSheet>().TryGetRow(rowId, out var world))
+        if (rowId != 0 && data.GetExcelSheet<WorldSheet>(ClientLanguage.English).TryGetRow(rowId, out var world))
         {
             return world.Name.ExtractText();
         }
