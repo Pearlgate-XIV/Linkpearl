@@ -2,18 +2,18 @@
   {
     "Author": "Pearlgate",
     "Name": "Linkpearl",
-    "Description": "An in-game communicator for FINAL FANTASY XIV. Add this JSON as a custom plugin repository, then install Linkpearl. Disable any other plugin named Linkpearl first.",
+    "Description": "Pearlgate phone. Sign in with XIVAuth. Disable any other plugin named Linkpearl first.",
     "Punchline": "A pearl in your pocket.",
     "InternalName": "Linkpearl",
-    "AssemblyVersion": "0.0.0.0",
+    "AssemblyVersion": "0.1.1.1",
     "RepoUrl": "https://github.com/Pearlgate-XIV/Linkpearl",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "",
-    "DownloadLinkUpdate": "",
-    "DownloadLinkTesting": "",
-    "LastUpdate": "0"
+    "DownloadLinkInstall": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
+    "DownloadLinkUpdate": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
+    "DownloadLinkTesting": "https://pearlgate.194.113.211.29.sslip.io/plugin/Linkpearl.zip",
+    "LastUpdate": "1789187443"
   }
 ]

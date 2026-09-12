@@ -8,3 +8,4 @@ artifacts/
 tools/.beta-token
 tools/.beta-revision
 tools/.beta-url
+tools/.plugin-revision

@@ -57,7 +57,7 @@ Search, all reading live Pearlgate data once you sign in:
   grouped rows with a live card. Choice persists as `HandsetConfig.TuneLayout`. Account mark
   opens You. `DirectorySearch` fills the crystal overlay from
   talks, chats, people, and `/users/search`; a tap opens the thread or profile.
-- **Linkpearl.Net**: `PearlHub` + `GateClient`. HTTP to `https://api.pearlgate.alphachannel.duckdns.org`
+- **Linkpearl.Net**: `PearlHub` + `GateClient`. HTTP to `https://pearlgate.194.113.211.29.sslip.io`
   on a worker thread, snapshot swapped under a lock for Draw. Sign-in is `POST /auth/challenge`
   then `POST /auth/verify` using the character name and world from `IGameSession`. Refresh every
   15s hits `/me`, `/chats/`, `/contacts/`, `/stories`, `/announcements`. Search is `/users/search?q=`. Sign-out is

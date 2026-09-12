@@ -7,7 +7,7 @@ namespace Linkpearl.Net;
 
 internal sealed class GateClient : IDisposable
 {
-    public const string DefaultBaseUrl = "https://api.pearlgate.alphachannel.duckdns.org";
+    public const string DefaultBaseUrl = "https://pearlgate.194.113.211.29.sslip.io";
 
     private readonly HttpClient http;
     private string bearer = string.Empty;
