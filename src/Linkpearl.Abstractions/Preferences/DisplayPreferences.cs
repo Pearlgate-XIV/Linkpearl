@@ -2239,7 +2239,7 @@ public sealed class DisplayPreferences
         var kept = new List<string>(ids.Count);
         for (var index = 0; index < ids.Count; index++)
         {
-            var id = (ids[index] ?? string.Empty).Trim();
+            var id = AliasAppId((ids[index] ?? string.Empty).Trim());
             if (id.Length == 0)
             {
                 continue;
@@ -2274,6 +2274,9 @@ public sealed class DisplayPreferences
 
         return kept.ToArray();
     }
+
+    private static string AliasAppId(string id) =>
+        string.Equals(id, "daylight", StringComparison.Ordinal) ? "afterdark" : id;
 
     private static string[] SanitizePlates(IReadOnlyList<string> files)
     {
@@ -2627,7 +2630,7 @@ public sealed class DisplayPreferences
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < ids.Count; index++)
         {
-            var id = (ids[index] ?? string.Empty).Trim();
+            var id = AliasAppId((ids[index] ?? string.Empty).Trim());
             if (id.Length == 0)
             {
                 kept.Add(string.Empty);

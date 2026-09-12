@@ -601,11 +601,13 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
             tribe = drawnTribe;
         }
 
+        // RaceSexId is cXXXX: 1101/1201 Lalafell, 1301/1401 Au Ra. 13/14 must not
+        // be treated as Dunesfolk or Au Ra testers get the Lalafell lock.
         var family = human->RaceSexId / 100;
-        if (family is 11 or 12 or 13 or 14)
+        if (family is 11 or 12)
         {
             race = 3;
-            tribe = family is 11 or 12 ? (byte)5 : (byte)6;
+            tribe = family == 11 ? (byte)5 : (byte)6;
         }
     }
 
