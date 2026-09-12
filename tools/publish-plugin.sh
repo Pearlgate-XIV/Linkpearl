@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cut a Dalamud drop and attach it to the GitHub `dev` release.
-# Testers add: https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
+# Testers add: https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/linkpearl.json
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -123,6 +123,6 @@ gh release upload dev "$zip_path" --clobber
 gh release delete-asset dev Linkpearl.zip --yes 2>/dev/null || true
 cp "$root/linkpearl.json" "$stage/pluginmaster.json"
 gh release upload dev "$root/linkpearl.json" "$stage/pluginmaster.json" --clobber
-gh release edit dev --notes "Current Linkpearl (LinkpearlDev). Add https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json as a Dalamud custom repository."
+gh release edit dev --notes "Current Linkpearl (LinkpearlDev). Add https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/linkpearl.json as a Dalamud custom repository."
 echo "version $version"
-echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
+echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/linkpearl.json"

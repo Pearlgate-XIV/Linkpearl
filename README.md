@@ -42,3 +42,9 @@ Linkpearl is actively evolving, and new applications, integrations, customizatio
 **Welcome to Linkpearl.**
 
 The Next Generation of In-Game Connectivity.
+
+## Install
+
+Add this URL as a **Dalamud custom plugin repository**, then install **Linkpearl** (`LinkpearlDev`):
+
+https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/linkpearl.json
