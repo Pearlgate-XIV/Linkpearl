@@ -1,4 +1,5 @@
 using System.Globalization;
+using Linkpearl.Chat;
 using Linkpearl.Net;
 using Linkpearl.Platform;
 using Linkpearl.Time;
@@ -797,6 +798,11 @@ public sealed class TalkInbox : ITalk, IDisposable
 
             if (IsDuplicate(room, line))
             {
+                if (line.Channel == GameChannel.Party && rooms.TryGetValue(TalkIds.Live, out var live))
+                {
+                    IsDuplicate(live, line);
+                }
+
                 return;
             }
 
@@ -896,9 +902,20 @@ public sealed class TalkInbox : ITalk, IDisposable
                 return true;
             }
 
-            if (last.Mine && !line.Mine &&
-                string.Equals(line.Sender, self, StringComparison.OrdinalIgnoreCase))
+            var selfLine = PlayerNames.Same(line.Sender, self) || PlayerNames.Same(last.Sender, self);
+            if (!selfLine && !last.Mine && !line.Mine)
             {
+                continue;
+            }
+
+            if (last.Mine && !line.Mine && selfLine)
+            {
+                return true;
+            }
+
+            if (!last.Mine && line.Mine && selfLine)
+            {
+                room.Lines[index] = last with { Mine = true };
                 return true;
             }
         }

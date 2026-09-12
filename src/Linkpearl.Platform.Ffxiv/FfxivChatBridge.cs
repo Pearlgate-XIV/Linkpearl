@@ -8,6 +8,7 @@ using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
+using Linkpearl.Chat;
 using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
@@ -633,6 +634,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
 
         PeelWorld(ref sender, world);
+        sender = PlayerNames.Clean(sender);
 
         if (outgoingTell)
         {
@@ -956,13 +958,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             return false;
         }
 
-        if (sender.Equals(local, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        var at = sender.IndexOf('@');
-        return at > 0 && sender.AsSpan(0, at).Equals(local, StringComparison.OrdinalIgnoreCase);
+        return PlayerNames.Same(sender, local);
     }
 
     private string WorldName(uint rowId)

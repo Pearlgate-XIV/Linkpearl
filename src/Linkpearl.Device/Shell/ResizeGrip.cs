@@ -30,6 +30,8 @@ public sealed class ResizeGrip
 
     public bool IsDragging => dragging && committed;
 
+    public bool Holding => dragging;
+
     public bool JustReleased { get; private set; }
 
     public ResizeCorner ActiveCorner => dragging && committed ? dragCorner : ResizeCorner.None;
