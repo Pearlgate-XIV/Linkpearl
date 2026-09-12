@@ -59,8 +59,13 @@ for name in ("LinkpearlDev.json", "Linkpearl.json"):
     data["Name"] = "Linkpearl"
     manifest.write_text(json.dumps(data, indent=2) + "\n")
 
-skip_suffixes = {".pdb"}
-skip_names = {"libmp3lame.dll", "libmp3lame.dylib", "libmp3lame.so"}
+skip_suffixes = {".pdb", ".xml"}
+skip_names = {
+    "libmp3lame.dll",
+    "libmp3lame.dylib",
+    "libmp3lame.so",
+    "EchoMix.AudioHost",
+}
 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for path in sorted(out.rglob("*")):
         if not path.is_file():
@@ -71,9 +76,14 @@ with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compressle
 print("zip", zip_path, zip_path.stat().st_size)
 PY
 
-# Official Dalamud already ships InternalName "Linkpearl" (NotNite). Third-party
-# repos cannot reuse that id — Dalamud drops the listing. Testers get LinkpearlDev.
-zip_url="https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/LinkpearlDev.zip"
+# GitHub release downloads of a 30+ MB zip time out in Dalamud's installer
+# (looks like a hang, then "A task was cancelled"). Serve the zip from Pearlgate.
+host="${PLUGIN_SSH_HOST:-root@194.113.211.29}"
+remote="${PLUGIN_REMOTE:-/opt/pearlgate/plugin-public}"
+base_url="${PLUGIN_BASE_URL:-https://pearlgate.194.113.211.29.sslip.io}"
+zip_url="$base_url/plugin/LinkpearlDev.zip"
+scp -q "$zip_path" "$host:$remote/LinkpearlDev.zip"
+ssh -o BatchMode=yes "$host" "chmod 644 '$remote/LinkpearlDev.zip'"
 now="$(date +%s)"
 python3 - "$root/linkpearl.json" "$version" "$zip_url" "$now" <<'PY'
 import json, sys
