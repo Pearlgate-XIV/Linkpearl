@@ -104,6 +104,7 @@ listing = [
         "DalamudApiLevel": 15,
         "LoadPriority": 0,
         "DownloadLinkInstall": zip_url,
+        "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/src/Linkpearl.Host/Icons/glyphs/phone.png",
         "IsHide": False,
         "IsTestingExclusive": False,
         "DownloadLinkTesting": zip_url,

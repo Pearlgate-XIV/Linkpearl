@@ -16,6 +16,7 @@
     "DalamudApiLevel": 15,
     "LoadPriority": 0,
     "DownloadLinkInstall": "https://pearlgate.194.113.211.29.sslip.io/plugin/LinkpearlDev.zip",
+    "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/src/Linkpearl.Host/Icons/glyphs/phone.png",
     "IsHide": false,
     "IsTestingExclusive": false,
     "DownloadLinkTesting": "https://pearlgate.194.113.211.29.sslip.io/plugin/LinkpearlDev.zip",
