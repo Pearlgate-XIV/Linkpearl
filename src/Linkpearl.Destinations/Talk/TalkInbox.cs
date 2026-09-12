@@ -869,16 +869,41 @@ public sealed class TalkInbox : ITalk, IDisposable
         int channelIndex = 0) =>
         HandleLine(new GameChatLine(channel, channelIndex, sender, world, body, clock.Now, true));
 
-    private static bool IsDuplicate(Room room, GameChatLine line)
+    private bool IsDuplicate(Room room, GameChatLine line)
     {
         if (room.Lines.Count == 0)
         {
             return false;
         }
 
-        var last = room.Lines[^1];
-        return last.Mine == line.Mine && last.Body == line.Body && last.Tag == TagOf(line.Channel) &&
-               Math.Abs((line.Received - last.At).TotalSeconds) < 4d;
+        var self = game.Character.Name;
+        var tag = TagOf(line.Channel);
+        for (var index = room.Lines.Count - 1; index >= 0; index--)
+        {
+            var last = room.Lines[index];
+            if (Math.Abs((line.Received - last.At).TotalSeconds) >= 4d)
+            {
+                break;
+            }
+
+            if (last.Body != line.Body || last.Tag != tag)
+            {
+                continue;
+            }
+
+            if (last.Mine == line.Mine)
+            {
+                return true;
+            }
+
+            if (last.Mine && !line.Mine &&
+                string.Equals(line.Sender, self, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void RememberTellPeer(Room room, GameChatLine line)

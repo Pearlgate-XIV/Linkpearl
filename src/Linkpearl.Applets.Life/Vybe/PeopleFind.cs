@@ -450,6 +450,92 @@ internal static class PeopleFindBook
 
     public static PeopleCard[] Deck(HostPaths paths) => [];
 
+    public static PeopleCard[] LiveDeck(PearlSnapshot snap, IReadOnlyList<ScenePerson> roster, string homeWorld)
+    {
+        var cards = new List<PeopleCard>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Add(PeopleCard card)
+        {
+            if (card.GateId.Length == 0 ||
+                string.Equals(card.GateId, snap.MeId, StringComparison.Ordinal) ||
+                !seen.Add(card.GateId) ||
+                VybeChrome.IsLalafell(card.Race))
+            {
+                return;
+            }
+
+            cards.Add(card);
+        }
+
+        foreach (var person in snap.Directory)
+        {
+            Add(FromPearl(person, homeWorld));
+        }
+
+        foreach (var person in snap.People)
+        {
+            Add(FromPearl(person, homeWorld));
+        }
+
+        foreach (var hit in snap.SearchHits)
+        {
+            if (hit.Id.Length > 0)
+            {
+                Add(FromHit(hit, homeWorld));
+            }
+        }
+
+        foreach (var post in snap.Feed)
+        {
+            Add(FromPost(post, homeWorld));
+        }
+
+        foreach (var person in roster)
+        {
+            Add(FromScene(person, homeWorld));
+        }
+
+        return cards.ToArray();
+    }
+
+    private static PeopleCard FromPearl(PearlPerson person, string homeWorld)
+    {
+        var name = person.DisplayName.Length > 0 ? person.DisplayName : "Someone";
+        var world = person.World;
+        return LiveCard(person.Id, name, person.Handle, world, person.Race, person.AvatarUrl, person.TimeZoneId,
+            string.Empty, [], [], true, homeWorld);
+    }
+
+    private static PeopleCard FromHit(PearlHit hit, string homeWorld)
+    {
+        var world = hit.Subtitle.StartsWith('@') ? string.Empty : hit.Subtitle;
+        var handle = hit.Subtitle.StartsWith('@') ? hit.Subtitle : string.Empty;
+        return LiveCard(hit.Id, hit.Title.Length > 0 ? hit.Title : "Someone", handle, world, string.Empty,
+            string.Empty, string.Empty, string.Empty, [], [], true, homeWorld);
+    }
+
+    private static PeopleCard FromPost(PearlPost post, string homeWorld) =>
+        LiveCard(post.AuthorId, post.AuthorName.Length > 0 ? post.AuthorName : "Someone", post.AuthorHandle,
+            string.Empty, string.Empty, post.AuthorAvatarUrl, string.Empty, string.Empty, [], [], true, homeWorld);
+
+    private static PeopleCard FromScene(ScenePerson person, string homeWorld) =>
+        LiveCard(person.GateId, person.Name, person.Handle, person.World, person.Race, person.AvatarUrl,
+            person.TimeZoneId, person.Line, person.Intents, person.Tags, person.Online, homeWorld, person.Id,
+            person.Gender, person.Sexuality, person.Relationship, person.DmsOpen ?? true, person.PlusMember);
+
+    private static PeopleCard LiveCard(string gateId, string name, string handle, string world, string race,
+        string avatar, string timeZone, string bio, string[] looking, string[] interests, bool online,
+        string homeWorld, int id = 0, string gender = "", string sexuality = "", string relationship = "",
+        bool dmsOpen = true, bool plusMember = false)
+    {
+        var nearby = homeWorld.Length > 0 &&
+                     string.Equals(world, homeWorld, StringComparison.OrdinalIgnoreCase);
+        return new PeopleCard(id == 0 ? VybeState.StableId(gateId) : id, gateId, name, handle, world,
+            DataCenterOf(world), string.Empty, [], string.Empty, race, looking, interests, bio, string.Empty, [],
+            string.Empty, online ? "Online" : "Today", online, "Variable", string.Empty, string.Empty, string.Empty,
+            relationship, 0, false, nearby, avatar, gender, sexuality, dmsOpen, false, plusMember, timeZone);
+    }
+
     private static PeopleCard[] DemoDeck(HostPaths paths)
     {
         return
@@ -568,7 +654,7 @@ internal static class PeopleFindBook
 
             if (state.PeoplePlus)
             {
-                if (!card.PlusOnly)
+                if (!card.PlusOnly && card.GateId.StartsWith("demo:", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -621,7 +707,8 @@ internal static class PeopleFindBook
             return false;
         }
 
-        if (find.Mode == 3 && !HasAny(card.LookingFor, "Friends", "Just Chatting", "FC Connections",
+        if (find.Mode == 3 && card.LookingFor.Length > 0 &&
+            !HasAny(card.LookingFor, "Friends", "Just Chatting", "FC Connections",
                 "Gaming Partner", "Venue Friends", "Event Buddies"))
         {
             return false;
@@ -660,7 +747,8 @@ internal static class PeopleFindBook
             return false;
         }
 
-        if (Has("Friends", find) && !HasAny(card.LookingFor, "Friends", "Just Chatting"))
+        if (Has("Friends", find) && card.LookingFor.Length > 0 &&
+            !HasAny(card.LookingFor, "Friends", "Just Chatting"))
         {
             return false;
         }

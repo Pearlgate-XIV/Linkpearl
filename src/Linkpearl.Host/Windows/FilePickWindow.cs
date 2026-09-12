@@ -2,6 +2,7 @@ using System.Globalization;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
+using Linkpearl.Host.Platform;
 
 namespace Linkpearl.Host.Windows;
 
@@ -253,6 +254,18 @@ internal sealed class FilePickWindow : Window
             FilePickMode.Audio => "Audio",
             _ => "Pictures",
         });
+        ImGui.SameLine();
+        if (mode is FilePickMode.Images or FilePickMode.Attach
+            && ImGui.Button("Clipboard", new Vector2(96f * ImGuiHelpers.GlobalScale, 0f)))
+        {
+            var clips = ClipboardPictures.ExportOnSta();
+            if (clips.Count > 0)
+            {
+                Confirm(clips, string.Empty);
+                return;
+            }
+        }
+
         ImGui.SameLine();
         if (ImGui.Button("Ok", new Vector2(76f * ImGuiHelpers.GlobalScale, 0f)))
         {

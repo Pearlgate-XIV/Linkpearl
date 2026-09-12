@@ -71,6 +71,7 @@ public sealed class PhoneApplet : IApplet
     private readonly IFilePicker files;
     private readonly IGifDesk gifs;
     private readonly IFeedbackDesk desk;
+    private readonly ILifestream lifestream;
     private readonly ChatTray tray = new();
     private int tab;
     private string openNumber = string.Empty;
@@ -95,7 +96,8 @@ public sealed class PhoneApplet : IApplet
     private string reportId = string.Empty;
 
     public PhoneApplet(IHandsetLine line, IBroadcastSense sense, DisplayPreferences display, IPearlHub pearl,
-        BadgeBook badges, IGameSession game, IFilePicker files, IGifDesk gifs, IFeedbackDesk desk)
+        BadgeBook badges, IGameSession game, IFilePicker files, IGifDesk gifs, IFeedbackDesk desk,
+        ILifestream lifestream)
     {
         this.line = line;
         this.sense = sense;
@@ -106,6 +108,7 @@ public sealed class PhoneApplet : IApplet
         this.files = files;
         this.gifs = gifs;
         this.desk = desk;
+        this.lifestream = lifestream;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -743,7 +746,7 @@ public sealed class PhoneApplet : IApplet
             var bubble = Rect.FromSize(new Vector2(log.Min.X + inset, cursor),
                 new Vector2(log.Width - inset - trail, height));
             frame.Paint.Fill(bubble, note.Mine ? Bubble with { W = 0.55f } : Pill, frame.Units(14f));
-            ChatBits.Draw(frame, bubble.Inset(frame.Units(8f)), note.Body, Ink, Muted, null, gifs);
+            ChatBits.Draw(frame, bubble.Inset(frame.Units(8f)), note.Body, Ink, Muted, lifestream, gifs);
             cursor += height + frame.Units(8f);
         }
 

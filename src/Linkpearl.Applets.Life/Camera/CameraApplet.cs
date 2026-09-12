@@ -58,6 +58,8 @@ public sealed partial class CameraApplet : IApplet
     private string menuShotId = string.Empty;
     private Vector2 menuAt;
     private bool uploadWait;
+    private bool uploadSheet;
+    private string uploadNote = string.Empty;
     private bool gposeWait;
 
     public CameraApplet(IClock clock, IGameSession game, HostPaths paths, ITextureSource textures, IFilePicker files,
@@ -97,11 +99,13 @@ public sealed partial class CameraApplet : IApplet
         viewingId = string.Empty;
         menuShotId = string.Empty;
         EndPick();
+        uploadSheet = false;
+        uploadNote = string.Empty;
         display.Landscape = false;
         library.Save();
     }
 
-    public bool CanGoBack => picking || confirmBulkRemove || mode != Mode.Page || pane != Pane.Camera ||
+    public bool CanGoBack => picking || confirmBulkRemove || uploadSheet || mode != Mode.Page || pane != Pane.Camera ||
         place.Length > 0;
 
     public bool Back()
@@ -109,6 +113,13 @@ public sealed partial class CameraApplet : IApplet
         if (menuShotId.Length > 0)
         {
             menuShotId = string.Empty;
+            return true;
+        }
+
+        if (uploadSheet)
+        {
+            uploadSheet = false;
+            uploadNote = string.Empty;
             return true;
         }
 

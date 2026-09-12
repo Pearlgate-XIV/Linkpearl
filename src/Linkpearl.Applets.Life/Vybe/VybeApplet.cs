@@ -1473,7 +1473,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         var find = state.PeopleFind;
         find.Pulse = MathF.Max(0f, find.Pulse - frame.DeltaSeconds);
         find.PassFade = MathF.Max(0f, find.PassFade - frame.DeltaSeconds);
-        findDeck = PeopleFindBook.Deck(paths);
+        findDeck = PeopleFindBook.LiveDeck(pearl.Current, state.Roster, game.Character.WorldName);
         find.Query = state.Search;
         find.SearchOpen = state.DiscoverSearchOpen;
 
@@ -1925,8 +1925,10 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         {
             VybeChrome.Mute(frame, area.TopSlice(frame.Units(36f)),
                 state.GalleryQuery.Trim().Length > 0
-                    ? "No photos match that tag."
-                    : state.GalleryPlus ? "No VYBE+ photos yet." : "No photos yet.", night);
+                    ? "No saved photos match that tag."
+                    : state.GalleryPlus
+                        ? "Save a VYBE+ photo to keep it here."
+                        : "Save a photo to keep it here.", night);
             return;
         }
 
@@ -1999,6 +2001,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private static List<GalleryShot> GalleryShots(PearlPost[] posts, string query)
     {
         var shots = new List<GalleryShot>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < posts.Length; index++)
         {
             var post = posts[index];
@@ -2011,7 +2014,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             for (var media = 0; media < post.Media.Length; media++)
             {
                 var still = post.Media[media];
-                if (still.Url.Length == 0)
+                if (still.Url.Length == 0 || !seen.Add(still.Url))
                 {
                     continue;
                 }
@@ -3773,8 +3776,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         {
             return state.PlusBlocked
                 ? []
-                : WithoutHidden(WithoutGroups(LanePosts(true,
-                    PackWall(state.Posted.ToArray(), demoWall, pearl.Current.Feed))));
+                : WithoutHidden(WithoutGroups(LanePosts(true, HomeWall())));
         }
 
         if (state.FeedPick == FeedPick.Groups)
@@ -3788,7 +3790,47 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     }
 
     private PearlPost[] BoardFeed() =>
-        WithoutHidden(WithoutGroups(LanePosts(false, PackWall(state.Posted.ToArray(), demoWall, pearl.Current.Feed))));
+        WithoutHidden(WithoutGroups(LanePosts(false, HomeWall())));
+
+    private PearlPost[] HomeWall() =>
+        PackWall(state.Posted.ToArray(), OpenReposts(pearl.Current.Feed), demoWall, pearl.Current.Feed);
+
+    private PearlPost[] OpenReposts(PearlPost[] live)
+    {
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < live.Length; index++)
+        {
+            var row = live[index];
+            if (row.Id.Length > 0)
+            {
+                covered.Add(row.Id);
+            }
+
+            if (row.Mine && row.QuoteOf.Length > 0)
+            {
+                covered.Add(row.QuoteOf);
+            }
+        }
+
+        var keep = new List<PearlPost>();
+        for (var index = 0; index < state.StoryReposts.Count; index++)
+        {
+            var row = state.StoryReposts[index];
+            if (row.Id.Length > 0 && covered.Contains(row.Id))
+            {
+                continue;
+            }
+
+            if (row.QuoteOf.Length > 0 && covered.Contains(row.QuoteOf))
+            {
+                continue;
+            }
+
+            keep.Add(row);
+        }
+
+        return keep.ToArray();
+    }
 
     private PearlPost[] OpenBoard()
     {
@@ -3797,8 +3839,8 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         return WithoutHidden(lane);
     }
 
-    private PearlPost[] GalleryBoard() => WithoutHidden(LanePosts(state.Night && state.GalleryPlus,
-        PackWall(state.Posted.ToArray(), demoWall, groupWall, pearl.Current.Feed)));
+    private PearlPost[] GalleryBoard() =>
+        WithoutHidden(LanePosts(state.Night && state.GalleryPlus, SavedBoard()));
 
     private PearlPost[] DiscoverBoard() => WithoutHidden(LanePosts(state.Night && state.DiscoverPostPlus,
         PackWall(state.Posted.ToArray(), demoWall, groupWall, pearl.Current.Feed)));
@@ -4894,52 +4936,64 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
     private void SharePost(PearlPost post)
     {
-        if (post.Id.Length == 0)
+        var sourceId = RepostSourceId(post);
+        if (sourceId.Length == 0)
         {
             return;
         }
 
-        var id = FeedRepostId(post.Id);
+        var id = FeedRepostId(sourceId);
         state.HiddenPearls.Remove(id);
-        for (var index = 0; index < state.StoryReposts.Count; index++)
+        var listed = PostShared(sourceId);
+        if (!listed)
         {
-            if (string.Equals(state.StoryReposts[index].Id, id, StringComparison.Ordinal))
-            {
-                state.Save(paths);
-                return;
-            }
+            state.StoryReposts.Insert(0, new PearlPost(
+                id,
+                "me",
+                ProfileName(),
+                state.Handle,
+                OwnFacePath().Length > 0 ? OwnFacePath() : pearl.Current.MeAvatarUrl,
+                string.Empty,
+                "now",
+                true,
+                false,
+                0,
+                0,
+                Math.Max(1, post.Reposts + 1),
+                true,
+                sourceId,
+                post.AuthorName ?? string.Empty,
+                post.Body ?? string.Empty,
+                post.Media ?? [],
+                "repost",
+                post.ContentRating,
+                post.Descriptors,
+                post.Hashtags));
         }
 
-        state.StoryReposts.Insert(0, new PearlPost(
-            id,
-            "me",
-            ProfileName(),
-            state.Handle,
-            OwnFacePath().Length > 0 ? OwnFacePath() : pearl.Current.MeAvatarUrl,
-            post.Body ?? string.Empty,
-            "now",
-            true,
-            false,
-            0,
-            0,
-            Math.Max(1, post.Reposts + 1),
-            true,
-            post.Id,
-            post.AuthorName ?? string.Empty,
-            post.Body ?? string.Empty,
-            post.Media ?? [],
-            "repost",
-            post.ContentRating,
-            post.Descriptors,
-            post.Hashtags));
-        if (pearl.Current.SignedIn && pearl.PostById(post.Id) is not null)
+        if (pearl.Current.SignedIn && CanRepostRemote(sourceId))
         {
-            pearl.Repost(post.Id);
+            pearl.Repost(sourceId);
         }
 
-        state.ProfilePane = 3;
         state.Save(paths);
     }
+
+    private static string RepostSourceId(PearlPost post)
+    {
+        if (post.Destination is "repost" or "story-repost" && post.QuoteOf.Length > 0)
+        {
+            return post.QuoteOf;
+        }
+
+        return post.Id;
+    }
+
+    private static bool CanRepostRemote(string postId) =>
+        postId.Length > 0
+        && !postId.StartsWith("repost-", StringComparison.Ordinal)
+        && !postId.StartsWith("story-repost", StringComparison.Ordinal)
+        && !postId.StartsWith("demo", StringComparison.OrdinalIgnoreCase);
 
     private bool DrawFeedActions(in AppletFrame frame, Rect bar, PearlPost post, bool night)
     {
@@ -5048,7 +5102,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         if (VybeChrome.Chip(frame, stack.Take(frame.Units(36f)), night ? "Share to feed" : "Repost", false, night) &&
             post is not null)
         {
-            pearl.Repost(post.Value.Id);
+            SharePost(post.Value);
             state.SharePostId = string.Empty;
         }
 

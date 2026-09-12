@@ -93,6 +93,82 @@ public sealed class FfxivLifestream : ILifestream
         }
     }
 
+    public bool TryGoPlace(string place)
+    {
+        var name = place.Trim();
+        if (name.Length == 0 || !Ready)
+        {
+            return false;
+        }
+
+        var gate = AetheryteNamed(name);
+        if (gate != 0 && TryTeleport(gate))
+        {
+            return true;
+        }
+
+        if (execute is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            execute.InvokeAction(name);
+            return true;
+        }
+        catch (IpcNotReadyError)
+        {
+            return false;
+        }
+        catch (IpcError)
+        {
+            return false;
+        }
+    }
+
+    private uint AetheryteNamed(string place)
+    {
+        var needle = place.Trim();
+        if (needle.Length == 0)
+        {
+            return 0;
+        }
+
+        var sheet = data.GetExcelSheet<AetheryteSheet>();
+        uint loose = 0;
+        foreach (var row in sheet)
+        {
+            if (!row.IsAetheryte)
+            {
+                continue;
+            }
+
+            var title = row.PlaceName.ValueNullable?.Name.ExtractText() ?? string.Empty;
+            if (title.Length == 0)
+            {
+                title = row.Territory.ValueNullable?.PlaceName.ValueNullable?.Name.ExtractText() ?? string.Empty;
+            }
+
+            if (title.Length == 0)
+            {
+                continue;
+            }
+
+            if (title.Equals(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                return row.RowId;
+            }
+
+            if (loose == 0 && title.StartsWith(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                loose = row.RowId;
+            }
+        }
+
+        return loose;
+    }
+
     public bool TryGoHome(string world, string district, int ward, int plot, int apartment, bool subdivision)
     {
         if (!Ready || world.Length == 0 || district.Length == 0 || ward <= 0)

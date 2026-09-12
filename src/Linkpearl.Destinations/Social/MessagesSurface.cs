@@ -31,6 +31,7 @@ internal sealed class MessagesSurface
     private readonly IGifDesk gifs;
     private readonly ChatMarks marks;
     private readonly IFeedbackDesk desk;
+    private readonly ILifestream lifestream;
     private readonly ChatTray tray = new();
     private string openId = string.Empty;
     private string profileId = string.Empty;
@@ -56,7 +57,8 @@ internal sealed class MessagesSurface
     private string reportTitle = string.Empty;
 
     public MessagesSurface(ITalk talk, IClock clock, IGameSession game, DisplayPreferences display, IPearlHub pearl,
-        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs, ChatMarks marks, IFeedbackDesk desk)
+        ITalkPopouts popouts, IFilePicker files, IGifDesk gifs, ChatMarks marks, IFeedbackDesk desk,
+        ILifestream lifestream)
     {
         this.talk = talk;
         this.clock = clock;
@@ -68,6 +70,7 @@ internal sealed class MessagesSurface
         this.gifs = gifs;
         this.marks = marks;
         this.desk = desk;
+        this.lifestream = lifestream;
     }
 
     public bool ThreadOpen => openId.Length > 0 && profileId.Length == 0;
@@ -1165,8 +1168,10 @@ internal sealed class MessagesSurface
     private void SharePlace()
     {
         var zone = game.ZoneName.Length > 0 ? game.ZoneName : "Unknown zone";
-        var job = game.JobName.Length > 0 ? game.JobName : "Unknown job";
-        SendBit(ChatBits.Place(zone + " · " + job, string.Empty));
+        var world = game.Character.WorldName;
+        var map = game.MapCoords;
+        var aetheryte = lifestream.NearestAetheryte(game.TerritoryId);
+        SendBit(ChatBits.Location(zone, world, game.TerritoryId, map.X, map.Y, aetheryte));
     }
 
     private void SendBit(string body)
@@ -1324,7 +1329,7 @@ internal sealed class MessagesSurface
         frame.Paint.PushClip(copy);
         try
         {
-            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, ink, frame.Theme.Palette.InkMuted, null, gifs,
+            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, ink, frame.Theme.Palette.InkMuted, lifestream, gifs,
                 marks.Cite(key, openId, line.Body ?? string.Empty, line.Mine));
         }
         finally

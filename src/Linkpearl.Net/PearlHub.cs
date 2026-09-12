@@ -672,6 +672,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 .ConfigureAwait(false);
             var (contacts, _) = await client.GetAsync("/contacts/", GateJson.Default.ContactListDto, token)
                 .ConfigureAwait(false);
+            var (directoryPage, directoryStatus) = await client
+                .GetAsync("/users/directory", GateJson.Default.UserSearchDto, token)
+                .ConfigureAwait(false);
             var (stories, _) = await client.GetAsync("/stories", GateJson.Default.StoryTrayDto, token)
                 .ConfigureAwait(false);
             var (announcements, _) = await client.GetAsync("/announcements", GateJson.Default.AnnouncementPageDto, token)
@@ -706,10 +709,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
             var chats = MapChats(chatsPage?.Items);
             var people = MapPeople(contacts?.Contacts);
+            var prior = Current;
+            var directory = directoryStatus is >= 200 and < 300
+                ? MapDirectory(directoryPage?.Users, meId)
+                : prior.Directory;
             var feed = MapPosts(feedPage?.Items);
             var notes = MapNotes(notesPage?.Items);
             RememberPosts(feed);
-            var prior = Current;
             Replace(new PearlSnapshot
             {
                 SignedIn = true,
@@ -735,6 +741,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 PatronLinkUrl = me.PatreonUrl ?? Current.PatronLinkUrl,
                 Chats = chats,
                 People = people,
+                Directory = directory,
                 Stories = MapStories(stories?.Rings),
                 Announcements = MapAnnouncements(announcements?.Items),
                 SearchHits = prior.SearchHits,
@@ -909,10 +916,10 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 return;
             }
 
-            var mapped = MapChatLines(page);
+            var mapped = MapChatLines(page, Current.MeId);
             lock (gate)
             {
-                chatLines[chatId] = mapped;
+                chatLines[chatId] = MergePending(chatId, mapped);
                 generation = NextGeneration();
             }
         }
@@ -971,12 +978,21 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 chatLines[chatId] = lines;
             }
 
+            for (var index = 0; index < lines.Count; index++)
+            {
+                var existing = lines[index];
+                if (existing.Mine && string.Equals(existing.Body, line.Body, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+
             lines.Add(line);
             generation = NextGeneration();
         }
     }
 
-    private static List<PearlChatLine> MapChatLines(ChatMessagePageDto page)
+    private static List<PearlChatLine> MapChatLines(ChatMessagePageDto page, string meId)
     {
         var items = page.Items ?? page.Messages;
         var mapped = new List<PearlChatLine>();
@@ -993,14 +1009,52 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 continue;
             }
 
+            var mine = item.Mine ||
+                       (meId.Length > 0 && string.Equals(item.SenderId, meId, StringComparison.Ordinal));
+            var author = item.AuthorDisplayName ?? item.SenderDisplayName ??
+                         (mine ? "You" : "Them");
             var when = item.CreatedAtUnix > 0
                 ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
                 : "now";
-            mapped.Add(new PearlChatLine(item.Mine, body, when,
-                item.AuthorDisplayName ?? (item.Mine ? "You" : "Them"), item.Id ?? string.Empty));
+            mapped.Add(new PearlChatLine(mine, body, when, author, item.Id ?? string.Empty));
         }
 
         return mapped;
+    }
+
+    private List<PearlChatLine> MergePending(string chatId, List<PearlChatLine> fetched)
+    {
+        if (!chatLines.TryGetValue(chatId, out var prior) || prior.Count == 0)
+        {
+            return fetched;
+        }
+
+        for (var index = 0; index < prior.Count; index++)
+        {
+            var pending = prior[index];
+            if (pending.Id.Length > 0)
+            {
+                continue;
+            }
+
+            var echoed = false;
+            for (var inner = 0; inner < fetched.Count; inner++)
+            {
+                var row = fetched[inner];
+                if (pending.Mine && string.Equals(row.Body, pending.Body, StringComparison.Ordinal))
+                {
+                    echoed = true;
+                    break;
+                }
+            }
+
+            if (!echoed)
+            {
+                fetched.Add(pending);
+            }
+        }
+
+        return fetched;
     }
 
     private static PearlChat[] MapChats(ConversationDto[]? items)
@@ -1068,6 +1122,31 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
 
         return mapped;
+    }
+
+    private static PearlPerson[] MapDirectory(GateUserDto[]? users, string meId)
+    {
+        if (users is null || users.Length == 0)
+        {
+            return [];
+        }
+
+        var mapped = new List<PearlPerson>(users.Length);
+        for (var index = 0; index < users.Length; index++)
+        {
+            var user = users[index];
+            var id = user.Id ?? string.Empty;
+            if (id.Length == 0 || string.Equals(id, meId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            mapped.Add(new PearlPerson(id, Display(user.DisplayName, user.Name), user.Handle ?? string.Empty,
+                string.Empty, false, user.AvatarUrl ?? string.Empty, string.Empty, user.World ?? string.Empty,
+                user.TimeZoneId ?? string.Empty));
+        }
+
+        return mapped.ToArray();
     }
 
     private static PearlStory[] MapStories(StoryRingDto[]? items)

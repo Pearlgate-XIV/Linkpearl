@@ -106,7 +106,9 @@ internal sealed record ChatMessageDto(
     string? Content,
     bool Mine,
     string? AuthorDisplayName,
-    long CreatedAtUnix);
+    string? SenderDisplayName = null,
+    string? SenderId = null,
+    long CreatedAtUnix = 0);
 
 internal sealed record ChatMessagePageDto(ChatMessageDto[]? Items, ChatMessageDto[]? Messages);
 

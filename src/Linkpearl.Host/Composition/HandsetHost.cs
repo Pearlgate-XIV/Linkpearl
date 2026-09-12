@@ -213,7 +213,7 @@ public sealed class HandsetHost : IDisposable
         // stays a destination. RouteStack is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
             provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>(),
-            provider.GetRequiredService<IFeedbackDesk>());
+            provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>());
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));

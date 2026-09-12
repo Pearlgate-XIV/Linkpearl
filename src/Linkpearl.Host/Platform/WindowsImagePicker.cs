@@ -71,6 +71,12 @@ public sealed class WindowsImagePicker : IFilePicker
         }
     }
 
+    public bool TryTakeClipboardImages(out IReadOnlyList<string> paths)
+    {
+        paths = ClipboardPictures.ExportOnSta();
+        return paths.Count > 0;
+    }
+
     internal void AcceptGlass(IReadOnlyList<string> files, string pickedFolder)
     {
         lock (gate)

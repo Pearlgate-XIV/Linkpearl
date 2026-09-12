@@ -34,9 +34,11 @@ internal sealed class LiveChatSurface
     private readonly IGifDesk gifs;
     private readonly ChatMarks marks;
     private readonly Action<string, string, string>? reportLine;
+    private readonly ILifestream? lifestream;
 
     public LiveChatSurface(ITalk talk, DisplayPreferences display, IChatBridge chat, Action<string, string> openTell,
-        IGifDesk gifs, ChatMarks marks, Action<string, string, string>? reportLine = null)
+        IGifDesk gifs, ChatMarks marks, Action<string, string, string>? reportLine = null,
+        ILifestream? lifestream = null)
     {
         this.talk = talk;
         this.display = display;
@@ -45,6 +47,7 @@ internal sealed class LiveChatSurface
         this.gifs = gifs;
         this.marks = marks;
         this.reportLine = reportLine;
+        this.lifestream = lifestream;
     }
 
     public bool HasMenu => menu is not null;
@@ -415,7 +418,7 @@ internal sealed class LiveChatSurface
         frame.Paint.PushClip(copy);
         try
         {
-            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, lineColor, lineColor with { W = 0.72f }, null, gifs,
+            ChatBits.Draw(frame, copy, line.Body ?? string.Empty, lineColor, lineColor with { W = 0.72f }, lifestream, gifs,
                 marks.Cite(key, TalkIds.Live, line.Body ?? string.Empty, line.Mine));
         }
         finally

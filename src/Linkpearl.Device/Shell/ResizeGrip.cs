@@ -18,49 +18,74 @@ public enum ResizeCorner : sbyte
 public sealed class ResizeGrip
 {
     private const float GripUnits = 28f;
+    private const float DragSlop = 8f;
 
     private bool dragging;
+    private bool committed;
     private ResizeCorner dragCorner = ResizeCorner.None;
     private float startStep;
     private float startDistance;
     private Vector2 anchor;
+    private Vector2 pressAt;
 
-    public bool IsDragging => dragging;
+    public bool IsDragging => dragging && committed;
 
     public bool JustReleased { get; private set; }
 
-    public ResizeCorner ActiveCorner => dragging ? dragCorner : ResizeCorner.None;
+    public ResizeCorner ActiveCorner => dragging && committed ? dragCorner : ResizeCorner.None;
 
     public Vector2 Anchor => anchor;
 
-    public ResizeCorner Update(Rect window, Rect shell, IInputProbe input, float scale, float caseRadius,
-        bool roundCorners, float minStep, float maxStep, ref float step)
+    public ResizeCorner Update(Rect window, Rect shell, Rect glass, IInputProbe input, float scale, float caseRadius,
+        bool roundCorners, float minStep, float maxStep, ref float step, bool canResize)
     {
         JustReleased = false;
+        if (!canResize)
+        {
+            Cancel();
+            return ResizeCorner.None;
+        }
+
         var pointer = input.Pointer;
-        var hovered = HitCorner(shell.IsEmpty ? window : shell, GripUnits * scale, caseRadius, roundCorners,
-            pointer);
+        var board = shell.IsEmpty ? window : shell;
+        var hovered = HitCorner(board, GripUnits * scale, caseRadius, roundCorners, pointer);
+        if (!dragging && OnGlass(glass, pointer))
+        {
+            hovered = ResizeCorner.None;
+        }
 
         if (dragging)
         {
             if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
             {
+                if (!committed)
+                {
+                    var travel = pointer - pressAt;
+                    if (travel.X * travel.X + travel.Y * travel.Y >= DragSlop * DragSlop)
+                    {
+                        committed = true;
+                        startDistance = MathF.Max(Vector2.Distance(pointer, anchor), 1f);
+                    }
+
+                    return dragCorner;
+                }
+
                 var distance = MathF.Max(Vector2.Distance(pointer, anchor), 1f);
                 step = Math.Clamp(startStep * (distance / startDistance), minStep, maxStep);
                 return dragCorner;
             }
 
-            JustReleased = true;
-            dragging = false;
-            dragCorner = ResizeCorner.None;
+            Release();
             return ResizeCorner.None;
         }
 
         if (hovered != ResizeCorner.None && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             dragging = true;
+            committed = false;
             dragCorner = hovered;
             startStep = step;
+            pressAt = pointer;
             anchor = Opposite(window, hovered);
             startDistance = MathF.Max(Vector2.Distance(pointer, anchor), 1f);
         }
@@ -68,10 +93,31 @@ public sealed class ResizeGrip
         return hovered;
     }
 
+    public void Cancel()
+    {
+        JustReleased = false;
+        dragging = false;
+        committed = false;
+        dragCorner = ResizeCorner.None;
+    }
+
+    private void Release()
+    {
+        JustReleased = committed;
+        dragging = false;
+        committed = false;
+        dragCorner = ResizeCorner.None;
+    }
+
     public static bool IsDiagonalNwse(ResizeCorner corner) => corner is ResizeCorner.TopLeft or ResizeCorner.BottomRight;
 
-    public static bool Hits(Rect window, float scale, float caseRadius, bool roundCorners, Vector2 cursor) =>
+    public static bool Hits(Rect window, Rect glass, float scale, float caseRadius, bool roundCorners,
+        Vector2 cursor) =>
+        !OnGlass(glass, cursor) &&
         HitCorner(window, GripUnits * scale, caseRadius, roundCorners, cursor) != ResizeCorner.None;
+
+    private static bool OnGlass(Rect glass, Vector2 cursor) =>
+        !glass.IsEmpty && glass.Contains(cursor);
 
     public static Vector2 Opposite(Rect window, ResizeCorner grabbed) => grabbed switch
     {

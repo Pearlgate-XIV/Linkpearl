@@ -131,6 +131,14 @@ public interface IFilePicker
 
     bool TryTakeImages(out IReadOnlyList<string> paths);
 
+    // Win+Shift+S and copied picture files. Writes a temp PNG when the clipboard
+    // holds a bitmap instead of a path.
+    bool TryTakeClipboardImages(out IReadOnlyList<string> paths)
+    {
+        paths = [];
+        return false;
+    }
+
     void BeginAttachPick() => BeginImagePick();
 
     void BeginAudioPick() => BeginAttachPick();

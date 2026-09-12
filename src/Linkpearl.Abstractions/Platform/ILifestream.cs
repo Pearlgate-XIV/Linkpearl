@@ -8,5 +8,7 @@ public interface ILifestream
 
     bool TryTeleport(uint aetheryteId);
 
+    bool TryGoPlace(string place);
+
     bool TryGoHome(string world, string district, int ward, int plot, int apartment, bool subdivision);
 }

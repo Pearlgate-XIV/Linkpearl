@@ -1714,7 +1714,7 @@ public sealed partial class VybeApplet
     {
         if (findDeck.Length == 0)
         {
-            findDeck = PeopleFindBook.Deck(paths);
+            findDeck = PeopleFindBook.LiveDeck(pearl.Current, state.Roster, game.Character.WorldName);
         }
 
         for (var index = 0; index < findDeck.Length; index++)

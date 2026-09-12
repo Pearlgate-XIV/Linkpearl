@@ -141,6 +141,8 @@ public sealed record PearlSnapshot
 
     public PearlPerson[] People { get; init; } = [];
 
+    public PearlPerson[] Directory { get; init; } = [];
+
     public PearlStory[] Stories { get; init; } = [];
 
     public PearlAnnouncement[] Announcements { get; init; } = [];

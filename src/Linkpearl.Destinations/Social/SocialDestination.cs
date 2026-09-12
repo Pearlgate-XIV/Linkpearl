@@ -40,6 +40,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     private float peopleScroll;
     private readonly IGameSession game;
     private readonly IFeedbackDesk desk;
+    private readonly ILifestream lifestream;
     private FriendMenu? menu;
     private bool reportOpen;
     private bool reportFresh;
@@ -51,7 +52,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
         ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks,
-        IFeedbackDesk desk)
+        IFeedbackDesk desk, ILifestream lifestream)
     {
         this.pearl = pearl;
         this.talk = talk;
@@ -59,8 +60,10 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         this.display = display;
         this.game = game;
         this.desk = desk;
+        this.lifestream = lifestream;
         friendsBook = new FriendBook(paths);
-        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks, desk);
+        messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks, desk,
+            lifestream);
         feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs, marks,
             (name, world, body) =>
             {
@@ -71,7 +74,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
                 reportName = name;
                 reportWorld = world;
                 reportId = FindGatePerson(name)?.Id ?? name;
-            });
+            }, lifestream);
     }
 
     public DestinationTab Tab => DestinationTab.Social;

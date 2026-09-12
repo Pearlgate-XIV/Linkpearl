@@ -1394,7 +1394,7 @@ internal sealed class VybeState
             return;
         }
 
-        if (snap.Busy && snap.People.Length == 0 && snap.Stories.Length == 0)
+        if (snap.Busy && snap.People.Length == 0 && snap.Stories.Length == 0 && snap.Directory.Length == 0)
         {
             return;
         }
@@ -1402,7 +1402,28 @@ internal sealed class VybeState
         Roster.Clear();
         LiveStories.Clear();
         var seen = new HashSet<int>();
-        foreach (var person in snap.People)
+        BindPeople(snap.People, seen);
+        BindPeople(snap.Directory, seen);
+
+        foreach (var story in snap.Stories)
+        {
+            var id = StableId(story.AuthorId);
+            LiveStories.Add(id);
+            if (seen.Contains(id))
+            {
+                continue;
+            }
+
+            seen.Add(id);
+            Roster.Add(new ScenePerson(id, story.AuthorId, story.AuthorName.Length > 0 ? story.AuthorName : "Someone",
+                "@story", string.Empty, story.Count + " in the tray", story.HasUnseen, 0, false, WashOf(id),
+                Array.Empty<string>(), Array.Empty<string>(), string.Empty));
+        }
+    }
+
+    private void BindPeople(PearlPerson[] people, HashSet<int> seen)
+    {
+        foreach (var person in people)
         {
             if (VybeChrome.IsLalafell(person.Race))
             {
@@ -1427,21 +1448,6 @@ internal sealed class VybeState
             {
                 Connected.Add(id);
             }
-        }
-
-        foreach (var story in snap.Stories)
-        {
-            var id = StableId(story.AuthorId);
-            LiveStories.Add(id);
-            if (seen.Contains(id))
-            {
-                continue;
-            }
-
-            seen.Add(id);
-            Roster.Add(new ScenePerson(id, story.AuthorId, story.AuthorName.Length > 0 ? story.AuthorName : "Someone",
-                "@story", string.Empty, story.Count + " in the tray", story.HasUnseen, 0, false, WashOf(id),
-                Array.Empty<string>(), Array.Empty<string>(), string.Empty));
         }
     }
 

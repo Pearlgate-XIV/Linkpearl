@@ -39,7 +39,7 @@ public sealed partial class VybeApplet
 
         if (picks.Count == 0)
         {
-            DrawPeopleEmpty(frame, PadX(stack.Take(frame.Units(120f)), chrome), find, night);
+            DrawPeopleEmpty(frame, PadX(stack.Take(frame.Units(120f)), chrome), find, night, findDeck.Length == 0);
             return;
         }
 
@@ -133,14 +133,20 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawPeopleEmpty(in AppletFrame frame, Rect area, PeopleFindState find, bool night)
+    private void DrawPeopleEmpty(in AppletFrame frame, Rect area, PeopleFindState find, bool night, bool noPeople)
     {
         VybeChrome.Plate(frame, area, frame.Units(16f), night);
         var inner = area.Inset(frame.Units(14f));
         VybeChrome.Title(frame, inner.TopSlice(frame.Units(24f)),
-            state.PeoplePlus ? "No VYBE+ people yet." : "No one matches those filters yet.", night);
+            noPeople
+                ? "No Pearlgate people yet."
+                : state.PeoplePlus
+                    ? "No VYBE+ people yet."
+                    : "No one matches those filters yet.", night);
         VybeChrome.Mute(frame, inner.Inset(new Edges(0f, frame.Units(28f), 0f, frame.Units(52f))),
-            "Open Filters to widen the search, or tap a chip above to drop it.", night);
+            noPeople
+                ? "People show up here after they sign in. Open VYBE again in a few seconds."
+                : "Open Filters to widen the search, or tap a chip above to drop it.", night);
         var row = inner.BottomSlice(frame.Units(40f));
         var left = row.LeftSlice(row.Width * 0.48f);
         var right = row.RightSlice(row.Width * 0.48f);

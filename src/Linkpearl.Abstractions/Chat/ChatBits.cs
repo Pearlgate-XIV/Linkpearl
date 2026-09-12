@@ -340,6 +340,7 @@ public static class ChatBits
         ILifestream? stream)
     {
         TryReadLoc(bit.Path.Length > 0 ? bit.Path : bit.Body, out var loc);
+        var place = ZoneHint(loc.Zone.Length > 0 ? loc.Zone : bit.Body);
         var gate = loc.Aetheryte;
         if (gate == 0 && stream is not null && loc.Territory != 0)
         {
@@ -351,15 +352,31 @@ public static class ChatBits
         frame.Text.DrawEllipsized(area.Inset(new Edges(0f, frame.Units(16f), 0f, frame.Units(22f))), bit.Body,
             new TextStyle(FontRole.Body, ink));
         var go = area.BottomSlice(frame.Units(20f)).RightSlice(frame.Units(72f));
-        var live = stream is { Ready: true } && gate != 0;
+        var live = stream is { Ready: true } && (gate != 0 || place.Length > 0);
         frame.Paint.Fill(go, live ? new Vector4(0.20f, 0.72f, 0.46f, 0.95f) : mute with { W = 0.22f },
             go.Height * 0.5f);
         frame.Text.DrawIn(go, "Teleport",
             new TextStyle(FontRole.CaptionStrong, live ? Vector4.One : mute, TextAlign.Center));
-        if (stream is { Ready: true } && gate != 0 && frame.Input.ConsumeClick(go))
+        if (live && frame.Input.ConsumeClick(go.Expand(frame.Units(4f))))
         {
-            stream.TryTeleport(gate);
+            if (gate == 0 || !stream!.TryTeleport(gate))
+            {
+                stream!.TryGoPlace(place);
+            }
         }
+    }
+
+    public static string ZoneHint(string zone)
+    {
+        var text = (zone ?? string.Empty).Trim();
+        var cut = text.IndexOf('·');
+        if (cut >= 0)
+        {
+            return text[..cut].Trim();
+        }
+
+        cut = text.IndexOf(" - ", StringComparison.Ordinal);
+        return cut < 0 ? text : text[..cut].Trim();
     }
 
     public static string PlaceLabel(string body)

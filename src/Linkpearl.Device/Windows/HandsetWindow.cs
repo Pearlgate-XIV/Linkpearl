@@ -195,13 +195,10 @@ public sealed class HandsetWindow : Window
         {
             ApplyWindowPos();
         }
-        var roundCorners = shapePreference.Case == HandsetCase.Android;
         var pointer = ImGui.GetMousePos();
-        var overCorner = lastShell.Width > 16f &&
-            ResizeGrip.Hits(lastShell, lastGripScale, lastOuterRadius, roundCorners, pointer);
         var overScreen = lastScreen.Width > 16f && lastScreen.Contains(pointer);
         Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
-            (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner ||
+            (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging ||
                 shell.HoldsWindow || holdSide || overScreen
                 ? ImGuiWindowFlags.NoMove
                 : 0);
@@ -362,6 +359,7 @@ public sealed class HandsetWindow : Window
         var clipped = false;
         var woke = false;
         var pocketNow = false;
+        var asleepNow = asleep;
         try
         {
             paint.PushClip(screen);
@@ -525,32 +523,6 @@ public sealed class HandsetWindow : Window
             {
                 return;
             }
-
-            var caseRadius = lastOuterRadius;
-            var step = shapePreference.ScaleStep;
-            var roundCorners = shapePreference.Case == HandsetCase.Android;
-            var hoveredCorner = resizeGrip.Update(windowRect, lastShell, input, gripScale, caseRadius, roundCorners,
-                HandsetSizeCatalog.FloorScale, HandsetSizeCatalog.FreeCeiling, ref step);
-            if (resizeGrip.IsDragging)
-            {
-                step = HandsetSizeCatalog.ClampFree(step, MaxScaleOnScreen(resizeGrip.ActiveCorner));
-                shapePreference.ScaleStep = step;
-            }
-
-            if (resizeGrip.JustReleased)
-            {
-                persistShape();
-                CaptureOpenFromWindow();
-                savePlacement = true;
-            }
-
-            DrawResizeSliders(paint, lastShell, hoveredCorner, gripScale, caseRadius, roundCorners);
-            if (hoveredCorner != ResizeCorner.None)
-            {
-                ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hoveredCorner)
-                    ? ImGuiMouseCursor.ResizeNwse
-                    : ImGuiMouseCursor.ResizeNesw);
-            }
         }
         finally
         {
@@ -558,6 +530,45 @@ public sealed class HandsetWindow : Window
             {
                 paint.PopClip();
             }
+
+            TickResize(paint, windowRect, input, gripScale, asleepNow);
+        }
+    }
+
+    private void TickResize(DalamudPaintSurface paint, Rect windowRect, IInputProbe input, float gripScale,
+        bool asleep)
+    {
+        if (asleep || fold > 0.02f)
+        {
+            resizeGrip.Cancel();
+            return;
+        }
+
+        var caseRadius = lastOuterRadius;
+        var roundCorners = shapePreference.Case == HandsetCase.Android;
+        var step = shapePreference.ScaleStep;
+        var hovered = resizeGrip.Update(windowRect, lastShell, lastScreen, input, gripScale, caseRadius, roundCorners,
+            HandsetSizeCatalog.FloorScale, HandsetSizeCatalog.FreeCeiling, ref step,
+            shapePreference.PositionLocked);
+        if (resizeGrip.IsDragging)
+        {
+            step = HandsetSizeCatalog.ClampFree(step, MaxScaleOnScreen(resizeGrip.ActiveCorner));
+            shapePreference.ScaleStep = step;
+        }
+
+        if (resizeGrip.JustReleased)
+        {
+            persistShape();
+            CaptureOpenFromWindow();
+            savePlacement = true;
+        }
+
+        DrawResizeSliders(paint, lastShell, hovered, gripScale, caseRadius, roundCorners);
+        if (hovered != ResizeCorner.None && shapePreference.PositionLocked)
+        {
+            ImGui.SetMouseCursor(ResizeGrip.IsDiagonalNwse(hovered)
+                ? ImGuiMouseCursor.ResizeNwse
+                : ImGuiMouseCursor.ResizeNesw);
         }
     }
 

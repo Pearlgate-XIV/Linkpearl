@@ -80,12 +80,18 @@ public sealed partial class CameraApplet
 
             if (frame.Input.ConsumeClick(upload))
             {
-                BeginUpload();
+                uploadSheet = true;
+                uploadNote = string.Empty;
                 return;
             }
         }
 
         var body = frame.Content.Inset(new Edges(frame.Units(8f), frame.Units(40f), frame.Units(8f), frame.Units(8f)));
+        if (uploadSheet)
+        {
+            DrawUploadSource(frame, body);
+            return;
+        }
         if (confirmDropFolder)
         {
             DrawConfirm(frame, body, "Remove this album? Photos stay in Gallery by date.", () =>
@@ -179,6 +185,11 @@ public sealed partial class CameraApplet
         }
 
         uploadWait = false;
+        PlaceUploads(picked);
+    }
+
+    private void PlaceUploads(IReadOnlyList<string> picked)
+    {
         if (picked.Count == 0)
         {
             return;
@@ -186,10 +197,87 @@ public sealed partial class CameraApplet
 
         var folder = place.StartsWith("f:", StringComparison.Ordinal) ? place[2..] : string.Empty;
         library.Import(picked, clock.Now, folder);
+        DropClipTemps(picked);
         RebuildAlbums();
         scroll = 0f;
         pane = Pane.Gallery;
         mode = Mode.Page;
+        uploadSheet = false;
+        uploadNote = string.Empty;
+    }
+
+    private static void DropClipTemps(IReadOnlyList<string> picked)
+    {
+        var temp = Path.GetTempPath();
+        for (var index = 0; index < picked.Count; index++)
+        {
+            var path = picked[index];
+            var name = Path.GetFileName(path);
+            if (!name.StartsWith("lp-clip-", StringComparison.OrdinalIgnoreCase)
+                || !path.StartsWith(temp, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private void DrawUploadSource(in AppletFrame frame, Rect area)
+    {
+        var stack = new Stack(area.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(10f));
+        frame.Text.DrawWrapped(stack.Take(frame.Units(52f)),
+            "Upload a Win+Shift+S screenshot from the clipboard, or pick files.",
+            new TextStyle(FontRole.Body, PhotosChrome.Ink, TextAlign.Center));
+        if (uploadNote.Length > 0)
+        {
+            frame.Text.DrawWrapped(stack.Take(frame.Units(36f)), uploadNote,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.Negative, TextAlign.Center));
+        }
+
+        var clip = stack.Take(frame.Units(36f));
+        var fromFiles = stack.Take(frame.Units(36f));
+        var cancel = stack.Take(frame.Units(36f));
+        ActionChip(frame, clip, "Clipboard");
+        ActionChip(frame, fromFiles, "Files");
+        ActionChip(frame, cancel, "Cancel");
+        if (frame.Input.ConsumeClick(clip))
+        {
+            if (!files.TryTakeClipboardImages(out var clips) || clips.Count == 0)
+            {
+                uploadNote = "No picture on the clipboard. Take a Win+Shift+S screenshot, then tap Clipboard.";
+                return;
+            }
+
+            PlaceUploads(clips);
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(fromFiles))
+        {
+            uploadSheet = false;
+            uploadNote = string.Empty;
+            BeginUpload();
+            return;
+        }
+
+        if (frame.Input.ConsumeClick(cancel))
+        {
+            uploadSheet = false;
+            uploadNote = string.Empty;
+        }
     }
 
     private float DrawRoot(in AppletFrame frame, Rect viewport)
@@ -256,7 +344,7 @@ public sealed partial class CameraApplet
         {
             var copyW = MathF.Max(8f, viewport.Width - frame.Units(16f));
             const string hint =
-                "Tap Upload to pick pictures, then crop before they land here. Link a GPose folder so Upload opens there.";
+                "Tap Upload to paste a Win+Shift+S screenshot or pick pictures. Link a GPose folder so Files opens there.";
             var hintH = MathF.Max(frame.Units(32f),
                 frame.Text.MeasureWrapped(hint, FontRole.Caption, copyW).Y + frame.Units(4f));
             var title = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
