@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cut a Dalamud drop and attach it to the GitHub `dev` release.
-# Testers add: https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json
+# Testers add: https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -104,7 +104,7 @@ listing = [
         "DalamudApiLevel": 15,
         "LoadPriority": 0,
         "DownloadLinkInstall": zip_url,
-        "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/main/src/Linkpearl.Host/Icons/glyphs/phone.png",
+        "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/src/Linkpearl.Host/Icons/glyphs/phone.png",
         "IsHide": False,
         "IsTestingExclusive": False,
         "DownloadLinkTesting": zip_url,
@@ -124,6 +124,7 @@ gh release upload dev "$zip_path" --clobber
 gh release delete-asset dev Linkpearl.zip --yes 2>/dev/null || true
 cp "$root/linkpearl.json" "$stage/pluginmaster.json"
 gh release upload dev "$root/linkpearl.json" "$stage/pluginmaster.json" --clobber
-gh release edit dev --notes "Current Linkpearl. Add https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json as a Dalamud custom repository."
+gh release edit dev --notes "Current Linkpearl. Add https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json as a Dalamud custom repository."
 echo "version $version"
-echo "repo https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json"
+echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
+git -C "$root" push origin HEAD:master
