@@ -115,10 +115,14 @@ listing = [
 Path(repo).write_text(json.dumps(listing, indent=2) + "\n")
 PY
 
-# Official Dalamud already owns InternalName "Linkpearl". Never leave that zip/listing on the VPS.
+# Official Dalamud already owns InternalName "Linkpearl". Never leave that zip/listing on the VPS or GitHub.
 scp -q "$root/linkpearl.json" "$host:$remote/pluginmaster.json"
 ssh -o BatchMode=yes "$host" "rm -f '$remote/Linkpearl.zip'; chmod 644 '$remote/pluginmaster.json'"
 
 gh release upload dev "$zip_path" --clobber
+gh release delete-asset dev Linkpearl.zip --yes 2>/dev/null || true
+cp "$root/linkpearl.json" "$stage/pluginmaster.json"
+gh release upload dev "$root/linkpearl.json" "$stage/pluginmaster.json" --clobber
+gh release edit dev --notes "Current Linkpearl (LinkpearlDev). Add https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json as a Dalamud custom repository."
 echo "version $version"
 echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
