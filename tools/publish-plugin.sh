@@ -69,7 +69,9 @@ with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compressle
 print("zip", zip_path, zip_path.stat().st_size)
 PY
 
-zip_url="https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/Linkpearl.zip"
+# Official Dalamud already ships InternalName "Linkpearl" (NotNite). Third-party
+# repos cannot reuse that id — Dalamud drops the listing. Testers get LinkpearlDev.
+zip_url="https://github.com/Pearlgate-XIV/Linkpearl/releases/download/dev/LinkpearlDev.zip"
 now="$(date +%s)"
 python3 - "$root/linkpearl.json" "$version" "$zip_url" "$now" <<'PY'
 import json, sys
@@ -80,19 +82,22 @@ listing = [
     {
         "Author": "Pearlgate",
         "Name": "Linkpearl",
-        "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
         "Punchline": "A pearl in your pocket.",
-        "InternalName": "Linkpearl",
+        "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
+        "InternalName": "LinkpearlDev",
         "AssemblyVersion": version,
         "RepoUrl": "https://github.com/Pearlgate-XIV/Linkpearl",
         "ApplicableVersion": "any",
+        "Tags": ["phone", "chat", "social"],
         "DalamudApiLevel": 15,
+        "LoadPriority": 0,
+        "DownloadLinkInstall": zip_url,
         "IsHide": False,
         "IsTestingExclusive": False,
-        "DownloadLinkInstall": zip_url,
-        "DownloadLinkUpdate": zip_url,
         "DownloadLinkTesting": zip_url,
-        "LastUpdate": now,
+        "DownloadLinkUpdate": zip_url,
+        "DownloadCount": 0,
+        "LastUpdate": str(now),
     }
 ]
 Path(repo).write_text(json.dumps(listing, indent=2) + "\n")
