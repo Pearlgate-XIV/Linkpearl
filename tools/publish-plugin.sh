@@ -115,6 +115,10 @@ listing = [
 Path(repo).write_text(json.dumps(listing, indent=2) + "\n")
 PY
 
+# Official Dalamud already owns InternalName "Linkpearl". Never leave that zip/listing on the VPS.
+scp -q "$root/linkpearl.json" "$host:$remote/pluginmaster.json"
+ssh -o BatchMode=yes "$host" "rm -f '$remote/Linkpearl.zip'; chmod 644 '$remote/pluginmaster.json'"
+
 gh release upload dev "$zip_path" --clobber
 echo "version $version"
 echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
