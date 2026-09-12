@@ -17,9 +17,104 @@ public readonly struct GalleryShot
 
 public static class GalleryFiles
 {
-    public static IReadOnlyList<GalleryShot> List(HostPaths paths)
+    public static string DefaultRoot(HostPaths paths)
     {
         var root = paths.State("photos");
+        Directory.CreateDirectory(root);
+        return Path.GetFullPath(root);
+    }
+
+    public static string Root(HostPaths paths)
+    {
+        var preferred = string.Empty;
+        var pointer = PointerFile(paths);
+        try
+        {
+            if (File.Exists(pointer))
+            {
+                preferred = File.ReadAllText(pointer).Trim();
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return Resolve(paths, preferred);
+    }
+
+    public static string Resolve(HostPaths paths, string preferred)
+    {
+        var custom = preferred.Trim();
+        if (custom.Length > 0)
+        {
+            try
+            {
+                Directory.CreateDirectory(custom);
+                if (Directory.Exists(custom))
+                {
+                    return Path.GetFullPath(custom);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        return DefaultRoot(paths);
+    }
+
+    public static void Remember(HostPaths paths, string folder)
+    {
+        var fallback = DefaultRoot(paths);
+        var pointer = PointerFile(paths);
+        var custom = folder.Trim();
+        if (custom.Length == 0 ||
+            string.Equals(Path.GetFullPath(custom), fallback, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (File.Exists(pointer))
+                {
+                    File.Delete(pointer);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(pointer, Path.GetFullPath(custom));
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    public static bool UsesDefault(HostPaths paths) =>
+        string.Equals(Root(paths), DefaultRoot(paths), StringComparison.OrdinalIgnoreCase);
+
+    private static string PointerFile(HostPaths paths) =>
+        Path.Combine(DefaultRoot(paths), "store.path");
+
+    public static IReadOnlyList<GalleryShot> List(HostPaths paths)
+    {
+        var root = Root(paths);
         var catalog = Path.Combine(root, "library.json");
         if (!File.Exists(catalog))
         {

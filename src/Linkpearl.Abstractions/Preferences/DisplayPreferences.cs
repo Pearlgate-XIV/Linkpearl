@@ -53,6 +53,7 @@ public sealed class DisplayPreferences
     private bool showMarks = true;
     private int extraHomeScreens;
     private bool reduceMotion;
+    private string photosFolder = string.Empty;
     private bool quiet;
     private bool quietWhenBusy;
     private bool wakeInPocket;
@@ -907,6 +908,12 @@ public sealed class DisplayPreferences
     {
         get => reduceMotion;
         set => Set(ref reduceMotion, value);
+    }
+
+    public string PhotosFolder
+    {
+        get => photosFolder;
+        set => Set(ref photosFolder, value?.Trim() ?? string.Empty);
     }
 
     public bool Quiet

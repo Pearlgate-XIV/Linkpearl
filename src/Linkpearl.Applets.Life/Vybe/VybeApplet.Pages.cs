@@ -2490,7 +2490,7 @@ public sealed partial class VybeApplet
             return library.GposeFolder;
         }
 
-        return paths.State("photos");
+        return GalleryFiles.Root(paths);
     }
 
     private void DrawTalkAlbum(in AppletFrame frame, Rect area, Action<string> sendBit)

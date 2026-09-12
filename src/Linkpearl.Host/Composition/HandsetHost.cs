@@ -80,7 +80,8 @@ public sealed class HandsetHost : IDisposable
     public HandsetHost(IDalamudPluginInterface pluginInterface, IFramework framework, IClientState clientState,
         IObjectTable objectTable, ICondition condition, IDutyState dutyState, IPluginLog pluginLog,
         ITextureProvider textureProvider, IDataManager dataManager, IChatGui chatGui, IPartyList partyList,
-        IKeyState keys, ICommandManager commands, ITargetManager targets, IGameConfig gameConfig)
+        IKeyState keys, ICommandManager commands, ITargetManager targets, IGameConfig gameConfig,
+        IAetheryteList aetherytes)
     {
         this.pluginInterface = pluginInterface;
         this.framework = framework;
@@ -109,7 +110,7 @@ public sealed class HandsetHost : IDisposable
         session = new FfxivGameSession(clientState, objectTable, condition, dutyState, partyList, framework, dataManager,
             jobs);
         services.AddSingleton<IGameSession>(session);
-        services.AddSingleton<ILifestream>(new FfxivLifestream(pluginInterface, dataManager));
+        services.AddSingleton<ILifestream>(new FfxivLifestream(pluginInterface, dataManager, aetherytes));
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
         services.AddSingleton<ISkyDesk>(new FfxivSkyDesk(pluginInterface, dataManager, session, clock, clock));
         services.AddSingleton(new ChatMarks(paths));
@@ -130,6 +131,7 @@ public sealed class HandsetHost : IDisposable
 
         var preferences = new DisplayPreferences();
         LoadDisplay(preferences);
+        GalleryFiles.Remember(paths, preferences.PhotosFolder);
         preferences.Changed += RememberDisplay;
         display = preferences;
         services.AddSingleton(preferences);
@@ -472,6 +474,7 @@ public sealed class HandsetHost : IDisposable
         preferences.FeedShowParty = config.FeedShowParty;
         preferences.ExtraHomeScreens = config.ExtraHomeScreens;
         preferences.ReduceMotion = config.ReduceMotion;
+        preferences.PhotosFolder = config.PhotosFolder ?? string.Empty;
         preferences.Quiet = config.Quiet;
         preferences.QuietWhenBusy = config.QuietWhenBusy;
         preferences.WakeInPocket = config.WakeInPocket;
@@ -548,6 +551,7 @@ public sealed class HandsetHost : IDisposable
         config.FeedShowParty = display.FeedShowParty;
         config.ExtraHomeScreens = display.ExtraHomeScreens;
         config.ReduceMotion = display.ReduceMotion;
+        config.PhotosFolder = display.PhotosFolder;
         config.Quiet = display.Quiet;
         config.QuietWhenBusy = display.QuietWhenBusy;
         config.WakeInPocket = display.WakeInPocket;
@@ -693,6 +697,7 @@ public sealed class HandsetHost : IDisposable
         config.FeedShowParty = stock.FeedShowParty;
         config.ExtraHomeScreens = stock.ExtraHomeScreens;
         config.ReduceMotion = stock.ReduceMotion;
+        config.PhotosFolder = stock.PhotosFolder;
         config.Quiet = stock.Quiet;
         config.QuietWhenBusy = stock.QuietWhenBusy;
         config.WakeInPocket = stock.WakeInPocket;

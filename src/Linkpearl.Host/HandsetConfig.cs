@@ -154,6 +154,8 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public bool ReduceMotion { get; set; }
 
+    public string PhotosFolder { get; set; } = string.Empty;
+
     public bool Quiet { get; set; }
 
     public bool QuietWhenBusy { get; set; }

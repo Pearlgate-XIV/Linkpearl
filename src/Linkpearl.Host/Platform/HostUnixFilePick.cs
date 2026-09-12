@@ -14,7 +14,7 @@ internal static class HostUnixFilePick
         files = [];
         pickedFolder = string.Empty;
         var start = PreferredUnixStart(wineStart);
-        var title = folder ? "Link GPose folder" : attach ? "Attach files" : "Upload pictures";
+        var title = folder ? "Choose folder" : attach ? "Attach files" : "Upload pictures";
         var kdialog = FirstTool(
             "/usr/bin/kdialog",
             "/usr/local/bin/kdialog",

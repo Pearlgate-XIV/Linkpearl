@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Linkpearl.Media;
 using Linkpearl.Modules;
 
 namespace Linkpearl.Applets.Life.Camera;
@@ -31,8 +32,8 @@ internal sealed class PhotoLibrary
         ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif",
     };
 
-    private readonly string root;
-    private readonly string catalog;
+    private string root;
+    private string catalog;
     private readonly List<PhotoShot> shots = new();
     private readonly List<PhotoFolder> folders = new();
 
@@ -42,6 +43,8 @@ internal sealed class PhotoLibrary
         this.catalog = catalog;
     }
 
+    public string Root => root;
+
     public IReadOnlyList<PhotoShot> Shots => shots;
 
     public IReadOnlyList<PhotoFolder> Folders => folders;
@@ -50,82 +53,82 @@ internal sealed class PhotoLibrary
 
     public static PhotoLibrary Load(HostPaths paths)
     {
-        var root = paths.State("photos");
+        var root = GalleryFiles.Root(paths);
         var catalog = Path.Combine(root, "library.json");
         var library = new PhotoLibrary(root, catalog);
         Directory.CreateDirectory(root);
-        if (!File.Exists(catalog))
+        library.ReadCatalog();
+        return library;
+    }
+
+    public bool Relocate(string nextRoot)
+    {
+        var dest = nextRoot.Trim();
+        if (dest.Length == 0)
         {
-            return library;
+            return false;
         }
 
         try
         {
-            var dto = JsonSerializer.Deserialize<PhotoSave>(File.ReadAllText(catalog));
-            if (dto is null)
-            {
-                return library;
-            }
-
-            if (dto.Folders is not null)
-            {
-                for (var index = 0; index < dto.Folders.Length; index++)
-                {
-                    var row = dto.Folders[index];
-                    if (row is null || string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.Title))
-                    {
-                        continue;
-                    }
-
-                    library.folders.Add(new PhotoFolder { Id = row.Id, Title = row.Title.Trim() });
-                }
-            }
-
-            library.GposeFolder = (dto.GposeFolder ?? string.Empty).Trim();
-
-            if (dto.Photos is null)
-            {
-                return library;
-            }
-
-            for (var index = 0; index < dto.Photos.Length; index++)
-            {
-                var row = dto.Photos[index];
-                if (row is null || string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.Relative))
-                {
-                    continue;
-                }
-
-                var absolute = Path.Combine(root, row.Relative.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(absolute))
-                {
-                    continue;
-                }
-
-                var folder = row.Folder ?? string.Empty;
-                if (folder.Length > 0 && !library.HasFolder(folder))
-                {
-                    folder = string.Empty;
-                }
-
-                library.shots.Add(new PhotoShot
-                {
-                    Id = row.Id,
-                    Album = row.Album ?? Path.GetDirectoryName(row.Relative)?.Replace('\\', '/') ?? string.Empty,
-                    Folder = folder,
-                    Relative = row.Relative.Replace('\\', '/'),
-                    Title = row.Title ?? Path.GetFileName(row.Relative),
-                });
-            }
-        }
-        catch (JsonException)
-        {
+            Directory.CreateDirectory(dest);
+            dest = Path.GetFullPath(dest);
         }
         catch (IOException)
         {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
 
-        return library;
+        if (!Directory.Exists(dest))
+        {
+            return false;
+        }
+
+        if (string.Equals(Path.GetFullPath(root), dest, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var destCatalog = Path.Combine(dest, "library.json");
+        if (File.Exists(destCatalog))
+        {
+            root = dest;
+            catalog = destCatalog;
+            ReadCatalog();
+            return true;
+        }
+
+        for (var index = 0; index < shots.Count; index++)
+        {
+            var source = Absolute(shots[index]);
+            var relative = shots[index].Relative.Replace('/', Path.DirectorySeparatorChar);
+            var copy = Path.Combine(dest, relative);
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(copy) ?? dest);
+                if (File.Exists(source) && !File.Exists(copy))
+                {
+                    File.Copy(source, copy, overwrite: false);
+                }
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        root = dest;
+        catalog = destCatalog;
+        Save();
+        return true;
     }
 
     public string Absolute(PhotoShot shot) =>
@@ -545,6 +548,82 @@ internal sealed class PhotoLibrary
     }
 
     public static bool IsPicture(string path) => ImageKinds.Contains(Path.GetExtension(path));
+
+    private void ReadCatalog()
+    {
+        shots.Clear();
+        folders.Clear();
+        GposeFolder = string.Empty;
+        if (!File.Exists(catalog))
+        {
+            return;
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<PhotoSave>(File.ReadAllText(catalog));
+            if (dto is null)
+            {
+                return;
+            }
+
+            if (dto.Folders is not null)
+            {
+                for (var index = 0; index < dto.Folders.Length; index++)
+                {
+                    var row = dto.Folders[index];
+                    if (row is null || string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.Title))
+                    {
+                        continue;
+                    }
+
+                    folders.Add(new PhotoFolder { Id = row.Id, Title = row.Title.Trim() });
+                }
+            }
+
+            GposeFolder = (dto.GposeFolder ?? string.Empty).Trim();
+            if (dto.Photos is null)
+            {
+                return;
+            }
+
+            for (var index = 0; index < dto.Photos.Length; index++)
+            {
+                var row = dto.Photos[index];
+                if (row is null || string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.Relative))
+                {
+                    continue;
+                }
+
+                var absolute = Path.Combine(root, row.Relative.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(absolute))
+                {
+                    continue;
+                }
+
+                var folder = row.Folder ?? string.Empty;
+                if (folder.Length > 0 && !HasFolder(folder))
+                {
+                    folder = string.Empty;
+                }
+
+                shots.Add(new PhotoShot
+                {
+                    Id = row.Id,
+                    Album = row.Album ?? Path.GetDirectoryName(row.Relative)?.Replace('\\', '/') ?? string.Empty,
+                    Folder = folder,
+                    Relative = row.Relative.Replace('\\', '/'),
+                    Title = row.Title ?? Path.GetFileName(row.Relative),
+                });
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+    }
 
     private bool HasFolder(string id)
     {

@@ -352,17 +352,14 @@ public static class ChatBits
         frame.Text.DrawEllipsized(area.Inset(new Edges(0f, frame.Units(16f), 0f, frame.Units(22f))), bit.Body,
             new TextStyle(FontRole.Body, ink));
         var go = area.BottomSlice(frame.Units(20f)).RightSlice(frame.Units(72f));
-        var live = stream is { Ready: true } && (gate != 0 || place.Length > 0);
+        var live = stream is { Ready: true } && (gate != 0 || loc.Territory != 0 || place.Length > 0);
         frame.Paint.Fill(go, live ? new Vector4(0.20f, 0.72f, 0.46f, 0.95f) : mute with { W = 0.22f },
             go.Height * 0.5f);
         frame.Text.DrawIn(go, "Teleport",
             new TextStyle(FontRole.CaptionStrong, live ? Vector4.One : mute, TextAlign.Center));
-        if (live && frame.Input.ConsumeClick(go.Expand(frame.Units(4f))))
+        if (live && (frame.Input.ConsumeClick(area) || frame.Input.ConsumeClick(go.Expand(frame.Units(6f)))))
         {
-            if (gate == 0 || !stream!.TryTeleport(gate))
-            {
-                stream!.TryGoPlace(place);
-            }
+            stream!.TryGo(gate, loc.Territory, place);
         }
     }
 

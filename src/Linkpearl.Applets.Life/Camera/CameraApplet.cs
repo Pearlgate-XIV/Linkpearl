@@ -61,6 +61,7 @@ public sealed partial class CameraApplet : IApplet
     private bool uploadSheet;
     private string uploadNote = string.Empty;
     private bool gposeWait;
+    private bool storeWait;
 
     public CameraApplet(IClock clock, IGameSession game, HostPaths paths, ITextureSource textures, IFilePicker files,
         DisplayPreferences display)
@@ -178,6 +179,7 @@ public sealed partial class CameraApplet : IApplet
     {
         FinishUpload();
         FinishGposeLink();
+        FinishStorage();
         if (mode == Mode.Crop)
         {
             DrawCrop(frame);

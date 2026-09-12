@@ -57,12 +57,16 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService]
     private static IGameConfig GameConfig { get; set; } = null!;
 
+    [PluginService]
+    private static IAetheryteList AetheryteList { get; set; } = null!;
+
     private readonly HandsetHost host;
 
     public Plugin()
     {
         host = new HandsetHost(PluginInterface, Framework, ClientState, ObjectTable, Condition, DutyState, Log,
-            TextureProvider, DataManager, ChatGui, PartyList, KeyState, Commands, TargetManager, GameConfig);
+            TextureProvider, DataManager, ChatGui, PartyList, KeyState, Commands, TargetManager, GameConfig,
+            AetheryteList);
         BindOpenCommands();
     }
 

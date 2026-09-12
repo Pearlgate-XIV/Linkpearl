@@ -161,6 +161,49 @@ public sealed partial class CameraApplet
         gposeWait = true;
     }
 
+    private void BeginStoragePick()
+    {
+        files.BeginFolderPickFrom(library.Root);
+        storeWait = true;
+    }
+
+    private void FinishStorage()
+    {
+        if (!storeWait || !files.TryTakeFolder(out var folder))
+        {
+            return;
+        }
+
+        storeWait = false;
+        if (folder.Length == 0 || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        ApplyStorage(folder);
+    }
+
+    private void ResetStorage()
+    {
+        ApplyStorage(GalleryFiles.DefaultRoot(paths));
+    }
+
+    private void ApplyStorage(string folder)
+    {
+        if (!library.Relocate(folder))
+        {
+            return;
+        }
+
+        var fallback = GalleryFiles.DefaultRoot(paths);
+        var custom = string.Equals(library.Root, fallback, StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : library.Root;
+        display.PhotosFolder = custom;
+        GalleryFiles.Remember(paths, custom);
+        RebuildAlbums();
+    }
+
     private void FinishGposeLink()
     {
         if (!gposeWait || !files.TryTakeFolder(out var folder))
@@ -304,6 +347,15 @@ public sealed partial class CameraApplet
 
         cursor += frame.Units(44f);
         total += frame.Units(44f);
+        var store = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
+            new Vector2(viewport.Width, frame.Units(52f)));
+        if (store.Overlaps(viewport))
+        {
+            DrawStorageRow(frame, store);
+        }
+
+        cursor += frame.Units(60f);
+        total += frame.Units(60f);
         var gpose = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
             new Vector2(viewport.Width, frame.Units(52f)));
         if (gpose.Overlaps(viewport))
@@ -344,7 +396,7 @@ public sealed partial class CameraApplet
         {
             var copyW = MathF.Max(8f, viewport.Width - frame.Units(16f));
             const string hint =
-                "Tap Upload to paste a Win+Shift+S screenshot or pick pictures. Link a GPose folder so Files opens there.";
+                "Tap Upload to paste a Win+Shift+S screenshot or pick pictures. Change photo storage or link a GPose folder below.";
             var hintH = MathF.Max(frame.Units(32f),
                 frame.Text.MeasureWrapped(hint, FontRole.Caption, copyW).Y + frame.Units(4f));
             var title = Rect.FromSize(new Vector2(viewport.Min.X, cursor),
@@ -446,6 +498,38 @@ public sealed partial class CameraApplet
         var block = rowsNeeded * (cell + gap) - gap + frame.Units(12f);
         cursor += block;
         return block;
+    }
+
+    private void DrawStorageRow(in AppletFrame frame, Rect row)
+    {
+        frame.Paint.Fill(row, PhotosChrome.Tile, frame.Units(12f));
+        var custom = !string.Equals(library.Root, GalleryFiles.DefaultRoot(paths),
+            StringComparison.OrdinalIgnoreCase);
+        var reset = custom
+            ? row.RightSlice(frame.Units(64f)).Inset(new Edges(0f, frame.Units(12f), frame.Units(10f),
+                frame.Units(12f)))
+            : Rect.FromSize(row.Max, Vector2.Zero);
+        var text = row.Inset(new Edges(frame.Units(12f), frame.Units(8f),
+            custom ? frame.Units(76f) : frame.Units(12f), frame.Units(8f)));
+        frame.Text.DrawIn(text.TopSlice(frame.Units(18f)), "Photo storage",
+            new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink));
+        frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(16f)),
+            custom ? library.Root : "Phone folder (default). Tap to choose another.",
+            new TextStyle(FontRole.Caption, PhotosChrome.Mute));
+        if (custom)
+        {
+            ActionChip(frame, reset, "Reset");
+            if (frame.Input.ConsumeClick(reset))
+            {
+                ResetStorage();
+                return;
+            }
+        }
+
+        if (frame.Input.ConsumeClick(row))
+        {
+            BeginStoragePick();
+        }
     }
 
     private void DrawGposeRow(in AppletFrame frame, Rect row)
