@@ -15,7 +15,6 @@ internal static class StaffNoticeSheet
             return false;
         }
 
-        frame.Input.Claim(glass);
         frame.Paint.Fill(glass, new Vector4(0.04f, 0.05f, 0.07f, 0.94f));
         var card = glass.Inset(new Edges(frame.Units(18f), frame.Units(52f), frame.Units(18f), frame.Units(28f)));
         var kind = snap.Banned ? "ban" : pending?.Kind ?? "message";
@@ -46,6 +45,7 @@ internal static class StaffNoticeSheet
             var lockLine = inner.BottomSlice(frame.Units(36f));
             frame.Text.DrawIn(lockLine, "This handset stays locked until staff restore it.",
                 new TextStyle(FontRole.Caption, ink, TextAlign.Center));
+            frame.Input.Claim(glass);
             return true;
         }
 
@@ -56,6 +56,7 @@ internal static class StaffNoticeSheet
             pearl.MarkStaffNotice(open.Id);
         }
 
+        frame.Input.Claim(glass);
         return true;
     }
 

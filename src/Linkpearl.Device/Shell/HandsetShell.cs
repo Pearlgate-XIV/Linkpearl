@@ -118,11 +118,6 @@ public sealed class HandsetShell
 
     public bool DrawMinimized(in AppletFrame frame, Rect screen, PocketUnlock unlock, bool allowSlide)
     {
-        if (StaffNoticeSheet.Draw(frame, screen, pearl.Current, pearl))
-        {
-            return false;
-        }
-
         var tray = notices.Visible(pearl.Current, talk, clock);
         var mark = tray.Count > 0 ? NoticeMarks.For(tray[0].Kind) : "pearlchat";
         return MinimizedFace.Draw(frame, screen, unlock, allowSlide, HandsetClockText.Format(clock, preferences),

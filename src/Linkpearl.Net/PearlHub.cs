@@ -203,6 +203,27 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         lock (gate)
         {
             staffReads.Enqueue(noticeId);
+            var notices = snapshot.StaffNotices;
+            var next = new PearlStaffNotice[notices.Length];
+            var changed = false;
+            for (var index = 0; index < notices.Length; index++)
+            {
+                var row = notices[index];
+                if (!changed && string.Equals(row.Id, noticeId, StringComparison.Ordinal) && !row.Read)
+                {
+                    next[index] = row with { Read = true };
+                    changed = true;
+                }
+                else
+                {
+                    next[index] = row;
+                }
+            }
+
+            if (changed)
+            {
+                snapshot = snapshot with { StaffNotices = next, Generation = NextGeneration() };
+            }
         }
     }
 
