@@ -307,7 +307,7 @@ internal sealed class VybeFace
         state.Discoverable = Discoverable;
         state.PlusAgreed = PlusAgreed;
         state.Consented = PlusAgreed;
-        state.Mode = PlusAgreed && Night ? SocialMode.AfterDark : SocialMode.Daylight;
+        state.Mode = PlusAgreed && Night ? SocialMode.VybePlus : SocialMode.Vybe;
         state.PickedMode = PickedMode;
         state.UsesHandsetProfile = UsesHandsetProfile;
         state.UsesHandsetIdentity = UsesHandsetIdentity;

@@ -615,7 +615,7 @@ internal static class PeopleFindBook
             Card(paths, "velvet", "Velvet Rae", "@velvet", "Balmung", "Dancer", "Physical Ranged", "Viera",
                 ["Dating", "Flirting", "Casual Dating"],
                 ["Nightlife", "Venues", "GPOSE", "Fashion", "Clubs"],
-                "18+ after dark. DMs open. Plus-only.", "Regular RP", ["Romance", "Social"], "Ask First",
+                "18+ VYBE+. DMs open. Plus-only.", "Regular RP", ["Romance", "Social"], "Ask First",
                 "Online", true, "Late Night", "PearlChat", "Talkative", "Casual Dating", "Single", 26,
                 true, true, "raven", true),
             Card(paths, "hex", "Hex Vale", "@hex_", "Mateus", "Reaper", "Melee DPS", "Au Ra",

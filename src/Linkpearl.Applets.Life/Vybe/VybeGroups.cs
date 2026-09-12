@@ -43,7 +43,7 @@ internal static class VybeGroups
         new("ward", "Ward Walkers", "Travel", 3_400, "fc.png", false, true),
         new("club", "After Hours", "Music", 18_600, "club-b.png", false, true),
         new("photo", "Lens Club", "Creative", 5_200, "pose.png", false, false),
-        new("lounge", "After Dark Lounge", "Plus", 4_800, "club-c.png", true, true, true),
+        new("lounge", "VYBE+ Lounge", "Plus", 4_800, "club-c.png", true, true, true),
         new("unfiltered", "Unfiltered GPose", "Plus", 2_100, "pose.png", true, false, true),
         new("pluscircle", "Plus Circle", "Plus", 3_600, "city.png", false, true, true),
     };

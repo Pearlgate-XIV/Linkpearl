@@ -21,7 +21,8 @@ internal readonly record struct SocialWrite(
     string Body,
     bool Everyone,
     string[] MediaPaths,
-    string QuoteOf);
+    string QuoteOf,
+    bool Plus = false);
 
 public sealed partial class PearlHub
 {
@@ -62,7 +63,7 @@ public sealed partial class PearlHub
         profileQueued = true;
     }
 
-    public void PublishPost(string body, bool everyone, IReadOnlyList<string> mediaPaths, string quoteOf)
+    public void PublishPost(string body, bool everyone, IReadOnlyList<string> mediaPaths, string quoteOf, bool plus = false)
     {
         var text = body.Trim();
         var quote = quoteOf.Trim();
@@ -77,7 +78,7 @@ public sealed partial class PearlHub
             return;
         }
 
-        Enqueue(new SocialWrite(SocialKind.Publish, string.Empty, text, everyone, files, quote));
+        Enqueue(new SocialWrite(SocialKind.Publish, string.Empty, text, everyone, files, quote, plus));
     }
 
     public void LikePost(string postId, bool liked)
@@ -180,6 +181,16 @@ public sealed partial class PearlHub
 
     private bool BlockMuted()
     {
+        if (Current.Banned)
+        {
+            Replace(Current with
+            {
+                Notice = "This account is suspended.",
+                Generation = NextGeneration(),
+            });
+            return true;
+        }
+
         if (!Current.Muted)
         {
             return false;
@@ -254,21 +265,30 @@ public sealed partial class PearlHub
         try
         {
             var (page, status) = await client
-                .GetAsync("/feed?tab=" + Uri.EscapeDataString(tab), GateJson.Default.PostPageDto, token)
+                .GetAsync("/vybe/feed?tab=" + Uri.EscapeDataString(tab), GateJson.Default.PostPageDto, token)
                 .ConfigureAwait(false);
+            if (status is < 200 or >= 300)
+            {
+                (page, status) = await client
+                    .GetAsync("/feed?tab=" + Uri.EscapeDataString(tab), GateJson.Default.PostPageDto, token)
+                    .ConfigureAwait(false);
+            }
             if (status == 401)
             {
                 DropSession("Session expired. Sign in again.");
                 return;
             }
 
-            var posts = status is >= 200 and < 300 ? MapPosts(page?.Items) : [];
+            var sfw = status is >= 200 and < 300 ? MapPosts(page?.Items) : [];
+            var (plusLane, plusLive) = await LoadVybePlusFeedAsync(token).ConfigureAwait(false);
+            var posts = MergePosts(plusLane, sfw);
+            var live = plusLive || status is >= 200 and < 300;
             RememberPosts(posts);
             Replace(Current with
             {
-                Feed = posts,
+                Feed = live ? posts : Current.Feed,
                 FeedTab = tab,
-                FeedLive = status is >= 200 and < 300,
+                FeedLive = live,
                 Generation = NextGeneration(),
             });
         }
@@ -335,17 +355,28 @@ public sealed partial class PearlHub
         try
         {
             var path = string.Equals(userId, "me", StringComparison.Ordinal)
-                ? "/users/me/posts"
-                : "/users/" + Uri.EscapeDataString(userId) + "/posts";
+                ? "/vybe/users/me/posts"
+                : "/vybe/users/" + Uri.EscapeDataString(userId) + "/posts";
             var (page, status) = await client.GetAsync(path, GateJson.Default.PostPageDto, token)
                 .ConfigureAwait(false);
+            if (status is < 200 or >= 300)
+            {
+                path = string.Equals(userId, "me", StringComparison.Ordinal)
+                    ? "/users/me/posts"
+                    : "/users/" + Uri.EscapeDataString(userId) + "/posts";
+                (page, status) = await client.GetAsync(path, GateJson.Default.PostPageDto, token)
+                    .ConfigureAwait(false);
+            }
             if (status == 401)
             {
                 DropSession("Session expired. Sign in again.");
                 return;
             }
 
-            var posts = status is >= 200 and < 300 ? MapPosts(page?.Items) : [];
+            var sfw = status is >= 200 and < 300 ? MapPosts(page?.Items) : [];
+            var vybeId = string.Equals(userId, "me", StringComparison.Ordinal) ? "me" : userId;
+            var (plusLane, _) = await LoadVybePlusProfilePostsAsync(vybeId, token).ConfigureAwait(false);
+            var posts = MergePosts(plusLane, sfw);
             RememberPosts(posts);
             Replace(Current with
             {
@@ -483,6 +514,49 @@ public sealed partial class PearlHub
         var body = new PostBodyDto(write.Body.Length == 0 ? null : write.Body,
             write.Everyone ? "everyone" : "following", ids.Count == 0 ? null : ids.ToArray(),
             write.QuoteOf.Length == 0 ? null : write.QuoteOf);
+        if (write.Plus)
+        {
+            var plus = await client.PostAsync("/vybe-plus/posts",
+                    GateClient.JsonBody(
+                        new CreateVybePlusPostBodyDto(
+                            ids.Count > 0 ? ids[0] : null,
+                            0,
+                            0,
+                            write.Body ?? string.Empty,
+                            [],
+                            ids.Count == 0 ? null : ids.ToArray(),
+                            write.Everyone ? 1 : 0,
+                            1),
+                        GateJson.Default.CreateVybePlusPostBodyDto), token)
+                .ConfigureAwait(false);
+            if (plus is >= 200 and < 300)
+            {
+                return plus;
+            }
+
+            plus = await client.PostAsync("/afterdark/posts",
+                    GateClient.JsonBody(
+                        new CreateVybePlusPostBodyDto(
+                            ids.Count > 0 ? ids[0] : null,
+                            0,
+                            0,
+                            write.Body ?? string.Empty,
+                            [],
+                            ids.Count == 0 ? null : ids.ToArray(),
+                            write.Everyone ? 1 : 0,
+                            1),
+                        GateJson.Default.CreateVybePlusPostBodyDto), token)
+                .ConfigureAwait(false);
+            return plus;
+        }
+
+        var vybe = await client.PostAsync("/vybe/posts", GateClient.JsonBody(body, GateJson.Default.PostBodyDto), token)
+            .ConfigureAwait(false);
+        if (vybe is >= 200 and < 300)
+        {
+            return vybe;
+        }
+
         return await client.PostAsync("/posts", GateClient.JsonBody(body, GateJson.Default.PostBodyDto), token)
             .ConfigureAwait(false);
     }
@@ -577,6 +651,161 @@ public sealed partial class PearlHub
         return mapped.ToArray();
     }
 
+    private async Task<(PearlPost[] Posts, bool Live)> LoadVybePlusFeedAsync(CancellationToken token)
+    {
+        var (page, status) = await client
+            .GetAsync("/vybe-plus/feed?scope=all", GateJson.Default.VybePlusFeedPageDto, token)
+            .ConfigureAwait(false);
+        if (status is < 200 or >= 300)
+        {
+            (page, status) = await client
+                .GetAsync("/afterdark/feed?scope=all", GateJson.Default.VybePlusFeedPageDto, token)
+                .ConfigureAwait(false);
+        }
+
+        if (status is < 200 or >= 300)
+        {
+            return ([], false);
+        }
+
+        return (MapVybePlusPosts(page?.Items, Current.MeId), true);
+    }
+
+    private async Task<(PearlPost[] Posts, bool Live)> LoadVybePlusProfilePostsAsync(string userId, CancellationToken token)
+    {
+        var path = string.Equals(userId, "me", StringComparison.Ordinal)
+            ? "/vybe-plus/users/me/posts"
+            : "/vybe-plus/users/" + Uri.EscapeDataString(userId) + "/posts";
+        var (page, status) = await client
+            .GetAsync(path, GateJson.Default.VybePlusUserPostsPageDto, token)
+            .ConfigureAwait(false);
+        if (status is < 200 or >= 300)
+        {
+            path = string.Equals(userId, "me", StringComparison.Ordinal)
+                ? "/afterdark/users/me/posts"
+                : "/afterdark/users/" + Uri.EscapeDataString(userId) + "/posts";
+            (page, status) = await client
+                .GetAsync(path, GateJson.Default.VybePlusUserPostsPageDto, token)
+                .ConfigureAwait(false);
+        }
+
+        if (status is < 200 or >= 300)
+        {
+            return ([], false);
+        }
+
+        var meId = string.Equals(userId, "me", StringComparison.Ordinal) ? Current.MeId : userId;
+        return (MapVybePlusPosts(page?.Items, meId), true);
+    }
+
+    private static PearlPost[] MergePosts(PearlPost[] first, PearlPost[] second)
+    {
+        if (first.Length == 0)
+        {
+            return second;
+        }
+
+        if (second.Length == 0)
+        {
+            return first;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var merged = new List<PearlPost>(first.Length + second.Length);
+        foreach (var post in first)
+        {
+            if (post.Id.Length == 0 || !seen.Add(post.Id))
+            {
+                continue;
+            }
+
+            merged.Add(post);
+        }
+
+        foreach (var post in second)
+        {
+            if (post.Id.Length == 0 || !seen.Add(post.Id))
+            {
+                continue;
+            }
+
+            merged.Add(post);
+        }
+
+        return merged.ToArray();
+    }
+
+    private static PearlPost[] MapVybePlusPosts(VybePlusPostDto[]? items, string meId)
+    {
+        if (items is null || items.Length == 0)
+        {
+            return [];
+        }
+
+        var mapped = new List<PearlPost>(items.Length);
+        foreach (var item in items)
+        {
+            var post = MapVybePlusPost(item, meId);
+            if (post is { Id.Length: > 0 } ready)
+            {
+                mapped.Add(ready);
+            }
+        }
+
+        return mapped.ToArray();
+    }
+
+    private static PearlPost? MapVybePlusPost(VybePlusPostDto item, string meId)
+    {
+        if (string.IsNullOrWhiteSpace(item.Id))
+        {
+            return null;
+        }
+
+        var when = item.CreatedAtUnix > 0
+            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
+            : "now";
+        var owner = item.OwnerId ?? string.Empty;
+        var urls = item.MediaUrls is { Length: > 0 } many
+            ? many
+            : string.IsNullOrWhiteSpace(item.MediaUrl) ? [] : new[] { item.MediaUrl };
+        var media = new List<PearlMedia>(urls.Length);
+        for (var index = 0; index < urls.Length; index++)
+        {
+            var url = urls[index];
+            if (string.IsNullOrWhiteSpace(url) || url.TrimEnd('/').EndsWith("/media", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            media.Add(new PearlMedia(item.MediaId ?? url, url, item.MediaWidth, item.MediaHeight));
+        }
+
+        var plus = item.Lane == 1;
+        return new PearlPost(
+            item.Id,
+            owner,
+            Display(item.OwnerDisplayName, "Someone"),
+            item.OwnerHandle ?? string.Empty,
+            item.OwnerAvatarUrl ?? string.Empty,
+            item.Caption ?? string.Empty,
+            when,
+            meId.Length > 0 && string.Equals(owner, meId, StringComparison.Ordinal),
+            item.MyReaction >= 0,
+            item.TotalReactions,
+            item.CommentCount,
+            0,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            media.ToArray(),
+            plus ? "vybe_plus" : "vybe",
+            plus ? "mature" : "sfw",
+            null,
+            item.Tags);
+    }
+
     private static PearlPost? MapPost(PostDto item)
     {
         if (string.IsNullOrWhiteSpace(item.Id))
@@ -591,7 +820,7 @@ public sealed partial class PearlHub
             Display(item.AuthorDisplayName, "Someone"), item.AuthorHandle ?? string.Empty,
             item.AuthorAvatarUrl ?? string.Empty, item.Body ?? string.Empty, when, item.Mine, item.Liked, item.Likes,
             item.Comments, item.Reposts, item.Reposted, item.QuoteOf ?? string.Empty, item.QuoteAuthor ?? string.Empty,
-            item.QuoteBody ?? string.Empty, MapMedia(item.Media));
+            item.QuoteBody ?? string.Empty, MapMedia(item.Media), "vybe", "sfw");
     }
 
     private static PearlMedia[] MapMedia(MediaDto[]? items)

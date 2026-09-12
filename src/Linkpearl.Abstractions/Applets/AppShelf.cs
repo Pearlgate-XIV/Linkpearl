@@ -60,7 +60,7 @@ public static class AppShelf
             true, "phone.png"),
         Spec("music", "Music", "Media Player", AppGroup.Essentials, AppChip.Music, AppKind.Applet, default, 0, true,
             "music.png"),
-        Spec("afterdark", "VYBE", "Social", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
+        Spec("vybe", "VYBE", "Social", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
             true, "vybe.png"),
         Spec("weather", "Weather", "Forecast", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
             "weather.png"),
@@ -100,7 +100,7 @@ public static class AppShelf
 
     public static readonly string[] DefaultInstalled =
     {
-        "pearlchat", "phone", "music", "afterdark", "weather", "calendar", "camera", "friends", "settings",
+        "pearlchat", "phone", "music", "vybe", "weather", "calendar", "camera", "friends", "settings",
         "feedback", "market", "venues", "appstore", "notes", "alarms",
     };
 

@@ -2283,7 +2283,7 @@ public sealed class DisplayPreferences
     }
 
     private static string AliasAppId(string id) =>
-        string.Equals(id, "daylight", StringComparison.Ordinal) ? "afterdark" : id;
+        id is "daylight" or "afterdark" ? "vybe" : id;
 
     private static string[] SanitizePlates(IReadOnlyList<string> files)
     {

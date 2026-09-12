@@ -24,7 +24,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 {
     public static readonly AppletManifest Manifest = new()
     {
-        Id = "afterdark",
+        Id = "vybe",
         DisplayNameKey = "VYBE",
         Family = AppletFamily.Social,
         Glyph = "☽",
@@ -396,12 +396,12 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         {
             state.Honorific = title;
         }
-        var face = HandsetLook.CopyPortrait(paths, state.ProfileFacePath, badges, "afterdark-profile-face");
+        var face = HandsetLook.CopyPortrait(paths, state.ProfileFacePath, badges, "vybe-profile-face");
         state.ProfileFacePath = face.Path;
         state.FaceZoom = face.Zoom;
         state.FaceFocusX = face.FocusX;
         state.FaceFocusY = face.FocusY;
-        var banner = HandsetLook.CopyBanner(paths, state.ProfileBannerPath, display, "afterdark-profile-banner");
+        var banner = HandsetLook.CopyBanner(paths, state.ProfileBannerPath, display, "vybe-profile-banner");
         state.ProfileBannerPath = banner.Path;
         state.BannerZoom = banner.Zoom;
         state.BannerFocusX = banner.FocusX;
@@ -578,7 +578,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         SyncOwnRace();
         if (state.PlusBlocked && state.Night)
         {
-            state.Mode = SocialMode.Daylight;
+            state.Mode = SocialMode.Vybe;
             state.Save(paths);
         }
 
@@ -1146,10 +1146,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             state.Posted.Insert(0, post);
         }
 
-        if (!plus)
-        {
-            pearl.PublishPost(body, state.AudienceEveryone, state.DraftMedia.ToArray(), state.QuoteOf);
-        }
+        pearl.PublishPost(body, state.AudienceEveryone, state.DraftMedia.ToArray(), state.QuoteOf, plus);
 
         state.Caption = string.Empty;
         state.QuoteOf = string.Empty;
@@ -2537,7 +2534,21 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             state.Open(NightPage.Inbox);
         }
 
-        var mine = pearl.Current.WatchedUserId == "me" ? pearl.Current.ProfilePosts : [];
+        var mine = pearl.Current.ProfilePosts;
+        if (mine.Length == 0)
+        {
+            var feed = pearl.Current.Feed;
+            var owned = new List<PearlPost>();
+            for (var index = 0; index < feed.Length; index++)
+            {
+                if (feed[index].Mine)
+                {
+                    owned.Add(feed[index]);
+                }
+            }
+
+            mine = owned.ToArray();
+        }
         var likes = 0;
         for (var index = 0; index < mine.Length; index++)
         {
@@ -3980,7 +3991,9 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private PearlPost[] PersonBoard(string gateId)
     {
         var theirs = new List<PearlPost>();
-        if (string.Equals(gateId, "me", StringComparison.Ordinal))
+        var self = string.Equals(gateId, "me", StringComparison.Ordinal) ||
+            (gateId.Length > 0 && string.Equals(gateId, pearl.Current.MeId, StringComparison.Ordinal));
+        if (self)
         {
             theirs.AddRange(OwnPosted(state.Night));
         }
@@ -3994,7 +4007,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             }
         }
 
-        if (string.Equals(pearl.Current.WatchedUserId, gateId, StringComparison.Ordinal))
+        if (self || string.Equals(pearl.Current.WatchedUserId, gateId, StringComparison.Ordinal))
         {
             theirs.AddRange(pearl.Current.ProfilePosts);
         }

@@ -7,7 +7,7 @@ namespace Linkpearl.Applets.Life;
 
 public sealed class VybeModule : ILinkpearlModule
 {
-    public ModuleIdentity Identity => new("linkpearl.applets.life.afterdark", "VYBE", order: 119);
+    public ModuleIdentity Identity => new("linkpearl.applets.life.vybe", "VYBE", order: 119);
 
     public void Configure(IServiceCollection services, ModuleContext context)
     {

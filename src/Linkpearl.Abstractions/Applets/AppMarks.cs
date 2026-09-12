@@ -190,7 +190,7 @@ public static class AppMarks
         var area = Rect.FromSize(icon.Center - new Vector2(side * 0.5f, side * 0.5f), new Vector2(side, side));
         Vector4 light;
         Vector4 dark;
-        if (appletId is "music" or "afterdark")
+        if (appletId is "music" or "vybe" or "afterdark")
         {
             var brand = TileBrand(appletId);
             light = hover ? Lift(brand) : brand;
@@ -226,7 +226,7 @@ public static class AppMarks
             return false;
         }
 
-        var inset = appletId is "afterdark" or "music"
+        var inset = appletId is "vybe" or "afterdark" or "music"
             ? MathF.Min(tile.Width, tile.Height) * 0.08f
             : MathF.Min(tile.Width, tile.Height) * 0.20f;
         var mark = tile.Inset(inset);
@@ -258,7 +258,7 @@ public static class AppMarks
         "party" => "party.png",
         "events" => "events.png",
         "feedback" => "feedback.png",
-        "afterdark" => "vybe.png",
+        "vybe" or "afterdark" => "vybe.png",
         "music" => "music.png",
         _ => null,
     };
@@ -275,7 +275,7 @@ public static class AppMarks
         AppIconCatalog.HomePinAsset => "place",
         AppIconCatalog.HomeGearAsset => "settings",
         AppIconCatalog.AnnouncementAsset => "feedback",
-        AppIconCatalog.DaylightAsset => "afterdark",
+        AppIconCatalog.DaylightAsset => "vybe",
         _ => Path.GetFileNameWithoutExtension(fileName),
     };
 
@@ -313,6 +313,7 @@ public static class AppMarks
             case "music":
                 DrawNote(paint, center, size, White, stroke);
                 break;
+            case "vybe":
             case "afterdark":
                 DrawVybeMark(paint, center, size * 1.2f, White);
                 break;

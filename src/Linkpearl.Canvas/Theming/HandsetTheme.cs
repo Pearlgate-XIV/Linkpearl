@@ -16,6 +16,7 @@ public sealed class HandsetTheme : ITheme
         ["weather"] = new Vector4(0.400f, 0.620f, 0.910f, 1.00f),
         ["calendar"] = new Vector4(0.910f, 0.620f, 0.280f, 1.00f),
         ["music"] = new Vector4(0.659f, 0.333f, 0.969f, 1.00f),
+        ["vybe"] = new Vector4(0.220f, 0.741f, 0.973f, 1.00f),
         ["afterdark"] = new Vector4(0.220f, 0.741f, 0.973f, 1.00f),
         ["camera"] = new Vector4(0.620f, 0.447f, 0.502f, 1.00f),
         ["phone"] = new Vector4(0.298f, 0.784f, 0.529f, 1.00f),

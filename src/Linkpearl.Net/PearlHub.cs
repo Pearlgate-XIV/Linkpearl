@@ -9,6 +9,7 @@ namespace Linkpearl.Net;
 public sealed partial class PearlHub : IPearlHub, IDisposable
 {
     private const float RefreshSeconds = 15f;
+    private const float NoticeSeconds = 4f;
     private const float HealthSeconds = 20f;
 
     private readonly GateClient client;
@@ -22,6 +23,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private int generation;
     private float sinceRefresh = RefreshSeconds;
+    private float sinceNotices = NoticeSeconds;
     private float sinceHealth = HealthSeconds;
     private bool refreshQueued;
     private bool signInQueued;
@@ -316,6 +318,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private void OnTick(float deltaSeconds)
     {
         sinceRefresh += deltaSeconds;
+        sinceNotices += deltaSeconds;
         sinceHealth += deltaSeconds;
         if (signInQueued)
         {
@@ -475,6 +478,12 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var detail = filed.Detail;
             var lines = filed.Lines;
             Start(token => RunReportAsync(type, targetId, reason, detail, lines, token));
+        }
+
+        if (Current.SignedIn && sinceNotices >= NoticeSeconds)
+        {
+            sinceNotices = 0f;
+            Start(RunStaffNoticesAsync);
         }
 
         if (refreshQueued || (Current.SignedIn && sinceRefresh >= RefreshSeconds))
@@ -658,7 +667,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
             if (meStatus == 403)
             {
-                DropSession("This account is banned.");
+                await ApplyStaffStateAsync(null, true, token).ConfigureAwait(false);
                 return;
             }
 
@@ -667,6 +676,27 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 Replace(Current with { Busy = false, Notice = "Pearlgate is up, but /me did not return a profile." });
                 return;
             }
+
+            var (noticesPage, noticesStatus) = await client
+                .GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
+                .ConfigureAwait(false);
+            var meId = me.Id ?? string.Empty;
+            var (bans, bansStatus) = meId.Length == 0
+                ? (null, 0)
+                : await client.GetAsync("/bans/" + Uri.EscapeDataString(meId), GateJson.Default.BanSnapshotDto, token)
+                    .ConfigureAwait(false);
+            var staffNotices = noticesStatus is >= 200 and < 300
+                ? MapStaffNotices(noticesPage?.Items)
+                : MapStaffNotices(me.StaffNotices);
+            var banned = bansStatus is >= 200 and < 300
+                ? bans?.Banned == true
+                : me.Banned == true;
+            var muted = bansStatus is >= 200 and < 300
+                ? bans?.Muted == true
+                : me.Muted == true;
+            var muteUntil = bansStatus is >= 200 and < 300
+                ? bans?.MuteUntilUnix ?? 0
+                : me.MuteUntilUnix;
 
             var (chatsPage, _) = await client.GetAsync("/chats/", GateJson.Default.ConversationPageDto, token)
                 .ConfigureAwait(false);
@@ -680,8 +710,18 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var (announcements, _) = await client.GetAsync("/announcements", GateJson.Default.AnnouncementPageDto, token)
                 .ConfigureAwait(false);
             var (feedPage, feedStatus) = await client
-                .GetAsync("/feed?tab=" + Uri.EscapeDataString(feedTab), GateJson.Default.PostPageDto, token)
+                .GetAsync("/vybe/feed?tab=" + Uri.EscapeDataString(feedTab), GateJson.Default.PostPageDto, token)
                 .ConfigureAwait(false);
+            if (feedStatus is < 200 or >= 300)
+            {
+                (feedPage, feedStatus) = await client
+                    .GetAsync("/feed?tab=" + Uri.EscapeDataString(feedTab), GateJson.Default.PostPageDto, token)
+                    .ConfigureAwait(false);
+            }
+            var (plusFeed, plusFeedLive) = await LoadVybePlusFeedAsync(token).ConfigureAwait(false);
+            var sfwFeed = feedStatus is >= 200 and < 300 ? MapPosts(feedPage?.Items) : [];
+            var feed = MergePosts(plusFeed, sfwFeed);
+            var feedLive = plusFeedLive || feedStatus is >= 200 and < 300;
             var (notesPage, notesStatus) = await client.GetAsync("/notifications", GateJson.Default.NotePageDto, token)
                 .ConfigureAwait(false);
             if (game.RetainersReady)
@@ -698,14 +738,6 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var (marketPage, marketStatus) = await client
                 .GetAsync("/market", GateJson.Default.MarketPageDto, token)
                 .ConfigureAwait(false);
-            var meId = me.Id ?? string.Empty;
-            var (bans, _) = meId.Length == 0
-                ? (null, 0)
-                : await client.GetAsync("/bans/" + Uri.EscapeDataString(meId), GateJson.Default.BanSnapshotDto, token)
-                    .ConfigureAwait(false);
-            var (noticesPage, _) = await client
-                .GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
-                .ConfigureAwait(false);
 
             var chats = MapChats(chatsPage?.Items);
             var people = MapPeople(contacts?.Contacts);
@@ -713,7 +745,6 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var directory = directoryStatus is >= 200 and < 300
                 ? MapDirectory(directoryPage?.Users, meId)
                 : prior.Directory;
-            var feed = MapPosts(feedPage?.Items);
             var notes = MapNotes(notesPage?.Items);
             RememberPosts(feed);
             Replace(new PearlSnapshot
@@ -721,9 +752,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 SignedIn = true,
                 Busy = false,
                 GateLive = true,
-                Notice = bans?.Banned == true
-                    ? "This account is banned."
-                    : bans?.Muted == true
+                Notice = banned
+                    ? (me.BanReason is { Length: > 0 } reason ? reason : "This account is suspended.")
+                    : muted
                         ? "Staff muted this handset."
                         : string.Empty,
                 MeId = me.Id ?? string.Empty,
@@ -746,18 +777,20 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 Announcements = MapAnnouncements(announcements?.Items),
                 SearchHits = prior.SearchHits,
                 SearchPosts = prior.SearchPosts,
-                Feed = feedStatus is >= 200 and < 300 ? feed : prior.Feed,
+                Feed = feedLive ? feed : prior.Feed,
                 FeedTab = feedTab,
-                FeedLive = feedStatus is >= 200 and < 300,
+                FeedLive = feedLive,
                 Notes = notesStatus is >= 200 and < 300 ? notes : prior.Notes,
                 NotesLive = notesStatus is >= 200 and < 300,
                 ProfilePosts = prior.ProfilePosts,
                 Retainers = retainersStatus is >= 200 and < 300 ? MapRetainers(retainersPage?.Items) : prior.Retainers,
                 MarketWatches = marketStatus is >= 200 and < 300 ? MapMarket(marketPage?.Items) : prior.MarketWatches,
-                StaffNotices = MapStaffNotices(noticesPage?.Items),
-                Banned = bans?.Banned == true,
-                Muted = bans?.Muted == true,
-                MuteUntilUnix = bans?.MuteUntilUnix ?? 0,
+                StaffNotices = staffNotices.Length > 0 || noticesStatus is >= 200 and < 300
+                    ? staffNotices
+                    : prior.StaffNotices,
+                Banned = banned,
+                Muted = muted,
+                MuteUntilUnix = muteUntil,
                 WatchedUserId = watchedUser,
                 WatchedPostId = watchedPost,
                 UnreadTotal = CountUnread(chats),
@@ -1215,6 +1248,66 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
 
         return mapped.ToArray();
+    }
+
+    private async Task RunStaffNoticesAsync(CancellationToken token)
+    {
+        if (!Current.SignedIn)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApplyStaffStateAsync(null, Current.Banned, token).ConfigureAwait(false);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Staff notice poll failed");
+        }
+    }
+
+    private async Task ApplyStaffStateAsync(GateUserDto? me, bool treatForbiddenAsBan, CancellationToken token)
+    {
+        var (noticesPage, noticesStatus) = await client
+            .GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
+            .ConfigureAwait(false);
+        var meId = me?.Id ?? Current.MeId;
+        var (bans, bansStatus) = meId.Length == 0
+            ? (null, 0)
+            : await client.GetAsync("/bans/" + Uri.EscapeDataString(meId), GateJson.Default.BanSnapshotDto, token)
+                .ConfigureAwait(false);
+        var fromMe = MapStaffNotices(me?.StaffNotices);
+        var fromPage = noticesStatus is >= 200 and < 300 ? MapStaffNotices(noticesPage?.Items) : [];
+        var notices = fromPage.Length > 0 || noticesStatus is >= 200 and < 300
+            ? fromPage
+            : fromMe.Length > 0
+                ? fromMe
+                : Current.StaffNotices;
+        var banned = bansStatus is >= 200 and < 300
+            ? bans?.Banned == true
+            : treatForbiddenAsBan || me?.Banned == true || Current.Banned;
+        var muted = bansStatus is >= 200 and < 300 ? bans?.Muted == true : me?.Muted == true || Current.Muted;
+        var muteUntil = bansStatus is >= 200 and < 300
+            ? bans?.MuteUntilUnix ?? 0
+            : me?.MuteUntilUnix ?? Current.MuteUntilUnix;
+        var notice = banned
+            ? (me?.BanReason is { Length: > 0 } reason ? reason : (bans?.BanReason ?? "This account is suspended."))
+            : muted
+                ? "Staff muted this handset."
+                : Current.Notice;
+        Replace(Current with
+        {
+            SignedIn = true,
+            Busy = false,
+            GateLive = true,
+            Notice = notice,
+            StaffNotices = notices,
+            Banned = banned,
+            Muted = muted,
+            MuteUntilUnix = muteUntil,
+            Generation = NextGeneration(),
+        });
     }
 
     private static PearlHit[] MapHits(GateUserDto[]? users)

@@ -182,7 +182,7 @@ public sealed class AppStoreApplet : IApplet
         {
             var spec = AppShelf.Catalog[index];
             if (spec.Hidden || string.Equals(spec.Id, "appstore", StringComparison.Ordinal) ||
-                (string.Equals(spec.Id, "afterdark", StringComparison.Ordinal) && BlocksVybe()) ||
+                (string.Equals(spec.Id, "vybe", StringComparison.Ordinal) && BlocksVybe()) ||
                 !Matches(spec, needle))
             {
                 continue;

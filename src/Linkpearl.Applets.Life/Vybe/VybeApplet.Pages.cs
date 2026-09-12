@@ -401,7 +401,7 @@ public sealed partial class VybeApplet
 
     private void LeavePlusGate()
     {
-        state.Mode = SocialMode.Daylight;
+        state.Mode = SocialMode.Vybe;
         state.Page = state.ReturnTo is NightPage.Settings or NightPage.Tabs or NightPage.OnboardIdentity
             ? state.ReturnTo
             : NightPage.Tabs;
@@ -3636,7 +3636,7 @@ public sealed partial class VybeApplet
                 ext = ".png";
             }
 
-            var stem = state.PickingAvatar ? "afterdark-profile-face" : "afterdark-profile-banner";
+            var stem = state.PickingAvatar ? "vybe-profile-face" : "vybe-profile-banner";
             var dest = paths.State(stem + "-" + Guid.NewGuid().ToString("N") + ext.ToLowerInvariant());
             Directory.CreateDirectory(paths.StateDirectory);
             File.Copy(source, dest, false);

@@ -11,8 +11,8 @@ namespace Linkpearl.Applets.Life.Vybe;
 
 internal enum SocialMode : byte
 {
-    Daylight = 0,
-    AfterDark = 1,
+    Vybe = 0,
+    VybePlus = 1,
 }
 
 internal enum NightTab : byte
@@ -85,7 +85,7 @@ internal enum FilterPole : byte
 
 internal sealed class VybeState
 {
-    public SocialMode Mode { get; set; } = SocialMode.Daylight;
+    public SocialMode Mode { get; set; } = SocialMode.Vybe;
 
     public bool PickedMode { get; set; }
 
@@ -699,7 +699,7 @@ internal sealed class VybeState
 
     public PeopleFindState PeopleFind => Night ? PeopleFindPlus : PeopleFindVybe;
 
-    public bool Night => Mode == SocialMode.AfterDark;
+    public bool Night => Mode == SocialMode.VybePlus;
 
     public bool Washing => Wash > 0f;
 
@@ -727,7 +727,7 @@ internal sealed class VybeState
                     fromDisk = true;
                     state.PlusAgreed = dto.PlusAgreed;
                     state.Consented = state.PlusAgreed;
-                    state.Mode = state.PlusAgreed && dto.Night ? SocialMode.AfterDark : SocialMode.Daylight;
+                    state.Mode = state.PlusAgreed && dto.Night ? SocialMode.VybePlus : SocialMode.Vybe;
                     state.PickedMode = dto.PickedMode;
                     state.Onboarded = dto.Onboarded;
                     state.AccountId = dto.AccountId ?? string.Empty;
@@ -868,7 +868,7 @@ internal sealed class VybeState
         }
         else if (state.Night && !state.PlusAgreed)
         {
-            state.Mode = SocialMode.Daylight;
+            state.Mode = SocialMode.Vybe;
             state.Page = NightPage.Tabs;
         }
         else if (!state.Onboarded)
@@ -1093,9 +1093,9 @@ internal sealed class VybeState
 
     public void EnterMode(SocialMode mode)
     {
-        if (mode == SocialMode.Daylight)
+        if (mode == SocialMode.Vybe)
         {
-            Mode = SocialMode.Daylight;
+            Mode = SocialMode.Vybe;
             HidePlusLanes();
             Scroll = 0f;
             if (Page is NightPage.Gate or NightPage.Rules)
@@ -1108,18 +1108,18 @@ internal sealed class VybeState
 
         if (PlusBlocked)
         {
-            Mode = SocialMode.Daylight;
+            Mode = SocialMode.Vybe;
             return;
         }
 
         if (!PlusAgreed)
         {
-            Mode = SocialMode.Daylight;
+            Mode = SocialMode.Vybe;
             Open(NightPage.Gate);
             return;
         }
 
-        Mode = SocialMode.AfterDark;
+        Mode = SocialMode.VybePlus;
         PickedMode = true;
         Scroll = 0f;
 
@@ -1133,7 +1133,7 @@ internal sealed class VybeState
     {
         PlusAgreed = true;
         Consented = true;
-        Mode = SocialMode.AfterDark;
+        Mode = SocialMode.VybePlus;
         PickedMode = true;
     }
 
@@ -1141,7 +1141,7 @@ internal sealed class VybeState
     {
         PlusAgreed = false;
         Consented = false;
-        Mode = SocialMode.Daylight;
+        Mode = SocialMode.Vybe;
         HidePlusLanes();
         Wash = 0f;
         if (Page is NightPage.Gate or NightPage.Rules)
@@ -1210,7 +1210,7 @@ internal sealed class VybeState
         }
 
         Wash = 0f;
-        EnterMode(WashToNight ? SocialMode.AfterDark : SocialMode.Daylight);
+        EnterMode(WashToNight ? SocialMode.VybePlus : SocialMode.Vybe);
         DropExpiredStory();
         Save(paths);
     }

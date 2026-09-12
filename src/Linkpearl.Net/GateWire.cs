@@ -40,7 +40,12 @@ internal sealed record GateUserDto(
     bool? PatreonActive,
     string? PatreonUrl,
     string? PhoneNumber,
-    string? TimeZoneId = null);
+    string? TimeZoneId = null,
+    AccountNoticeDto[]? StaffNotices = null,
+    bool? Banned = null,
+    bool? Muted = null,
+    long MuteUntilUnix = 0,
+    string? BanReason = null);
 
 internal sealed record VerifyReplyDto(bool Ok, string? Reason, string? Token, GateUserDto? User);
 
@@ -140,6 +145,42 @@ internal sealed record PostDto(
 internal sealed record PostPageDto(PostDto[]? Items, string? NextCursor);
 
 internal sealed record PostBodyDto(string? Body, string Audience, string[]? MediaIds, string? QuoteOf);
+
+internal sealed record VybePlusPostDto(
+    string? Id,
+    string? OwnerId,
+    string? OwnerDisplayName,
+    string? OwnerHandle,
+    string? OwnerAvatarUrl,
+    string? MediaId,
+    string? MediaUrl,
+    string? Caption,
+    string[]? Tags,
+    bool Unlocked,
+    int MediaWidth,
+    int MediaHeight,
+    long CreatedAtUnix,
+    int[]? ReactionCounts,
+    int TotalReactions,
+    int MyReaction,
+    int CommentCount,
+    string[]? MediaUrls = null,
+    int Audience = 0,
+    int Lane = 0);
+
+internal sealed record VybePlusFeedPageDto(VybePlusPostDto[]? Items, string? NextCursor = null);
+
+internal sealed record VybePlusUserPostsPageDto(VybePlusPostDto[]? Items, int TotalCount = 0, string? NextCursor = null);
+
+internal sealed record CreateVybePlusPostBodyDto(
+    string? MediaKey,
+    int Width,
+    int Height,
+    string Caption,
+    string[] Tags,
+    string[]? MediaKeys = null,
+    int Audience = 1,
+    int Lane = 0);
 
 internal sealed record CommentDto(
     string? Id,
@@ -257,6 +298,10 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(PostDto))]
 [JsonSerializable(typeof(PostPageDto))]
 [JsonSerializable(typeof(PostBodyDto))]
+[JsonSerializable(typeof(VybePlusPostDto))]
+[JsonSerializable(typeof(VybePlusFeedPageDto))]
+[JsonSerializable(typeof(VybePlusUserPostsPageDto))]
+[JsonSerializable(typeof(CreateVybePlusPostBodyDto))]
 [JsonSerializable(typeof(CommentDto))]
 [JsonSerializable(typeof(CommentPageDto))]
 [JsonSerializable(typeof(CommentBodyDto))]

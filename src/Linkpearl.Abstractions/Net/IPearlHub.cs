@@ -244,7 +244,7 @@ public interface IPearlHub
 
     void WatchProfile(string userId);
 
-    void PublishPost(string body, bool everyone, IReadOnlyList<string> mediaPaths, string quoteOf);
+    void PublishPost(string body, bool everyone, IReadOnlyList<string> mediaPaths, string quoteOf, bool plus = false);
 
     void LikePost(string postId, bool liked);
 
