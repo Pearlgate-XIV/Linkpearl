@@ -13,7 +13,7 @@ using Linkpearl.Preferences;
 
 namespace Linkpearl.Destinations.You;
 
-public sealed class YouDestination : IDestinationScreen
+public sealed class YouDestination : IDestinationScreen, ISectionedDestination
 {
     private readonly IGameSession game;
     private readonly IPearlHub pearl;
@@ -39,6 +39,16 @@ public sealed class YouDestination : IDestinationScreen
     public string Glyph => "🧑";
 
     public string Label => PhoneLanguages.T("nav.you");
+
+    public int CurrentSection => profile.OverlayOpen ? 1 : 0;
+
+    public void ShowSection(int section)
+    {
+        if (section > 0)
+        {
+            profile.OpenEdit();
+        }
+    }
 
     public bool CanGoBack => profile.OverlayOpen;
 

@@ -1350,19 +1350,29 @@ public sealed class DisplayPreferences
         }
 
         AcquireApp(id);
-        var page = SlotArray(AppsOnScreen(0), 0);
-        var hole = FirstEmpty(page);
-        if (hole >= 0)
+        for (var pageIndex = 0; pageIndex < AppScreenCount; pageIndex++)
         {
-            page[hole] = id;
-            ReplacePage(0, page);
+            var page = SlotArray(AppsOnScreen(pageIndex), 0);
+            var hole = FirstEmpty(page);
+            if (hole >= 0)
+            {
+                page[hole] = id;
+                ReplacePage(pageIndex, page);
+                return;
+            }
+        }
+
+        if (TryAddAppScreen())
+        {
+            ReplacePage(AppScreenCount - 1, [id]);
             return;
         }
 
-        var grown = new string[page.Length + 1];
-        page.CopyTo(grown, 0);
+        var last = SlotArray(AppsOnScreen(AppScreenCount - 1), 0);
+        var grown = new string[last.Length + 1];
+        last.CopyTo(grown, 0);
         grown[^1] = id;
-        ReplacePage(0, grown);
+        ReplacePage(AppScreenCount - 1, grown);
     }
 
     public void RemoveApp(string id)

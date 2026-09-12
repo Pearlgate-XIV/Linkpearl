@@ -41,6 +41,7 @@ public sealed class FeedbackApplet : IApplet
     private int category;
     private string body = string.Empty;
     private string lastStatus = string.Empty;
+    private float scroll;
 
     public FeedbackApplet(IFeedbackDesk desk, IGameSession game, IFilePicker files)
     {
@@ -55,6 +56,7 @@ public sealed class FeedbackApplet : IApplet
 
     public void Enter(AppletEntry entry)
     {
+        scroll = 0f;
     }
 
     public void Leave()
@@ -64,30 +66,53 @@ public sealed class FeedbackApplet : IApplet
     public void Compose(in AppletFrame frame)
     {
         TakePicks();
-        var content = frame.Content.Inset(frame.Units(16f));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
-        frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Feedback",
+        var pad = frame.Units(14f);
+        var gap = frame.Units(8f);
+        var inner = frame.Content.Inset(new Edges(pad, frame.Units(8f), pad, frame.Units(6f)));
+        var statusH = frame.Units(22f);
+        var actionsH = frame.Units(44f);
+        var foot = inner.BottomSlice(actionsH + gap + statusH);
+        var status = foot.TopSlice(statusH);
+        var actions = foot.BottomSlice(actionsH);
+        var bodyArea = new Rect(inner.Min, new Vector2(inner.Max.X, foot.Min.Y - gap));
+
+        var crashes = desk.RecentCrashes();
+        var crashRows = crashes.Count == 0 ? 1 : Math.Min(crashes.Count, 4);
+        var hintH = frame.Units(36f);
+        var chipsH = frame.Units(64f);
+        var noteH = frame.Units(112f);
+        var attachH = frame.Units(36f);
+        var filesH = attachments.Count > 0 ? frame.Units(18f) : 0f;
+        var used = frame.Units(26f) + gap + hintH + gap + frame.Units(16f) + gap + chipsH + gap +
+                   frame.Units(16f) + gap + noteH + gap + frame.Units(16f) + gap +
+                   crashRows * (frame.Units(40f) + gap) + attachH + (filesH > 0f ? gap + filesH : 0f);
+
+        ScrollSlider.Apply(frame, bodyArea, ref scroll, used);
+        frame.Paint.PushClip(bodyArea);
+        var stack = new Stack(
+            new Rect(new Vector2(bodyArea.Min.X, bodyArea.Min.Y - scroll),
+                new Vector2(bodyArea.Max.X, bodyArea.Min.Y - scroll + MathF.Max(used, bodyArea.Height))),
+            StackAxis.Vertical, gap);
+
+        frame.Text.DrawIn(stack.Take(frame.Units(26f)), "Feedback",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(28f)),
+        frame.Text.DrawWrapped(stack.Take(hintH),
             "Sends to Discord. Attach FFXIV/Dalamud crashes, pictures, or Word docs.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
 
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Category",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        var kind = stack.Take(frame.Units(40f));
-        CardChrome.Draw(frame, kind);
-        category = frame.TextField.Combo("feedback-kind", kind.Inset(frame.Units(6f)), Categories, category);
+        DrawCategories(frame, stack.Take(chipsH));
 
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Your note",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        var box = stack.Take(MathF.Max(frame.Units(88f), stack.Remaining.Height - frame.Units(260f)));
+        var box = stack.Take(noteH);
         CardChrome.Draw(frame, box);
         body = frame.TextField.Write("feedback-body", box.Inset(frame.Units(10f)), body,
             "What should we know?", MaxBody);
 
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Recent crashes",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        var crashes = desk.RecentCrashes();
         if (crashes.Count == 0)
         {
             frame.Text.DrawIn(stack.Take(frame.Units(20f)), "None on this PC yet.",
@@ -95,14 +120,13 @@ public sealed class FeedbackApplet : IApplet
         }
         else
         {
-            var show = Math.Min(crashes.Count, 4);
-            for (var index = 0; index < show; index++)
+            for (var index = 0; index < crashRows; index++)
             {
                 DrawCrash(frame, stack.Take(frame.Units(40f)), crashes[index]);
             }
         }
 
-        var attach = stack.Take(frame.Units(36f));
+        var attach = stack.Take(attachH);
         CardChrome.Draw(frame, attach);
         frame.Text.DrawIn(attach,
             files.Picking ? "Looking…" : "Attach picture or document",
@@ -114,11 +138,14 @@ public sealed class FeedbackApplet : IApplet
 
         if (attachments.Count > 0)
         {
-            frame.Text.DrawIn(stack.Take(frame.Units(18f)), attachments.Count + " file(s) attached",
+            frame.Text.DrawIn(stack.Take(filesH), attachments.Count + " file(s) attached",
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         }
 
-        var actions = stack.Take(frame.Units(44f));
+        frame.Paint.PopClip();
+
+        frame.Text.DrawEllipsized(status, desk.Status,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         var send = actions.LeftSlice(actions.Width * 0.58f);
         var discord = actions.RightSlice(actions.Width * 0.40f);
         DrawAction(frame, send, desk.Busy ? "Sending…" : "Send", true, () =>
@@ -147,8 +174,41 @@ public sealed class FeedbackApplet : IApplet
         }
 
         lastStatus = desk.Status;
-        frame.Text.DrawIn(stack.Take(frame.Units(28f)), desk.Status,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+    }
+
+    private void DrawCategories(in AppletFrame frame, Rect area)
+    {
+        var gold = frame.Theme.Palette.WarmAccent;
+        var cols = 4;
+        var rows = 2;
+        var gap = frame.Units(6f);
+        var cellW = (area.Width - gap * (cols - 1)) / cols;
+        var cellH = (area.Height - gap) / rows;
+        for (var index = 0; index < Categories.Length; index++)
+        {
+            var col = index % cols;
+            var row = index / cols;
+            var chip = Rect.FromSize(
+                new Vector2(area.Min.X + col * (cellW + gap), area.Min.Y + row * (cellH + gap)),
+                new Vector2(cellW, cellH));
+            var on = category == index;
+            if (on)
+            {
+                CardChrome.DrawGold(frame, chip);
+            }
+            else
+            {
+                CardChrome.Draw(frame, chip);
+            }
+
+            frame.Text.DrawIn(chip, Categories[index],
+                new TextStyle(FontRole.CaptionStrong,
+                    on ? gold : frame.Theme.Palette.Ink, TextAlign.Center));
+            if (frame.Input.ConsumeClick(chip))
+            {
+                category = index;
+            }
+        }
     }
 
     private void DrawCrash(in AppletFrame frame, Rect row, CrashPick crash)

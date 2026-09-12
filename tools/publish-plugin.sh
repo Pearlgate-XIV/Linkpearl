@@ -20,26 +20,26 @@ version="0.1.1.${rev}"
 echo "$((rev + 1))" > "$rev_file"
 
 export DALAMUD_HOME="$dalamud_home"
-dotnet build "$root/src/Linkpearl.Host" -c Release -p:EnableWindowsTargeting=true -p:Version="$version"
+dotnet build "$root/src/Linkpearl.Host" -c Debug -p:EnableWindowsTargeting=true -p:Version="$version"
 
 out=""
 for candidate in \
-  "$root/src/Linkpearl.Host/bin/Release/net10.0-windows" \
-  "$root/src/Linkpearl.Host/bin/Release"
+  "$root/src/Linkpearl.Host/bin/Debug/net10.0-windows" \
+  "$root/src/Linkpearl.Host/bin/Debug"
 do
-  if [[ -f "$candidate/Linkpearl.dll" ]]; then
+  if [[ -f "$candidate/LinkpearlDev.dll" ]]; then
     out="$candidate"
     break
   fi
 done
 if [[ -z "$out" ]]; then
-  echo "Linkpearl.dll not found under bin/Release" >&2
+  echo "LinkpearlDev.dll not found under bin/Debug" >&2
   exit 1
 fi
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
-zip_path="$stage/Linkpearl.zip"
+zip_path="$stage/LinkpearlDev.zip"
 
 python3 - "$out" "$zip_path" "$version" <<'PY'
 import json, sys, zipfile
@@ -48,12 +48,14 @@ from pathlib import Path
 out = Path(sys.argv[1])
 zip_path = Path(sys.argv[2])
 version = sys.argv[3]
-manifest = out / "Linkpearl.json"
-if manifest.exists():
+for name in ("LinkpearlDev.json", "Linkpearl.json"):
+    manifest = out / name
+    if not manifest.exists():
+        continue
     data = json.loads(manifest.read_text())
     data["Author"] = "Pearlgate"
     data["AssemblyVersion"] = version
-    data["InternalName"] = "Linkpearl"
+    data["InternalName"] = "LinkpearlDev"
     data["Name"] = "Linkpearl"
     manifest.write_text(json.dumps(data, indent=2) + "\n")
 

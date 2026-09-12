@@ -101,6 +101,8 @@ public sealed record PearlSnapshot
 
     public bool SignedIn { get; init; }
 
+    public bool GateLive { get; init; }
+
     public bool Busy { get; init; }
 
     public string Notice { get; init; } = string.Empty;

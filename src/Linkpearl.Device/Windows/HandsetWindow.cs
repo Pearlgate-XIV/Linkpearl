@@ -58,6 +58,7 @@ public sealed class HandsetWindow : Window
     private bool savePlacement;
     private Rect lastOuter;
     private Rect lastShell;
+    private Rect lastScreen;
     private float lastOuterRadius;
     private float lastGripScale = 1f;
     private bool holdSide;
@@ -195,11 +196,13 @@ public sealed class HandsetWindow : Window
             ApplyWindowPos();
         }
         var roundCorners = shapePreference.Case == HandsetCase.Android;
+        var pointer = ImGui.GetMousePos();
         var overCorner = lastShell.Width > 16f &&
-            ResizeGrip.Hits(lastShell, lastGripScale, lastOuterRadius, roundCorners, ImGui.GetMousePos());
+            ResizeGrip.Hits(lastShell, lastGripScale, lastOuterRadius, roundCorners, pointer);
+        var overScreen = lastScreen.Width > 16f && lastScreen.Contains(pointer);
         Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
             (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.IsDragging || overCorner ||
-                shell.HoldsWindow || holdSide
+                shell.HoldsWindow || holdSide || overScreen
                 ? ImGuiWindowFlags.NoMove
                 : 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -342,6 +345,7 @@ public sealed class HandsetWindow : Window
         }
 
         lastShell = body.IsEmpty ? windowRect : body;
+        lastScreen = screen.IsEmpty ? lastShell : screen;
         lastOuterRadius = plate.CornerOn(windowRect);
         lastGripScale = gripScale;
         var scale = asleep

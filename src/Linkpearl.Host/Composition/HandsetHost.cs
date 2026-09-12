@@ -325,9 +325,13 @@ public sealed class HandsetHost : IDisposable
 
     public void OpenHandset()
     {
+        var wasClosed = !window.IsOpen;
         window.IsOpen = true;
         window.Restore();
-        window.PlayBoot();
+        if (wasClosed)
+        {
+            window.PlayBoot();
+        }
     }
 
     private void RequestPowerOff()

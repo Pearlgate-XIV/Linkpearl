@@ -198,7 +198,7 @@ public sealed class ControlCenter
         var left = Rect.FromSize(area.Min, new Vector2(half, area.Height));
         var right = Rect.FromSize(new Vector2(left.Max.X + gap, area.Min.Y), new Vector2(half, area.Height));
         DrawHero(paint, text, input, left, scale, Glyph.Burst, "Pearlgate",
-            GateLine(snapshot), snapshot.SignedIn, () => ToggleGate(snapshot, pearl));
+            GateLine(snapshot), snapshot.SignedIn || snapshot.GateLive, () => ToggleGate(snapshot, pearl, pending));
         var wifeOn = wife.IsPresent && wife.IsOn;
         DrawHero(paint, text, input, right, scale, Glyph.Wifi, "WIFI",
             !wife.IsPresent
@@ -286,7 +286,7 @@ public sealed class ControlCenter
         }
 
         ImGui.PopID();
-        if (input.ConsumeClick(circle))
+        if (input.ConsumeClick(area))
         {
             tap();
         }
@@ -589,25 +589,24 @@ public sealed class ControlCenter
             return NonEmpty(snapshot.MeWorld, PhoneLanguages.T("shell.signed"));
         }
 
-        return snapshot.ChallengeCode.Length > 0
-            ? PhoneLanguages.T("shell.entercode")
+        if (snapshot.ChallengeCode.Length > 0)
+        {
+            return PhoneLanguages.T("shell.entercode");
+        }
+
+        return snapshot.GateLive
+            ? PhoneLanguages.T("shell.signin")
             : PhoneLanguages.T("shell.offline");
     }
 
-    private static void ToggleGate(PearlSnapshot snapshot, IPearlHub pearl)
+    private static void ToggleGate(PearlSnapshot snapshot, IPearlHub pearl, Pending pending)
     {
-        if (snapshot.Busy)
+        if (!snapshot.Busy && !snapshot.SignedIn)
         {
-            return;
+            pearl.BeginSignIn();
         }
 
-        if (snapshot.SignedIn)
-        {
-            pearl.SignOut();
-            return;
-        }
-
-        pearl.BeginSignIn();
+        pending.Result = pending.Result with { Tab = DestinationTab.You, Section = 1 };
     }
 
     private sealed class Pending

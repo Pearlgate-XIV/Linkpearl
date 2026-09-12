@@ -171,7 +171,7 @@ public sealed class AppStoreApplet : IApplet
             return;
         }
 
-        display.AcquireApp(spec.Id);
+        display.InstallApp(spec.Id);
     }
 
     private void FillVisible()

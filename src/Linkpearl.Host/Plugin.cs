@@ -9,7 +9,8 @@ namespace Linkpearl.Host;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    private const string PrimaryCommand = "/linkpearl";
+    private static readonly string[] OpenCommands = ["/linkpearl", "/lp", "/pearl", "/phone"];
+    private readonly List<string> boundCommands = [];
 
     [PluginService]
     private static IDalamudPluginInterface PluginInterface { get; set; } = null!;
@@ -62,16 +63,34 @@ public sealed class Plugin : IDalamudPlugin
     {
         host = new HandsetHost(PluginInterface, Framework, ClientState, ObjectTable, Condition, DutyState, Log,
             TextureProvider, DataManager, ChatGui, PartyList, KeyState, Commands, TargetManager, GameConfig);
-        Commands.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Open the Linkpearl handset, or wake it if it is minimized.",
-        });
+        BindOpenCommands();
     }
 
     public void Dispose()
     {
-        Commands.RemoveHandler(PrimaryCommand);
+        for (var index = 0; index < boundCommands.Count; index++)
+        {
+            Commands.RemoveHandler(boundCommands[index]);
+        }
+
         host.Dispose();
+    }
+
+    private void BindOpenCommands()
+    {
+        var help = "Open the Linkpearl phone, or wake it if it is minimized.";
+        for (var index = 0; index < OpenCommands.Length; index++)
+        {
+            var name = OpenCommands[index];
+            if (Commands.Commands.ContainsKey(name))
+            {
+                Log.Warning("Could not bind {Command}; another plugin already uses it.", name);
+                continue;
+            }
+
+            Commands.AddHandler(name, new CommandInfo(OnCommand) { HelpMessage = help });
+            boundCommands.Add(name);
+        }
     }
 
     private void OnCommand(string command, string arguments) => host.OpenHandset();

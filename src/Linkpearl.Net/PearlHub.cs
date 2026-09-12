@@ -9,6 +9,7 @@ namespace Linkpearl.Net;
 public sealed partial class PearlHub : IPearlHub, IDisposable
 {
     private const float RefreshSeconds = 15f;
+    private const float HealthSeconds = 20f;
 
     private readonly GateClient client;
     private readonly IGameSession game;
@@ -21,6 +22,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private int generation;
     private float sinceRefresh = RefreshSeconds;
+    private float sinceHealth = HealthSeconds;
     private bool refreshQueued;
     private bool signInQueued;
     private string xivFlowId = string.Empty;
@@ -68,7 +70,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         if (!string.IsNullOrWhiteSpace(savedToken))
         {
             client.SetBearer(savedToken);
-            Replace(new PearlSnapshot { SignedIn = true, Busy = true, Notice = "Connecting to Pearlgate..." });
+            Replace(new PearlSnapshot { SignedIn = true, Busy = true, GateLive = true, Notice = "Connecting to Pearlgate..." });
             QueueRefresh();
         }
 
@@ -314,6 +316,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private void OnTick(float deltaSeconds)
     {
         sinceRefresh += deltaSeconds;
+        sinceHealth += deltaSeconds;
         if (signInQueued)
         {
             signInQueued = false;
@@ -480,6 +483,34 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             sinceRefresh = 0f;
             Start(RunRefreshAsync);
         }
+
+        if (sinceHealth >= HealthSeconds)
+        {
+            sinceHealth = 0f;
+            Start(RunHealthAsync);
+        }
+    }
+
+    private async Task RunHealthAsync(CancellationToken token)
+    {
+        try
+        {
+            var (body, status) = await client.GetAsync("/health", GateJson.Default.HealthDto, token)
+                .ConfigureAwait(false);
+            var live = status is >= 200 and < 300 && body is { Ok: true };
+            lock (gate)
+            {
+                snapshot = snapshot with { GateLive = live };
+            }
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate health failed");
+            lock (gate)
+            {
+                snapshot = snapshot with { GateLive = false };
+            }
+        }
     }
 
     private void QueueRefresh() => refreshQueued = true;
@@ -534,7 +565,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             log.Write(LogSeverity.Warning, failure, "Pearlgate sign-in failed");
-            Replace(Current with { Busy = false, Notice = "Sign-in failed. Try again in a moment." });
+            Replace(Current with { Busy = false, GateLive = false, Notice = "Sign-in failed. Try again in a moment." });
         }
     }
 
@@ -605,7 +636,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             ForgetSessionLocked();
         }
 
-        Replace(new PearlSnapshot { Notice = "Signed out.", Generation = NextGeneration() });
+        Replace(new PearlSnapshot { Notice = "Signed out.", GateLive = Current.GateLive, Generation = NextGeneration() });
     }
 
     private async Task RunRefreshAsync(CancellationToken token)
@@ -683,6 +714,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             {
                 SignedIn = true,
                 Busy = false,
+                GateLive = true,
                 Notice = bans?.Banned == true
                     ? "This account is banned."
                     : bans?.Muted == true
@@ -742,7 +774,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             log.Write(LogSeverity.Warning, failure, "Pearlgate refresh failed");
-            Replace(Current with { Busy = false, Notice = "Lost Pearlgate for a moment. Retrying." });
+            Replace(Current with { Busy = false, Notice = "Lost Pearlgate for a moment. Retrying.", GateLive = false });
         }
     }
 
@@ -797,6 +829,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         {
             SignedIn = true,
             Busy = true,
+            GateLive = true,
             Notice = notice,
             MeId = user?.Id ?? string.Empty,
             MeName = user is null ? string.Empty : Display(user.DisplayName, user.Name),
@@ -826,7 +859,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             ForgetSessionLocked();
         }
 
-        Replace(new PearlSnapshot { Notice = notice, Generation = NextGeneration() });
+        Replace(new PearlSnapshot { Notice = notice, GateLive = Current.GateLive, Generation = NextGeneration() });
     }
 
     private void ForgetSessionLocked()

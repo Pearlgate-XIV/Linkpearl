@@ -1579,8 +1579,7 @@ public sealed partial class VybeApplet
         if (VybeChrome.Chip(frame, stack.Take(frame.Units(32f)),
                 state.StoryMedia.Length > 0 ? "Photo attached" : "Add photo", state.StoryMedia.Length > 0, night))
         {
-            state.PickingAvatar = false;
-            state.Open(NightPage.PhotoPick);
+            OpenComposePhoto();
         }
 
         VybeChrome.Note(frame, stack.Take(frame.Units(28f)),
@@ -2038,6 +2037,8 @@ public sealed partial class VybeApplet
     private void OpenComposePhoto()
     {
         state.PickingAvatar = false;
+        state.PickingBanner = false;
+        state.PickingClubFace = false;
         state.Open(NightPage.PhotoPick);
     }
 
@@ -3404,31 +3405,27 @@ public sealed partial class VybeApplet
     {
         var night = state.Night;
         var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
-        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)),
-                state.PickingBanner ? "Choose banner" : "Choose a photo", night))
+        if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), PhotoPickTitle(), night))
         {
             state.PickingClubFace = false;
             state.Back();
             return;
         }
 
-        if (state.PickingAvatar || state.PickingBanner)
+        var filesRow = stack.Take(frame.Units(40f));
+        VybeChrome.Primary(frame, filesRow, "From files", night);
+        if (frame.Input.ConsumeClick(filesRow))
         {
-            var filesRow = stack.Take(frame.Units(40f));
-            VybeChrome.Primary(frame, filesRow, "From files", night);
-            if (frame.Input.ConsumeClick(filesRow))
-            {
-                files.BeginImagePick();
-                photoWait = true;
-                return;
-            }
+            files.BeginImagePick();
+            photoWait = true;
+            return;
         }
 
         var shots = GalleryFiles.List(paths);
         if (shots.Count == 0)
         {
             VybeChrome.Mute(frame, stack.Take(frame.Units(40f)),
-                "Take a still in Camera first. Those photos land here.", night);
+                "Take a still in Camera first, or pick From files.", night);
             return;
         }
 
@@ -3446,47 +3443,8 @@ public sealed partial class VybeApplet
                     continue;
                 }
 
-                var path = shots[index + col].Path;
-                if (state.PickingClubFace)
-                {
-                    state.DraftClubFace = path;
-                    state.PickingClubFace = false;
-                    state.Back();
-                    return;
-                }
-
-                if (state.PickingAvatar)
-                {
-                    state.ProfileFacePath = path;
-                    state.FaceZoom = 1f;
-                    state.FaceFocusX = 0.5f;
-                    state.FaceFocusY = 0.5f;
-                    state.Save(paths);
-                    ShowPlacePhoto();
-                    return;
-                }
-
-                if (state.PickingBanner)
-                {
-                    state.ProfileBannerPath = path;
-                    state.BannerZoom = 1f;
-                    state.BannerFocusX = 0.5f;
-                    state.BannerFocusY = 0.5f;
-                    state.Save(paths);
-                    ShowPlacePhoto();
-                    return;
-                }
-
-                if (state.ReturnTo == NightPage.StoryCompose)
-                {
-                    state.StoryMedia = path;
-                }
-                else if (state.DraftMedia.Count < 4 && !state.DraftMedia.Contains(path))
-                {
-                    state.DraftMedia.Add(path);
-                }
-
-                state.Back();
+                TakePickedPhoto(shots[index + col].Path);
+                return;
             }
         }
     }
@@ -3495,6 +3453,7 @@ public sealed partial class VybeApplet
     {
         state.PickingAvatar = face;
         state.PickingBanner = !face;
+        state.PickingClubFace = false;
         var path = face ? state.ProfileFacePath : state.ProfileBannerPath;
         if (!VybeChrome.StillReady(path))
         {
@@ -3550,9 +3509,114 @@ public sealed partial class VybeApplet
             return;
         }
 
-        if (ImportOwnStill(frame, picked[0]))
+        if (state.PickingAvatar || state.PickingBanner)
         {
+            if (ImportOwnStill(frame, picked[0]))
+            {
+                ShowPlacePhoto();
+            }
+
+            return;
+        }
+
+        var stored = CopyPickedStill(frame, picked[0],
+            state.PickingClubFace ? "vybe-club-face" : "vybe-post");
+        if (stored.Length == 0)
+        {
+            return;
+        }
+
+        TakePickedPhoto(stored);
+    }
+
+    private string PhotoPickTitle()
+    {
+        if (state.PickingBanner)
+        {
+            return "Choose banner";
+        }
+
+        if (state.PickingAvatar)
+        {
+            return "Choose a photo";
+        }
+
+        return "Add a photo";
+    }
+
+    private void TakePickedPhoto(string path)
+    {
+        if (state.PickingClubFace)
+        {
+            state.DraftClubFace = path;
+            state.PickingClubFace = false;
+            state.Back();
+            return;
+        }
+
+        if (state.PickingAvatar)
+        {
+            state.ProfileFacePath = path;
+            state.FaceZoom = 1f;
+            state.FaceFocusX = 0.5f;
+            state.FaceFocusY = 0.5f;
+            state.Save(paths);
             ShowPlacePhoto();
+            return;
+        }
+
+        if (state.PickingBanner)
+        {
+            state.ProfileBannerPath = path;
+            state.BannerZoom = 1f;
+            state.BannerFocusX = 0.5f;
+            state.BannerFocusY = 0.5f;
+            state.Save(paths);
+            ShowPlacePhoto();
+            return;
+        }
+
+        if (state.ReturnTo == NightPage.StoryCompose)
+        {
+            state.StoryMedia = path;
+        }
+        else if (state.DraftMedia.Count < 4 && !state.DraftMedia.Contains(path))
+        {
+            state.DraftMedia.Add(path);
+        }
+
+        state.Back();
+    }
+
+    private string CopyPickedStill(in AppletFrame frame, string sourcePath, string stem)
+    {
+        try
+        {
+            var source = sourcePath.Trim().Trim('"');
+            if (source.Length == 0 || !File.Exists(source))
+            {
+                return string.Empty;
+            }
+
+            var ext = Path.GetExtension(source);
+            if (!PlateFiles.IsImage(ext))
+            {
+                ext = ".png";
+            }
+
+            var dest = paths.State(stem + "-" + Guid.NewGuid().ToString("N") + ext.ToLowerInvariant());
+            Directory.CreateDirectory(paths.StateDirectory);
+            File.Copy(source, dest, false);
+            frame.Textures.ForgetFile(dest);
+            return dest;
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 
