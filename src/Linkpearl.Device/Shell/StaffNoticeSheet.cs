@@ -36,7 +36,7 @@ internal static class StaffNoticeSheet
         var copyTop = head.Max.Y + frame.Units(10f);
         var ok = snap.Banned
             ? Rect.Empty
-            : inner.BottomSlice(frame.Units(44f));
+            : inner.BottomSlice(frame.Units(56f));
         var copy = new Rect(new Vector2(inner.Min.X, copyTop),
             new Vector2(inner.Max.X, ok.IsEmpty ? inner.Max.Y : ok.Min.Y - frame.Units(12f)));
         frame.Text.DrawWrapped(copy, body, new TextStyle(FontRole.Body, new Vector4(0.88f, 0.89f, 0.92f, 1f)));
@@ -51,7 +51,8 @@ internal static class StaffNoticeSheet
 
         frame.Paint.Fill(ok, ink, ok.Height * 0.5f);
         frame.Text.DrawIn(ok, "OK", new TextStyle(FontRole.BodyStrong, Vector4.One, TextAlign.Center));
-        if (pending is { } open && frame.Input.ConsumeClick(ok))
+        var okHit = ok.Expand(frame.Units(10f));
+        if (pending is { } open && (frame.Input.ConsumeClick(okHit) || frame.Input.PressedInside(okHit)))
         {
             pearl.MarkStaffNotice(open.Id);
         }

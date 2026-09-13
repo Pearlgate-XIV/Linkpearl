@@ -706,9 +706,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 ? (null, 0)
                 : await client.GetAsync("/bans/" + Uri.EscapeDataString(meId), GateJson.Default.BanSnapshotDto, token)
                     .ConfigureAwait(false);
-            var staffNotices = noticesStatus is >= 200 and < 300
+            var staffNotices = KeepLocalStaffReads(noticesStatus is >= 200 and < 300
                 ? MapStaffNotices(noticesPage?.Items)
-                : MapStaffNotices(me.StaffNotices);
+                : MapStaffNotices(me.StaffNotices));
             var banned = bansStatus is >= 200 and < 300
                 ? bans?.Banned == true
                 : me.Banned == true;
@@ -1300,11 +1300,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 .ConfigureAwait(false);
         var fromMe = MapStaffNotices(me?.StaffNotices);
         var fromPage = noticesStatus is >= 200 and < 300 ? MapStaffNotices(noticesPage?.Items) : [];
-        var notices = fromPage.Length > 0 || noticesStatus is >= 200 and < 300
+        var notices = KeepLocalStaffReads(fromPage.Length > 0 || noticesStatus is >= 200 and < 300
             ? fromPage
             : fromMe.Length > 0
                 ? fromMe
-                : Current.StaffNotices;
+                : Current.StaffNotices);
         var banned = bansStatus is >= 200 and < 300
             ? bans?.Banned == true
             : treatForbiddenAsBan || me?.Banned == true || Current.Banned;
@@ -1329,6 +1329,45 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             MuteUntilUnix = muteUntil,
             Generation = NextGeneration(),
         });
+    }
+
+    private PearlStaffNotice[] KeepLocalStaffReads(PearlStaffNotice[] incoming)
+    {
+        HashSet<string> held;
+        lock (gate)
+        {
+            held = new HashSet<string>(StringComparer.Ordinal);
+            var prior = snapshot.StaffNotices;
+            for (var index = 0; index < prior.Length; index++)
+            {
+                if (prior[index].Read && prior[index].Id.Length > 0)
+                {
+                    held.Add(prior[index].Id);
+                }
+            }
+
+            foreach (var id in staffReads)
+            {
+                if (id.Length > 0)
+                {
+                    held.Add(id);
+                }
+            }
+        }
+
+        if (held.Count == 0 || incoming.Length == 0)
+        {
+            return incoming;
+        }
+
+        var next = new PearlStaffNotice[incoming.Length];
+        for (var index = 0; index < incoming.Length; index++)
+        {
+            var row = incoming[index];
+            next[index] = !row.Read && held.Contains(row.Id) ? row with { Read = true } : row;
+        }
+
+        return next;
     }
 
     private static PearlHit[] MapHits(GateUserDto[]? users)
@@ -1452,13 +1491,37 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         try
         {
-            await client
+            var status = await client
                 .PostAsync("/account/notices/" + Uri.EscapeDataString(noticeId) + "/read", null, token)
                 .ConfigureAwait(false);
+            if (status is >= 200 and < 300 || status == 404)
+            {
+                return;
+            }
+
+            log.Write(LogSeverity.Warning, "Pearlgate staff notice read returned HTTP " + status);
+            RetryStaffRead(noticeId);
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             log.Write(LogSeverity.Warning, failure, "Pearlgate staff notice read failed");
+            RetryStaffRead(noticeId);
+        }
+    }
+
+    private void RetryStaffRead(string noticeId)
+    {
+        lock (gate)
+        {
+            foreach (var queued in staffReads)
+            {
+                if (string.Equals(queued, noticeId, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+
+            staffReads.Enqueue(noticeId);
         }
     }
 

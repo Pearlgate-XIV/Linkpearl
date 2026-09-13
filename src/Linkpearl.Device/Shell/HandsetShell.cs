@@ -127,6 +127,11 @@ public sealed class HandsetShell
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
         router.RevokeDisallowed();
+        if (StaffNoticeSheet.Draw(outerFrame, screen, pearl.Current, pearl))
+        {
+            return;
+        }
+
         var scale = outerFrame.Scale;
         var hush = preferences.Hushed(game.IsInDuty || game.IsInCutscene);
         banner.Observe(pearl.Current, talk, clock, notices, hush);
@@ -343,7 +348,6 @@ public sealed class HandsetShell
         banner.Draw(outerFrame, screen, hub, notices);
         quickApps.Draw(outerFrame, screen, preferences, preferences.ReduceMotion, LaunchQuickApp, OpenQuickCustomize,
             notices, talk, preferences.Hushed(game.IsInDuty || game.IsInCutscene));
-        StaffNoticeSheet.Draw(outerFrame, screen, pearl.Current, pearl);
 
         if (handleTapped || swiped)
         {
