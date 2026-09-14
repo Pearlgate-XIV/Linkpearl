@@ -66,15 +66,25 @@ skip_names = {
     "libmp3lame.dll",
     "libmp3lame.dylib",
     "libmp3lame.so",
+    "libmp3lame.32.dll",
     "EchoMix.AudioHost",
+    "Microsoft.Windows.SDK.NET.dll",
 }
+skip_prefixes = (
+    "Icons/emoji/",
+    "Icons/vybe-demo/",
+    "Icons/original/",
+)
 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for path in sorted(out.rglob("*")):
         if not path.is_file():
             continue
+        rel = path.relative_to(out).as_posix()
         if path.suffix.lower() in skip_suffixes or path.name in skip_names:
             continue
-        z.write(path, path.relative_to(out).as_posix())
+        if any(rel.startswith(prefix) for prefix in skip_prefixes):
+            continue
+        z.write(path, rel)
 print("zip", zip_path, zip_path.stat().st_size)
 PY
 
