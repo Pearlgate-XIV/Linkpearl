@@ -140,8 +140,22 @@ gh release upload dev "$zip_path" --clobber
 gh release delete-asset dev Linkpearl.zip --yes 2>/dev/null || true
 cp "$root/linkpearl.json" "$stage/pluginmaster.json"
 gh release upload dev "$root/linkpearl.json" "$stage/pluginmaster.json" --clobber
-gh release edit dev --notes "Current Linkpearl. Custom repo (pick one): https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json or https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json"
+gh release edit dev --notes "$(cat <<EOF
+Current Linkpearl testers drop.
+
+Either custom-repo URL installs the same plugin:
+
+https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
+
+https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json
+EOF
+)"
 echo "version $version"
 echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
 echo "repo https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json"
+git -C "$root" add -- "$root/linkpearl.json" "$root/pluginmaster.json"
+if ! git -C "$root" diff --cached --quiet; then
+  git -C "$root" commit -m "Point testers listings at ${version}."
+fi
 git -C "$root" push origin HEAD:master
+git -C "$root" push origin HEAD:main
