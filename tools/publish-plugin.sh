@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Cut a Dalamud drop and attach it to the GitHub `dev` release.
-# Testers add: https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
+# Testers add one of:
+#   https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
+#   https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -119,16 +121,17 @@ Path(repo).with_name("pluginmaster.json").write_text(text)
 PY
 
 # Official Dalamud already owns InternalName "Linkpearl". Never leave that zip/listing on the VPS or GitHub.
-# Keep GitHub pluginmaster.json too: testers who first installed from that URL only get
-# Dalamud updates while InstalledFromUrl still matches a live repo.
+# Same JSON under both names on GitHub and Pearlgate so either testers URL stays live.
 scp -q "$root/linkpearl.json" "$host:$remote/pluginmaster.json"
-ssh -o BatchMode=yes "$host" "rm -f '$remote/Linkpearl.zip'; chmod 644 '$remote/pluginmaster.json'"
+scp -q "$root/linkpearl.json" "$host:$remote/linkpearl.json"
+ssh -o BatchMode=yes "$host" "rm -f '$remote/Linkpearl.zip'; chmod 644 '$remote/pluginmaster.json' '$remote/linkpearl.json'"
 
 gh release upload dev "$zip_path" --clobber
 gh release delete-asset dev Linkpearl.zip --yes 2>/dev/null || true
 cp "$root/linkpearl.json" "$stage/pluginmaster.json"
 gh release upload dev "$root/linkpearl.json" "$stage/pluginmaster.json" --clobber
-gh release edit dev --notes "Current Linkpearl. Add https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json as a Dalamud custom repository."
+gh release edit dev --notes "Current Linkpearl. Custom repo (pick one): https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json or https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json"
 echo "version $version"
 echo "repo https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json"
+echo "repo https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json"
 git -C "$root" push origin HEAD:master

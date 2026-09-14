@@ -45,6 +45,10 @@ The Next Generation of In-Game Connectivity.
 
 ## Install
 
-Add this URL as a **Dalamud custom plugin repository**, then install **Linkpearl**:
+Add **one** of these URLs as a **Dalamud custom plugin repository**, then install **Linkpearl**:
 
 https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/linkpearl.json
+
+https://pearlgate.194.113.211.29.sslip.io/plugin/pluginmaster.json
+
+They are the same listing. Keep whichever URL you first installed from so Dalamud can still offer updates.
