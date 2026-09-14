@@ -113,10 +113,14 @@ listing = [
         "LastUpdate": str(now),
     }
 ]
-Path(repo).write_text(json.dumps(listing, indent=2) + "\n")
+text = json.dumps(listing, indent=2) + "\n"
+Path(repo).write_text(text)
+Path(repo).with_name("pluginmaster.json").write_text(text)
 PY
 
 # Official Dalamud already owns InternalName "Linkpearl". Never leave that zip/listing on the VPS or GitHub.
+# Keep GitHub pluginmaster.json too: testers who first installed from that URL only get
+# Dalamud updates while InstalledFromUrl still matches a live repo.
 scp -q "$root/linkpearl.json" "$host:$remote/pluginmaster.json"
 ssh -o BatchMode=yes "$host" "rm -f '$remote/Linkpearl.zip'; chmod 644 '$remote/pluginmaster.json'"
 

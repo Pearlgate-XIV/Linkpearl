@@ -1,0 +1,27 @@
+[
+  {
+    "Author": "Pearlgate",
+    "Name": "Linkpearl",
+    "Punchline": "A pearl in your pocket.",
+    "Description": "An in-game communicator for FINAL FANTASY XIV: a docked, always-on handset with a home screen, notifications, and themeable wallpapers.",
+    "InternalName": "LinkpearlDev",
+    "AssemblyVersion": "0.1.1.12",
+    "RepoUrl": "https://github.com/Pearlgate-XIV/Linkpearl",
+    "ApplicableVersion": "any",
+    "Tags": [
+      "phone",
+      "chat",
+      "social"
+    ],
+    "DalamudApiLevel": 15,
+    "LoadPriority": 0,
+    "DownloadLinkInstall": "https://pearlgate.194.113.211.29.sslip.io/plugin/LinkpearlDev.zip",
+    "IconUrl": "https://raw.githubusercontent.com/Pearlgate-XIV/Linkpearl/master/src/Linkpearl.Host/Icons/glyphs/phone.png",
+    "IsHide": false,
+    "IsTestingExclusive": false,
+    "DownloadLinkTesting": "https://pearlgate.194.113.211.29.sslip.io/plugin/LinkpearlDev.zip",
+    "DownloadLinkUpdate": "https://pearlgate.194.113.211.29.sslip.io/plugin/LinkpearlDev.zip",
+    "DownloadCount": 0,
+    "LastUpdate": "1789280969"
+  }
+]
