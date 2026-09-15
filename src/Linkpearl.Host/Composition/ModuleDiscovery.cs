@@ -24,9 +24,11 @@ public static class ModuleDiscovery
         new TimerModule(),
         new StopwatchModule(),
         new WeatherModule(),
+        new EorzeaModule(),
         new CameraModule(),
         new MarketModule(),
         new VenuesModule(),
+        new WalletModule(),
         new AppStoreModule(),
     };
 }

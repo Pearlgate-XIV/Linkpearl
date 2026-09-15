@@ -66,8 +66,8 @@ public static class AppShelf
             "weather.png"),
         Spec("calendar", "Calendar", "Schedule", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0,
             true, "calendar.png"),
-        Spec("wallet", "Pearls", "Currency", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, false,
-            "wallet.png", hidden: true),
+        Spec("wallet", "Pearls", "Currency", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
+            "wallet.png"),
         Spec("camera", "Camera", "Capture", AppGroup.Essentials, AppChip.Utility, AppKind.Applet, default, 0, true,
             "camera.png"),
         Spec("friends", "Friends", "Social", AppGroup.Life, AppChip.Social, AppKind.Applet, default, 0, true,
@@ -80,8 +80,8 @@ public static class AppShelf
             "announcement.png"),
         Spec("events", "Events", "Activities", AppGroup.Life, AppChip.Social, AppKind.Shortcut, DestinationTab.Explore,
             ExplorePane.Events, false, "events.png", hidden: true),
-        Spec("eorzea", "Eorzea", "Game menus", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, false,
-            "eorzea.png", hidden: true),
+        Spec("eorzea", "Eorzea", "Game menus", AppGroup.Life, AppChip.Utility, AppKind.Applet, default, 0, true,
+            "eorzea.png"),
         Spec("settings", "Settings", "System", AppGroup.Tools, AppChip.System, AppKind.Shortcut, DestinationTab.Settings,
             SettingsPane.Front, true, "settings.png"),
         Spec("feedback", "Feedback", "Discord", AppGroup.Tools, AppChip.System, AppKind.Applet, default, 0, true,
@@ -100,8 +100,8 @@ public static class AppShelf
 
     public static readonly string[] DefaultInstalled =
     {
-        "pearlchat", "phone", "music", "vybe", "weather", "calendar", "camera", "friends", "settings",
-        "feedback", "market", "venues", "appstore", "notes", "alarms",
+        "pearlchat", "phone", "music", "vybe", "weather", "calendar", "wallet", "camera", "friends", "settings",
+        "feedback", "market", "venues", "eorzea", "appstore", "notes", "alarms",
     };
 
     public static readonly string[] ChipLabels = { "All", "Social", "Music", "Utility", "System", "Favorites" };

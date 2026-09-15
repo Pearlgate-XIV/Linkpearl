@@ -13,8 +13,8 @@ been explicitly superseded by a UI concept reference: **four fixed destinations 
 Explore, You — plus a central Linkpearl/crystal for Universal Search**, under the philosophy
 "fewer places to look, more things connected together." Life apps are reached from a
 second right-edge handle (middle of the glass). Tapping it carousels the content to an Apps
-screen (Clock, Notes, Alarms, Calendar, Calculator, Timer, Stopwatch, Weather, Place, Camera,
-Wallet). Settings is a destination, not an
+screen (Clock, Notes, Alarms, Calendar, Calculator, Timer, Stopwatch, Weather, Eorzea, Camera,
+Wallet / Pearls). Settings is a destination, not an
 app icon. `HomeSurface` (icon grid) is what that Apps page draws. `RouteStack`/`IApplet` open
 the tile the user picks.
 
@@ -99,7 +99,10 @@ Search, all reading live Pearlgate data once you sign in:
 - **Linkpearl.Applets.Core** / **Linkpearl.Applets.Life** — Settings stays a destination, not an
   app icon. The Apps carousel (right-edge handle) is a 5x6 grid of Life applets: Clock (local +
   Eorzea bells), Alarms, Notes (in-memory scratch list), Calendar, Calculator, Timer, Stopwatch,
-  Weather, Place (live name/world/job/zone), Camera (zone still as a note), and Wallet (gil).
+  Weather, Eorzea (live name/world/job/zone), Camera (zone still as a note), and Wallet (Pearls
+  currency). `WalletModule` and `EorzeaModule` are on the hand-written `ModuleDiscovery` list and
+  unhidden on `AppShelf` (they used to exist on disk but never reached the carousel). Not verified
+  in-game.
   An open applet has a ‹ Apps row at the top that returns to that grid
   (Home/Back on the soft-key bar do the same; the right-edge handle leaves Apps entirely). `RouteStack.Home`/`Back`
   used to no-op after the first open because a present motion was started and never advanced.
@@ -142,9 +145,10 @@ server, and the phone says so instead of inventing venues), `Linkpearl.Data` (se
 + migrations; Look/clock format still reset every launch), `Linkpearl.Audio`, `Linkpearl.Cinema`,
 the four apps to regain from Aetherphone (Casino, Coin, Housing, Hunts), localization catalogs,
 and the platform-fake for headless testing. `ModuleDiscovery` is a hand-written list by design
-until there are enough modules for reflection-based discovery to earn its cost. The Apps carousel
-already has Clock, Alarms, Notes, Calendar, Calculator, Timer, Stopwatch, Weather, Place, Camera,
-and Wallet. Settings is the Tune destination. Casino, Coin, Housing, and Hunts are still unbuilt.
+until there are enough modules for reflection-based discovery to earn its cost. That list now
+includes Eorzea and Wallet alongside Clock, Alarms, Notes, Calendar, Calculator, Timer, Stopwatch,
+Weather, Camera, Market, Venues, and the rest of the registered Life modules. Settings is the Tune
+destination. Casino, Coin, Housing, and Hunts are still unbuilt. Not verified in-game.
 
 ## Known gaps to close before this is more than a proof
 
