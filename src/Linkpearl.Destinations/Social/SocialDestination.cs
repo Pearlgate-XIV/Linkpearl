@@ -394,6 +394,10 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
                 pearl.AddFriend(hit.Id, trimmed);
                 peopleQuery = string.Empty;
             }
+            else if (Chip(frame, inner.RightSlice(frame.Units(64f)).BottomSlice(frame.Units(28f)), "Chat"))
+            {
+                OpenPearlFromPeople(hit.Id);
+            }
             else if (frame.Input.ConsumeClick(row))
             {
                 messages.OpenProfile(TalkIds.Person(hit.Id));
@@ -736,6 +740,12 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         messages.Open(talk.StartTell(name, world));
     }
 
+    private void OpenPearlFromPeople(string userId)
+    {
+        selectedSection = SocialPane.Messages;
+        messages.OpenPearl(userId);
+    }
+
     private void HandleFriendRow(in AppletFrame frame, Rect row, string name, string world, Action primary)
     {
         if (menu is not null)
@@ -765,6 +775,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var labels = new List<string> { "Send tell", "Invite to party", "Report" };
         if (open.ContactId.Length > 0)
         {
+            labels.Add("Pearlgate chat");
             labels.Add("Linkpearl contact");
         }
 
@@ -818,6 +829,12 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         if (label == "Invite to party" && open.Name.Length > 0)
         {
             chat.InviteToParty(open.Name, open.World);
+            return;
+        }
+
+        if (label == "Pearlgate chat" && open.ContactId.Length > 0)
+        {
+            OpenPearlFromPeople(BareUserId(open.ContactId));
             return;
         }
 

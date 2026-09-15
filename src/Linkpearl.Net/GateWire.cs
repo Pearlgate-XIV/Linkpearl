@@ -104,6 +104,8 @@ internal sealed record AnnouncementPageDto(AnnouncementDto[]? Items, string? Nex
 
 internal sealed record SendChatDto(string Body);
 
+internal sealed record CreateChatDto(string? UserId, string? OtherUserId = null);
+
 internal sealed record ChatMessageDto(
     string? Id,
     string? Body,
@@ -290,6 +292,7 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(AnnouncementDto))]
 [JsonSerializable(typeof(AnnouncementPageDto))]
 [JsonSerializable(typeof(SendChatDto))]
+[JsonSerializable(typeof(CreateChatDto))]
 [JsonSerializable(typeof(ChatMessageDto))]
 [JsonSerializable(typeof(ChatMessagePageDto))]
 [JsonSerializable(typeof(HealthDto))]

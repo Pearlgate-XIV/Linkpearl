@@ -83,6 +83,8 @@ public interface ITalk
 
     string StartTell(string name, string world);
 
+    string StartPearl(string userId);
+
     void HideThread(string threadId);
 
     void SetNote(string peerId, string note);

@@ -44,6 +44,7 @@ internal sealed class MessagesSurface
     private bool stickBottom = true;
     private bool profileFromThread;
     private int seenGeneration = -1;
+    private string pendingPearlUser = string.Empty;
 
     private int inboxPane = SocialPane.Messages;
     private float inboxScroll;
@@ -90,6 +91,7 @@ internal sealed class MessagesSurface
         noteDraft = string.Empty;
         inboxMenu = null;
         inboxScroll = 0f;
+        pendingPearlUser = string.Empty;
     }
 
     public void Open(string threadId)
@@ -107,6 +109,24 @@ internal sealed class MessagesSurface
         profileFromThread = false;
         openId = threadId;
         talk.MarkRead(threadId);
+        pendingPearlUser = string.Empty;
+    }
+
+    public void OpenPearl(string userId)
+    {
+        var id = userId.Trim();
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        pendingPearlUser = id;
+        var thread = talk.StartPearl(id);
+        if (thread.Length > 0)
+        {
+            pendingPearlUser = string.Empty;
+            Open(thread);
+        }
     }
 
     public void OpenProfile(string peerId)
@@ -134,6 +154,7 @@ internal sealed class MessagesSurface
         noteDraft = string.Empty;
         inboxMenu = null;
         tray.Close();
+        pendingPearlUser = string.Empty;
     }
 
     public bool Back()
@@ -156,6 +177,7 @@ internal sealed class MessagesSurface
             profileId = string.Empty;
             noteDraft = string.Empty;
             profileFromThread = false;
+            pendingPearlUser = string.Empty;
             return true;
         }
 
@@ -171,6 +193,7 @@ internal sealed class MessagesSurface
 
     public float Compose(in AppletFrame frame)
     {
+        ClaimPearl();
         if (reportOpen)
         {
             var result = HandsetReportSheet.Draw(frame, frame.Content, "Report", "msg-report",
@@ -193,6 +216,23 @@ internal sealed class MessagesSurface
         }
 
         return openId.Length > 0 ? DrawThread(frame) : DrawInbox(frame);
+    }
+
+    private void ClaimPearl()
+    {
+        if (pendingPearlUser.Length == 0)
+        {
+            return;
+        }
+
+        var chatId = pearl.ChatFor(pendingPearlUser);
+        if (chatId.Length == 0)
+        {
+            return;
+        }
+
+        pendingPearlUser = string.Empty;
+        Open(TalkIds.Pearl(chatId));
     }
 
     private float DrawInbox(in AppletFrame frame)
@@ -883,6 +923,13 @@ internal sealed class MessagesSurface
         if (frame.Input.ConsumeClick(message))
         {
             RememberNote();
+            var gateId = GateUserId(person);
+            if (gateId.Length > 0)
+            {
+                OpenPearl(gateId);
+                return (content.Height - stack.Remaining.Height) + inset * 2f;
+            }
+
             var tellId = person.TellId.Length > 0
                 ? person.TellId
                 : talk.StartTell(person.Name, person.World);
@@ -1057,12 +1104,41 @@ internal sealed class MessagesSurface
                 new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.WarmAccent, TextAlign.Center));
             if (frame.Input.ConsumeClick(message))
             {
-                CloseProfile();
-                Open(talk.StartTell(name, string.Empty));
+                OpenPearl(userId);
             }
         }
 
         return true;
+    }
+
+    private string GateUserId(TalkPeer person)
+    {
+        if (TalkIds.TryParsePerson(person.Id, out var userId))
+        {
+            return userId;
+        }
+
+        var people = pearl.Current.People;
+        for (var index = 0; index < people.Length; index++)
+        {
+            if (people[index].DisplayName.Equals(person.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return people[index].Id;
+            }
+        }
+
+        var chats = pearl.Current.Chats;
+        for (var index = 0; index < chats.Length; index++)
+        {
+            if (!chats[index].IsGroup &&
+                chats[index].Title.Equals(person.Name, StringComparison.OrdinalIgnoreCase) &&
+                chats[index].OtherUserId.Length > 0)
+            {
+                return chats[index].OtherUserId;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static void DrawFact(in AppletFrame frame, Rect row, string kicker, string value)
@@ -1600,7 +1676,7 @@ internal sealed class MessagesSurface
             TalkKind.Party => "Party chat will collect here. Type below when you are in a party.",
             TalkKind.Tell => "Say something. Tells are saved on this character even if they are not on Pearlgate.",
             TalkKind.Linkshell or TalkKind.CrossWorldLinkshell => "This room is your linkshell. Type below.",
-            TalkKind.Pearl => "No messages yet.",
+            TalkKind.Pearl => "No messages yet. Type below to send the first Pearlgate line.",
             _ => "No messages yet.",
         };
     }

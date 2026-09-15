@@ -54,6 +54,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly Queue<SocialWrite> writes = new();
     private readonly Queue<(bool Add, uint ItemId, string Label)> marketWrites = new();
     private readonly Queue<(bool Add, string UserId, string Number)> friendWrites = new();
+    private readonly Queue<string> chatCreates = new();
+    private readonly HashSet<string> creatingChats = new(StringComparer.Ordinal);
     private readonly Queue<string> staffReads = new();
     private readonly Queue<(string Type, string Id, string Reason, string Detail, PearlReportLine[] Lines)> reports = new();
 
@@ -299,6 +301,68 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
     }
 
+    public string ChatFor(string userId)
+    {
+        var id = userId.Trim();
+        if (id.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var chats = Current.Chats;
+        for (var index = 0; index < chats.Length; index++)
+        {
+            var chat = chats[index];
+            if (!chat.IsGroup && string.Equals(chat.OtherUserId, id, StringComparison.Ordinal))
+            {
+                return chat.Id;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    public void StartChat(string userId)
+    {
+        var id = userId.Trim();
+        if (id.Length == 0 || string.Equals(id, Current.MeId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!Current.SignedIn)
+        {
+            Replace(Current with
+            {
+                Notice = "Sign in from You to start a Pearlgate chat.",
+                Generation = NextGeneration(),
+            });
+            return;
+        }
+
+        if (BlockMuted())
+        {
+            return;
+        }
+
+        var existing = ChatFor(id);
+        if (existing.Length > 0)
+        {
+            WatchChat(existing);
+            return;
+        }
+
+        lock (gate)
+        {
+            if (!creatingChats.Add(id))
+            {
+                return;
+            }
+
+            chatCreates.Enqueue(id);
+        }
+    }
+
     public void SendChat(string chatId, string body)
     {
         var id = chatId.Trim();
@@ -424,6 +488,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         SocialWrite? write = null;
         (bool Add, uint ItemId, string Label)? market = null;
         (bool Add, string UserId, string Number)? friend = null;
+        string? createChat = null;
         string? mediaUrl = null;
         string? staffNotice = null;
         (string Type, string Id, string Reason, string Detail, PearlReportLine[] Lines)? report = null;
@@ -442,6 +507,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             if (friendWrites.Count > 0)
             {
                 friend = friendWrites.Dequeue();
+            }
+
+            if (chatCreates.Count > 0)
+            {
+                createChat = chatCreates.Dequeue();
             }
 
             if (mediaWanted.Count > 0)
@@ -479,6 +549,11 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var userId = link.UserId;
             var number = link.Number;
             Start(token => RunFriendWriteAsync(add, userId, number, token));
+        }
+
+        if (createChat is { Length: > 0 } peerId)
+        {
+            Start(token => RunStartChatAsync(peerId, token));
         }
 
         if (mediaUrl is { Length: > 0 } url)
@@ -933,6 +1008,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         writes.Clear();
         marketWrites.Clear();
         friendWrites.Clear();
+        chatCreates.Clear();
+        creatingChats.Clear();
         watchedPost = string.Empty;
         watchedUser = string.Empty;
     }
@@ -1020,6 +1097,190 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         {
             log.Write(LogSeverity.Warning, failure, "Pearlgate send failed");
         }
+    }
+
+    private async Task RunStartChatAsync(string userId, CancellationToken token)
+    {
+        try
+        {
+            var (conversation, status) = await PostCreateChatAsync(userId, token).ConfigureAwait(false);
+            if (status == 401)
+            {
+                DropSession("Session expired. Sign in again.");
+                return;
+            }
+
+            if (status == 403)
+            {
+                Replace(Current with
+                {
+                    Notice = "Staff muted this handset.",
+                    Muted = true,
+                    Generation = NextGeneration(),
+                });
+                return;
+            }
+
+            if (status is >= 200 and < 300 || status == 409)
+            {
+                var mapped = conversation is null ? null : MapChats([conversation]);
+                if (mapped is { Length: > 0 } && mapped[0].Id.Length > 0)
+                {
+                    UpsertChat(mapped[0], userId);
+                    WatchChat(mapped[0].Id);
+                    QueueRefresh();
+                    return;
+                }
+
+                var (page, listStatus) = await client.GetAsync("/chats/", GateJson.Default.ConversationPageDto, token)
+                    .ConfigureAwait(false);
+                if (listStatus is >= 200 and < 300)
+                {
+                    var chats = MapChats(page?.Items);
+                    Replace(Current with { Chats = chats, Generation = NextGeneration() });
+                    var found = ChatFor(userId);
+                    if (found.Length > 0)
+                    {
+                        WatchChat(found);
+                        return;
+                    }
+                }
+
+                QueueRefresh();
+                if (status == 409 && ChatFor(userId).Length == 0)
+                {
+                    Replace(Current with
+                    {
+                        Notice = "Couldn't start that Pearlgate chat.",
+                        Generation = NextGeneration(),
+                    });
+                }
+
+                return;
+            }
+
+            var notice = status is 400 or 404
+                ? "Can't start a chat with that Pearlgate account."
+                : "Couldn't start that Pearlgate chat.";
+            Replace(Current with { Notice = notice, Generation = NextGeneration() });
+            log.Write(LogSeverity.Warning, "Pearlgate create chat returned HTTP " + status);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate create chat failed");
+            Replace(Current with
+            {
+                Notice = "Couldn't start that Pearlgate chat.",
+                Generation = NextGeneration(),
+            });
+        }
+        finally
+        {
+            lock (gate)
+            {
+                creatingChats.Remove(userId);
+            }
+        }
+    }
+
+    private async Task<(ConversationDto? Body, int Status)> PostCreateChatAsync(string userId, CancellationToken token)
+    {
+        var both = GateClient.JsonBody(new CreateChatDto(userId, userId), GateJson.Default.CreateChatDto);
+        var first = await client.PostAsync("/chats/", both, GateJson.Default.ConversationDto, token)
+            .ConfigureAwait(false);
+        if (first.Status != 400)
+        {
+            return first;
+        }
+
+        var byUser = GateClient.JsonBody(new CreateChatDto(userId), GateJson.Default.CreateChatDto);
+        var second = await client.PostAsync("/chats/", byUser, GateJson.Default.ConversationDto, token)
+            .ConfigureAwait(false);
+        if (second.Status != 400)
+        {
+            return second;
+        }
+
+        var byOther = GateClient.JsonBody(new CreateChatDto(null, userId), GateJson.Default.CreateChatDto);
+        return await client.PostAsync("/chats/", byOther, GateJson.Default.ConversationDto, token)
+            .ConfigureAwait(false);
+    }
+
+    private void UpsertChat(PearlChat chat, string userId)
+    {
+        var current = Current.Chats;
+        var next = new List<PearlChat>(current.Length + 1);
+        var replaced = false;
+        for (var index = 0; index < current.Length; index++)
+        {
+            var row = current[index];
+            if (string.Equals(row.Id, chat.Id, StringComparison.Ordinal) ||
+                (!row.IsGroup && string.Equals(row.OtherUserId, userId, StringComparison.Ordinal)))
+            {
+                if (!replaced)
+                {
+                    next.Add(FillChat(chat, userId));
+                    replaced = true;
+                }
+
+                continue;
+            }
+
+            next.Add(row);
+        }
+
+        if (!replaced)
+        {
+            next.Add(FillChat(chat, userId));
+        }
+
+        Replace(Current with { Chats = next.ToArray(), Generation = NextGeneration() });
+    }
+
+    private PearlChat FillChat(PearlChat chat, string userId)
+    {
+        var title = chat.Title;
+        if (string.IsNullOrWhiteSpace(title) || title == "Chat")
+        {
+            var named = TitleForUser(userId);
+            if (named.Length > 0)
+            {
+                title = named;
+            }
+        }
+
+        var other = chat.OtherUserId.Length > 0 ? chat.OtherUserId : userId;
+        return chat with { Title = title, OtherUserId = other };
+    }
+
+    private string TitleForUser(string userId)
+    {
+        var snapshot = Current;
+        for (var index = 0; index < snapshot.People.Length; index++)
+        {
+            if (string.Equals(snapshot.People[index].Id, userId, StringComparison.Ordinal))
+            {
+                return snapshot.People[index].DisplayName;
+            }
+        }
+
+        for (var index = 0; index < snapshot.Directory.Length; index++)
+        {
+            if (string.Equals(snapshot.Directory[index].Id, userId, StringComparison.Ordinal))
+            {
+                return snapshot.Directory[index].DisplayName;
+            }
+        }
+
+        for (var index = 0; index < snapshot.SearchHits.Length; index++)
+        {
+            if (string.Equals(snapshot.SearchHits[index].Id, userId, StringComparison.Ordinal))
+            {
+                return snapshot.SearchHits[index].Title;
+            }
+        }
+
+        return string.Empty;
     }
 
     private void RememberLine(string chatId, PearlChatLine line)

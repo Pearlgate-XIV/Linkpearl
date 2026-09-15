@@ -236,6 +236,10 @@ public interface IPearlHub
 
     void SendChat(string chatId, string body);
 
+    void StartChat(string userId);
+
+    string ChatFor(string userId);
+
     IReadOnlyList<PearlChatLine> LinesFor(string chatId);
 
     void WatchFeed(string tab);

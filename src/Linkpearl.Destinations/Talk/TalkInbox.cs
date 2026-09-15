@@ -509,6 +509,30 @@ public sealed class TalkInbox : ITalk, IDisposable
         }
     }
 
+    public string StartPearl(string userId)
+    {
+        var id = userId.Trim();
+        if (id.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        pearl.StartChat(id);
+        var chatId = pearl.ChatFor(id);
+        if (chatId.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        lock (gate)
+        {
+            Reveal(TalkIds.Pearl(chatId));
+            generation++;
+        }
+
+        return TalkIds.Pearl(chatId);
+    }
+
     public void HideThread(string threadId)
     {
         if (threadId.Length == 0)
