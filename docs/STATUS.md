@@ -98,8 +98,8 @@ Search, all reading live Pearlgate data once you sign in:
   item, and the Quick Bar still open the matching thread.
 - **Linkpearl.Applets.Core** / **Linkpearl.Applets.Life** — Settings stays a destination, not an
   app icon. The Apps carousel (right-edge handle) is a 5x6 grid of Life applets: Clock (local +
-  Eorzea bells), Alarms, Notes (in-memory scratch list), Calendar, Calculator, Timer, Stopwatch,
-  Weather, Eorzea (live name/world/job/zone), Camera (zone still as a note), and Wallet (Pearls
+  Eorzea bells), Alarms, Notes (scratch list in `state/notes.json` via `Linkpearl.Data`), Calendar, Calculator, Timer, Stopwatch,
+  Weather, Eorzea (live name/world/job/zone), Camera (gallery stills in `state/photos/` plus `library.json`), and Wallet (Pearls
   currency). `WalletModule` and `EorzeaModule` are on the hand-written `ModuleDiscovery` list and
   unhidden on `AppShelf` (they used to exist on disk but never reached the carousel). Not verified
   in-game.
@@ -124,8 +124,10 @@ Texture loads go through `DalamudTextureSource` (`ITextureProvider.GetFromFileAb
 `TryGetWrap`): missing files and load errors are remembered so a failed path is not retried every
 frame; a still-loading wrap is treated as not-ready and the fallback fill stays visible. Darkness
 follows the local clock across a one-hour dawn/dusk ramp (`DayNight.Darkness`), or You → Look can
-force Day / Night / Auto. Appearance still resets every launch (no `Linkpearl.Data` yet). Not yet
-verified in-game.
+force Day / Night / Auto. Look, plate, shade, and the session token persist on `HandsetConfig`
+(`FreshBoot` wipes once if the mark is below 3). Notes, search drafts, and camera gallery files
+live under `ConfigDirectory/state/` (`Linkpearl.Data` section files for notes/search; photos keep
+their own catalog). Not yet verified in-game.
 
 **Found and fixed via a real in-game load attempt:** `FfxivGameSession`'s constructor read
 `IObjectTable.LocalPlayer` synchronously to catch up on a character already logged in when the
@@ -141,8 +143,8 @@ read outside a Draw/Update callback.
 
 Pearlgate chat send, realtime (websocket) updates, E2E chat crypto,
 AfterDark/Velvet UI, posting stories, Yellow Pages/Muster (those flags are off on the live
-server, and the phone says so instead of inventing venues), `Linkpearl.Data` (sectioned settings
-+ migrations; Look/clock format still reset every launch), `Linkpearl.Audio`, `Linkpearl.Cinema`,
+server, and the phone says so instead of inventing venues), migrating Look off `HandsetConfig`
+into more `Linkpearl.Data` sections, `Linkpearl.Cinema`,
 the four apps to regain from Aetherphone (Casino, Coin, Housing, Hunts), localization catalogs,
 and the platform-fake for headless testing. `ModuleDiscovery` is a hand-written list by design
 until there are enough modules for reflection-based discovery to earn its cost. That list now

@@ -14,6 +14,7 @@ using Linkpearl.Input;
 using Linkpearl.Net;
 using Linkpearl.Platform;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
 using Linkpearl.Theming;
@@ -56,7 +57,8 @@ public sealed class HandsetShell
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
         DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteStack router,
         ITalk talk, IReadOnlyList<IApplet> applets, IWifeSync wife, NoticeLedger notices, IWeatherOracle weather,
-        ISkyDesk sky, bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks)
+        ISkyDesk sky, bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks,
+        ISettings<SearchScratch> searchDraft)
     {
         this.clock = clock;
         this.game = game;
@@ -69,7 +71,7 @@ public sealed class HandsetShell
         this.router = router;
         apps = LifeApps(applets);
         appsDrawer = new AppsDrawer(apps, hub, preferences, glass, talk, notices, RememberLaunchSeat);
-        search = new UniversalSearchOverlay(pearl, talk, hub);
+        search = new UniversalSearchOverlay(pearl, talk, hub, searchDraft);
         this.notices = notices;
         control = new ControlCenter(notices);
 
@@ -95,7 +97,7 @@ public sealed class HandsetShell
 
         studio = new StudioSurface(clock, game, pearl, talk, hub, weather, sky, preferences, development, badges, notices,
             profile, LaunchStudioApplet, (origin, hint) => LaunchStudioApplet("music", origin, hint), audio, radio, marks,
-            glass);
+            glass, searchDraft);
     }
 
     public bool ConsumePocket()

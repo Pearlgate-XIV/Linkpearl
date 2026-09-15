@@ -3,6 +3,7 @@ using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 
 namespace Linkpearl.Applets.Life.Notes;
 
@@ -19,7 +20,14 @@ public sealed class NotesApplet : IApplet
         HomeOrder = 5,
     };
 
-    private readonly List<string> notes = [string.Empty];
+    private readonly ISettings<NotesScratch> store;
+    private readonly List<string> notes = [];
+
+    public NotesApplet(ISettings<NotesScratch> store)
+    {
+        this.store = store;
+        Load();
+    }
 
     AppletManifest IApplet.Manifest => Manifest;
 
@@ -31,6 +39,7 @@ public sealed class NotesApplet : IApplet
 
     public void Leave()
     {
+        Persist();
     }
 
     public void Compose(in AppletFrame frame)
@@ -39,17 +48,24 @@ public sealed class NotesApplet : IApplet
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Notes",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Stays on the phone until you close the game.",
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Kept on this phone.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
 
         var removeAt = -1;
+        var dirty = false;
         for (var index = 0; index < notes.Count; index++)
         {
             var row = stack.Take(frame.Units(44f));
             CardChrome.Draw(frame, row);
             var inset = row.Inset(frame.Units(10f));
             var field = notes.Count > 1 ? inset.Inset(new Edges(0f, 0f, frame.Units(28f), 0f)) : inset;
-            notes[index] = frame.TextField.Draw("note-" + index, field, notes[index], "Write something");
+            var next = frame.TextField.Draw("note-" + index, field, notes[index], "Write something");
+            if (!string.Equals(next, notes[index], StringComparison.Ordinal))
+            {
+                notes[index] = next;
+                dirty = true;
+            }
+
             if (notes.Count > 1)
             {
                 var clear = inset.RightSlice(frame.Units(24f));
@@ -69,6 +85,8 @@ public sealed class NotesApplet : IApplet
             {
                 notes.Add(string.Empty);
             }
+
+            dirty = true;
         }
 
         if (notes.Count < MaxNotes)
@@ -80,7 +98,37 @@ public sealed class NotesApplet : IApplet
             if (frame.Input.ConsumeClick(add))
             {
                 notes.Add(string.Empty);
+                dirty = true;
             }
         }
+
+        if (dirty)
+        {
+            Persist();
+        }
+    }
+
+    private void Load()
+    {
+        notes.Clear();
+        var lines = store.Value.Lines;
+        if (lines is { Length: > 0 })
+        {
+            for (var index = 0; index < lines.Length && notes.Count < MaxNotes; index++)
+            {
+                notes.Add(lines[index] ?? string.Empty);
+            }
+        }
+
+        if (notes.Count == 0)
+        {
+            notes.Add(string.Empty);
+        }
+    }
+
+    private void Persist()
+    {
+        var lines = notes.ToArray();
+        store.Mutate(section => section.Lines = lines);
     }
 }

@@ -25,6 +25,7 @@ using Linkpearl.Host.Feedback;
 using Linkpearl.Host.Platform;
 using Linkpearl.Host.Time;
 using Linkpearl.Host.Windows;
+using Linkpearl.Data;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
@@ -32,6 +33,7 @@ using Linkpearl.Notices;
 using Linkpearl.Net.Market;
 using Linkpearl.Net.Radio;
 using Linkpearl.Pearls;
+using Linkpearl.Persistence;
 using Linkpearl.Platform;
 using Linkpearl.Platform.Ffxiv;
 using Linkpearl.Preferences;
@@ -99,6 +101,8 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<ILinkpearlLog>(log);
         services.AddSingleton(paths);
         services.AddSingleton(environment);
+        services.AddSingleton<ISettings<NotesScratch>>(_ => FileSettings.Load<NotesScratch>(paths));
+        services.AddSingleton<ISettings<SearchScratch>>(_ => FileSettings.Load<SearchScratch>(paths));
 
         clock = new FrameworkClock(framework);
         services.AddSingleton<IClock>(clock);
@@ -245,7 +249,7 @@ public sealed class HandsetHost : IDisposable
         var wife = new WifeSyncBridge(pluginInterface, commands);
         var shell = new HandsetShell(destinations, clock, session, preferences, textField, pearl, hub, router, talk,
             apps, wife, notices, weather, provider.GetRequiredService<ISkyDesk>(), isDevelopment, badges, audio, publicRadio,
-            provider.GetRequiredService<IStationMarks>());
+            provider.GetRequiredService<IStationMarks>(), provider.GetRequiredService<ISettings<SearchScratch>>());
         var screenField = new ScreenField(textures, paths, preferences, clock);
 
         placement = new HandsetPlacement();

@@ -4,7 +4,7 @@ public interface ISettingsSection
 {
     string SectionId { get; }
 
-    int SchemaVersion { get; }
+    int SchemaVersion { get; set; }
 }
 
 public interface ISettings<TSection> where TSection : class, ISettingsSection, new()

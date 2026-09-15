@@ -147,6 +147,12 @@
           "Linkpearl.Abstractions": "[0.1.0, )"
         }
       },
+      "linkpearl.data": {
+        "type": "Project",
+        "dependencies": {
+          "Linkpearl.Abstractions": "[0.1.0, )"
+        }
+      },
       "linkpearl.destinations": {
         "type": "Project",
         "dependencies": {

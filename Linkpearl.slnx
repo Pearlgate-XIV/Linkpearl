@@ -5,6 +5,7 @@
     <Project Path="src/Linkpearl.Applets.Core/Linkpearl.Applets.Core.csproj" />
     <Project Path="src/Linkpearl.Applets.Life/Linkpearl.Applets.Life.csproj" />
     <Project Path="src/Linkpearl.Canvas/Linkpearl.Canvas.csproj" />
+    <Project Path="src/Linkpearl.Data/Linkpearl.Data.csproj" />
     <Project Path="src/Linkpearl.Destinations/Linkpearl.Destinations.csproj" />
     <Project Path="src/Linkpearl.Device/Linkpearl.Device.csproj" />
     <Project Path="src/Linkpearl.Host/Linkpearl.Host.csproj" />

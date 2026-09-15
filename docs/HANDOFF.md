@@ -56,7 +56,7 @@ them:
 
 Layered projects, dependencies point one direction only: `Linkpearl.Abstractions` (contracts +
 pure data, zero Dalamud dependency) → `Linkpearl.Canvas` (ImGui-backed implementations of those
-contracts) → `Linkpearl.Device` (chassis, window, shell chrome) + `Linkpearl.Destinations`
+contracts) + `Linkpearl.Data` (JSON section files under `state/`) → `Linkpearl.Device` (chassis, window, shell chrome) + `Linkpearl.Destinations`
 (the four screens — both depend on Abstractions, neither depends on the other except Device
 depending on Destinations to display them) → `Linkpearl.Net` (Pearlgate HTTP client, Abstractions
 only) + `Linkpearl.Platform.Ffxiv` (Dalamud game-state adapters behind interfaces) →
@@ -134,13 +134,16 @@ plugin-load failures; it's the source of truth, not speculation.
    character and each counterpart has a Profile. Next drill-down: Pearlgate chat **send**.
    Home/Social already list Pearlgate people and stories (or an honest empty state when that
    surface is off). `DemoData` is gone.
-2. Tune look/plate/shape/presence now persist on `HandsetConfig` with size, form, and the
-   Pearlgate session token. Remaining in-memory: search text, notes, camera stills (alarms
-   write their own json). `Linkpearl.Data` is still unbuilt.
+2. Tune look/plate/shape/presence persist on `HandsetConfig` with size, form, and the
+   Pearlgate session token. Notes, universal/studio search drafts, and camera gallery
+   stills survive unload under `state/` (`notes.json`, `search.json`, `photos/`). Alarms
+   still use `alarms.json`. `Linkpearl.Data` owns those section files and schema stamps;
+   Look is not migrated off `HandsetConfig`.
 3. Pearlgate beyond REST lists: websocket/realtime, E2E chat keys, posting stories, AfterDark.
    `Linkpearl.Net` already signs in, refreshes `/me` + chats + contacts + stories, and searches
    people.
-4. Wallpaper is in: `ScreenField` + bundled day/night plates. Still resets Look on launch.
+4. Wallpaper is in: `ScreenField` + bundled day/night plates. Look persists on `HandsetConfig`
+   after `FreshBoot` has advanced.
 
 Full gap list with more detail is in `STATUS.md`'s "Known gaps" section — this is just the
 short version for getting started.

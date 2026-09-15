@@ -3,6 +3,7 @@ using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 using Linkpearl.Talk;
 using Linkpearl.Theming;
 
@@ -13,25 +14,24 @@ public sealed class UniversalSearchOverlay
     private readonly IPearlHub pearl;
     private readonly ITalk talk;
     private readonly DestinationHub hub;
+    private readonly ISettings<SearchScratch> draft;
     private readonly SearchResult[] resultsScratch = new SearchResult[24];
     private string query = string.Empty;
 
-    public UniversalSearchOverlay(IPearlHub pearl, ITalk talk, DestinationHub hub)
+    public UniversalSearchOverlay(IPearlHub pearl, ITalk talk, DestinationHub hub, ISettings<SearchScratch> draft)
     {
         this.pearl = pearl;
         this.talk = talk;
         this.hub = hub;
+        this.draft = draft;
+        query = draft.Value.Universal ?? string.Empty;
     }
 
     public bool IsOpen { get; private set; }
 
     public void Open() => IsOpen = true;
 
-    public void Close()
-    {
-        IsOpen = false;
-        query = string.Empty;
-    }
+    public void Close() => IsOpen = false;
 
     public void Draw(IPaintSurface paint, ITextPainter text, ITextField textField, IInputProbe input, ITheme theme,
         Rect screen, float scale)
@@ -65,7 +65,13 @@ public sealed class UniversalSearchOverlay
         }
 
         var fieldArea = new Rect(inset.Min, new Vector2(closeButton.Min.X - scale * 8f, inset.Min.Y + scale * 28f));
-        query = textField.Draw("universal-search", fieldArea, query, "Search Eorzea...");
+        var next = textField.Draw("universal-search", fieldArea, query, "Search Eorzea...");
+        if (!string.Equals(next, query, StringComparison.Ordinal))
+        {
+            query = next;
+            draft.Mutate(section => section.Universal = query);
+        }
+
         pearl.NoteQuery(query);
 
         var listArea = new Rect(new Vector2(inset.Min.X, fieldArea.Max.Y + scale * 12f), inset.Max);

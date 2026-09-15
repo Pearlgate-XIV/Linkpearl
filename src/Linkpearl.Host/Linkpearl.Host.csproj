@@ -54,6 +54,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Linkpearl.Abstractions\Linkpearl.Abstractions.csproj" />
+    <ProjectReference Include="..\Linkpearl.Data\Linkpearl.Data.csproj" />
     <ProjectReference Include="..\Linkpearl.Audio\Linkpearl.Audio.csproj" />
     <ProjectReference Include="..\Linkpearl.Canvas\Linkpearl.Canvas.csproj" />
     <ProjectReference Include="..\Linkpearl.Device\Linkpearl.Device.csproj" />

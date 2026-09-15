@@ -14,6 +14,7 @@ using Linkpearl.Media;
 using Linkpearl.Net;
 using Linkpearl.Notices;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
@@ -35,7 +36,7 @@ internal sealed class StudioSurface
     private readonly ProfileChrome profile;
     private readonly Action<string, Rect> openApplet;
     private readonly StudioWeather sky;
-    private readonly StudioHunt hunt = new();
+    private readonly StudioHunt hunt;
     private readonly StudioMusicDock musicDock;
     private readonly List<(string Id, Rect Area)> widgetHits = [];
     private readonly List<(string Id, Rect Area)> appHits = [];
@@ -57,7 +58,7 @@ internal sealed class StudioSurface
     public StudioSurface(IClock clock, IGameSession game, IPearlHub pearl, ITalk talk, DestinationHub hub,
         IWeatherOracle weather, ISkyDesk skyDesk, DisplayPreferences display, bool development, BadgeBook badges, NoticeLedger notices,
         ProfileChrome profile, Action<string, Rect> openApplet, Action<Rect, string> openRadioStations, IHandsetAudio audio,
-        IPublicRadio radio, IStationMarks marks, GlassEdit glass)
+        IPublicRadio radio, IStationMarks marks, GlassEdit glass, ISettings<SearchScratch> searchDraft)
     {
         this.clock = clock;
         this.game = game;
@@ -71,6 +72,7 @@ internal sealed class StudioSurface
         this.notices = notices;
         this.profile = profile;
         this.openApplet = openApplet;
+        hunt = new StudioHunt(searchDraft);
         sky = new StudioWeather(game, weather, skyDesk);
         musicDock = new StudioMusicDock(audio, radio, pearl, marks, openRadioStations, openApplet);
     }

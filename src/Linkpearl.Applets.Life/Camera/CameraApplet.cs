@@ -9,7 +9,7 @@ using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Camera;
 
-public sealed partial class CameraApplet : IApplet
+public sealed partial class CameraApplet : IApplet, IDisposable
 {
     public static readonly AppletManifest Manifest = new()
     {
@@ -105,6 +105,8 @@ public sealed partial class CameraApplet : IApplet
         display.Landscape = false;
         library.Save();
     }
+
+    public void Dispose() => library.Save();
 
     public bool CanGoBack => picking || confirmBulkRemove || uploadSheet || mode != Mode.Page || pane != Pane.Camera ||
         place.Length > 0;

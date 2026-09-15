@@ -4,6 +4,7 @@ using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 using Linkpearl.Talk;
 
 namespace Linkpearl.Device.Shell.Studio;
@@ -30,9 +31,16 @@ internal readonly struct StudioHit
 internal sealed class StudioHunt
 {
     private const int Cap = 18;
+    private readonly ISettings<SearchScratch> draft;
     private readonly SearchResult[] people = new SearchResult[16];
     private readonly StudioHit[] hits = new StudioHit[Cap];
     private string query = string.Empty;
+
+    public StudioHunt(ISettings<SearchScratch> draft)
+    {
+        this.draft = draft;
+        query = draft.Value.Studio ?? string.Empty;
+    }
 
     public static float BarHeight(in AppletFrame frame) => frame.Units(36f);
 
@@ -40,7 +48,13 @@ internal sealed class StudioHunt
 
     public void Dismiss()
     {
+        if (query.Length == 0)
+        {
+            return;
+        }
+
         query = string.Empty;
+        draft.Mutate(section => section.Studio = string.Empty);
     }
 
     public void Draw(in AppletFrame frame, Rect bar, Rect dropBound, IPearlHub pearl, ITalk talk, DestinationHub hub,
@@ -52,7 +66,13 @@ internal sealed class StudioHunt
         SearchMark.Draw(frame.Paint, bar.LeftSlice(frame.Units(28f)).Inset(frame.Units(5f)),
             frame.Theme.Palette.InkMuted);
         var type = bar.Inset(new Edges(frame.Units(28f), frame.Units(4f), frame.Units(8f), frame.Units(4f)));
-        query = frame.TextField.Draw("studio-hunt", type, query, "Search the phone");
+        var next = frame.TextField.Draw("studio-hunt", type, query, "Search the phone");
+        if (!string.Equals(next, query, StringComparison.Ordinal))
+        {
+            query = next;
+            draft.Mutate(section => section.Studio = query);
+        }
+
         pearl.NoteQuery(query);
 
         if (IsOpen && frame.Input.EscapePressed())
