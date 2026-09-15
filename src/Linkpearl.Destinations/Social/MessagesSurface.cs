@@ -1098,7 +1098,7 @@ internal sealed class MessagesSurface
         }
 
         var canSend = thread?.CanSend == true;
-        var hint = ComposerHint(thread);
+        var hint = ComposerHint(thread, pearl.Current);
         if (!canSend)
         {
             frame.Text.DrawIn(field.Inset(frame.Units(6f)), hint,
@@ -1558,7 +1558,7 @@ internal sealed class MessagesSurface
         _ => "💬",
     };
 
-    private static string ComposerHint(TalkThread? thread)
+    private static string ComposerHint(TalkThread? thread, PearlSnapshot snapshot)
     {
         if (thread is null)
         {
@@ -1571,7 +1571,7 @@ internal sealed class MessagesSurface
             {
                 TalkKind.Party => "Join a party to talk here",
                 TalkKind.Alliance => "Alliance is not available",
-                TalkKind.Pearl => "Pearlgate send is not wired yet",
+                TalkKind.Pearl => PearlSend.BlockedHint(snapshot),
                 _ => "Chat is not available right now",
             };
         }
@@ -1583,6 +1583,7 @@ internal sealed class MessagesSurface
             TalkKind.Tell => "Tell " + thread.Value.Title,
             TalkKind.Linkshell => thread.Value.Title,
             TalkKind.CrossWorldLinkshell => thread.Value.Title,
+            TalkKind.Pearl => thread.Value.Title.Length > 0 ? thread.Value.Title : "Message",
             _ => "Message",
         };
     }

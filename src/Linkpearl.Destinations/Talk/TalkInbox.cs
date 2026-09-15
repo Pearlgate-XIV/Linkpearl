@@ -131,12 +131,13 @@ public sealed class TalkInbox : ITalk, IDisposable
             }
         }
 
-        var chats = pearl.Current.Chats;
+        var snapshot = pearl.Current;
+        var chats = snapshot.Chats;
         for (var index = 0; index < chats.Length; index++)
         {
             if (string.Equals(TalkIds.Pearl(chats[index].Id), threadId, StringComparison.Ordinal))
             {
-                return PearlThread(chats[index], true);
+                return PearlThread(chats[index], PearlSend.CanSend(snapshot));
             }
         }
 
@@ -1026,7 +1027,9 @@ public sealed class TalkInbox : ITalk, IDisposable
 
     private TalkThread ToThread(Room room)
     {
-        var canSend = room.Kind != TalkKind.Pearl && chat.CanSend && RoomCanSend(room);
+        var canSend = room.Kind == TalkKind.Pearl
+            ? PearlSend.CanSend(pearl.Current)
+            : chat.CanSend && RoomCanSend(room);
         var preview = !string.IsNullOrEmpty(room.Preview)
             ? room.Preview
             : room.Kind == TalkKind.Party && !chat.InParty
@@ -1047,6 +1050,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         TalkKind.FreeCompany => true,
         TalkKind.Novice => true,
         TalkKind.Live => true,
+        TalkKind.Pearl => PearlSend.CanSend(pearl.Current),
         _ => false,
     };
 
@@ -1227,7 +1231,7 @@ public sealed class TalkInbox : ITalk, IDisposable
     {
         for (var index = 0; index < snapshot.Chats.Length; index++)
         {
-            var thread = PearlThread(snapshot.Chats[index], snapshot.SignedIn);
+            var thread = PearlThread(snapshot.Chats[index], PearlSend.CanSend(snapshot));
             if (hidden.Contains(thread.Id))
             {
                 continue;
