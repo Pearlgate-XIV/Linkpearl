@@ -63,16 +63,16 @@ public sealed class TalkPopoutBoard : ITalkPopouts, IDisposable
 
     public void Toggle(string threadId) => SetArmed(threadId, !IsArmed(threadId));
 
-    public void SetArmed(string threadId, bool armedNow)
+    public void SetArmed(string threadId, bool armed)
     {
         if (threadId.Length == 0)
         {
             return;
         }
 
-        if (armedNow)
+        if (armed)
         {
-            var added = armed.Add(threadId);
+            var added = this.armed.Add(threadId);
             if (IsTell(threadId))
             {
                 ShowTell(threadId, select: true);
@@ -90,7 +90,7 @@ public sealed class TalkPopoutBoard : ITalkPopouts, IDisposable
             return;
         }
 
-        var changed = armed.Remove(threadId);
+        var changed = this.armed.Remove(threadId);
         if (IsTell(threadId))
         {
             dock?.CloseTab(threadId);
@@ -281,9 +281,8 @@ public sealed class TalkPopoutBoard : ITalkPopouts, IDisposable
 
     private void Show(string threadId)
     {
-        if (panes.ContainsKey(threadId))
+        if (panes.TryGetValue(threadId, out var existing))
         {
-            var existing = panes[threadId];
             existing.IsOpen = true;
             existing.SnapToNewest();
             return;

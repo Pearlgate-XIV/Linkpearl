@@ -193,8 +193,9 @@ internal static class MusicChrome
     }
 
     private static string CompactCount(int count) =>
-        count >= 1000000 ? (count / 1000000f).ToString("0.#") + "M" :
-        count >= 1000 ? (count / 1000f).ToString("0.#") + "k" : count.ToString();
+        count >= 1000000 ? (count / 1000000f).ToString("0.#", CultureInfo.InvariantCulture) + "M" :
+        count >= 1000 ? (count / 1000f).ToString("0.#", CultureInfo.InvariantCulture) + "k" :
+        count.ToString(CultureInfo.InvariantCulture);
 
     private static void DrawEars(IPaintSurface paint, Rect area, Vector4 ink)
     {

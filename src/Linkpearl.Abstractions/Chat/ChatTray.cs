@@ -108,7 +108,7 @@ public sealed class ChatTray
         return true;
     }
 
-    public bool DrawPlace(in AppletFrame frame, Rect area, Vector4 idle)
+    public static bool DrawPlace(in AppletFrame frame, Rect area, Vector4 idle)
     {
         var ink = Mark(frame, area, idle, false);
         var stroke = frame.Units(1.6f);

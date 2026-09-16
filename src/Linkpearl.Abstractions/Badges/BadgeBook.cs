@@ -39,7 +39,7 @@ public sealed class BadgeBook
 
     public Vector2 PortraitFocus => new(portraitFocusX, portraitFocusY);
 
-    public string FeaturedFile => string.Empty;
+    public static string FeaturedFile => string.Empty;
 
     public IReadOnlyList<string> SlotFiles => slotFiles;
 

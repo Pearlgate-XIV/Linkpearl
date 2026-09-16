@@ -142,7 +142,7 @@ public static class ChatBits
 
     public static ChatBit Read(string? body)
     {
-        SplitRef(body, out _, out _, out body);
+        SplitRef(body ?? string.Empty, out _, out _, out body);
         if (body.StartsWith(PicMark, StringComparison.Ordinal))
         {
             var path = body[PicMark.Length..];

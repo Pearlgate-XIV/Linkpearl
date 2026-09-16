@@ -92,6 +92,11 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             for (var index = 0; index < party.Length; index++)
             {
                 var member = party[index];
+                if (member is null)
+                {
+                    continue;
+                }
+
                 var name = MemberName(member);
                 if (name.Length == 0 || string.Equals(name, local, StringComparison.OrdinalIgnoreCase))
                 {
@@ -124,6 +129,11 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             for (var index = 0; index < party.Length; index++)
             {
                 var member = party[index];
+                if (member is null)
+                {
+                    continue;
+                }
+
                 var name = MemberName(member);
                 if (Named(list, name))
                 {
@@ -884,12 +894,12 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
     private static string PreferFullName(string shown, string payload)
     {
-        if (payload.IndexOf(' ') >= 0 && shown.IndexOf(' ') < 0)
+        if (payload.Contains(' ') && !shown.Contains(' '))
         {
             return payload;
         }
 
-        if (shown.IndexOf(' ') >= 0)
+        if (shown.Contains(' '))
         {
             return shown;
         }
@@ -941,7 +951,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
     private static bool FirstNameEquals(string full, string token)
     {
-        if (token.IndexOf(' ') >= 0)
+        if (token.Contains(' '))
         {
             return false;
         }

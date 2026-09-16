@@ -2,12 +2,12 @@ namespace Linkpearl.Media;
 
 public readonly struct WallpaperPlate
 {
-    public readonly string Id;
-    public readonly string Label;
-    public readonly string DayFile;
-    public readonly string NightFile;
-    public readonly float DayLuminance;
-    public readonly float NightLuminance;
+    public string Id { get; }
+    public string Label { get; }
+    public string DayFile { get; }
+    public string NightFile { get; }
+    public float DayLuminance { get; }
+    public float NightLuminance { get; }
 
     public WallpaperPlate(string id, string label, string dayFile, string nightFile, float dayLuminance,
         float nightLuminance)

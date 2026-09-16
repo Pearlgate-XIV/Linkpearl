@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
@@ -187,7 +188,7 @@ public sealed partial class MusicApplet
             new TextStyle(FontRole.Caption, MusicChrome.Danger, TextAlign.Center));
     }
 
-    private void DrawGateFact(in AppletFrame frame, Rect area, string mark, string copy)
+    private static void DrawGateFact(in AppletFrame frame, Rect area, string mark, string copy)
     {
         frame.Text.DrawIn(area.LeftSlice(frame.Units(22f)), mark,
             new TextStyle(FontRole.CaptionStrong, MusicChrome.DockBlue, TextAlign.Center));
@@ -838,7 +839,7 @@ public sealed partial class MusicApplet
         var glyph = area.LeftSlice(area.Height);
         frame.Text.DrawIn(glyph, liked ? "♥" : "♡",
             new TextStyle(FontRole.Body, color, TextAlign.Center));
-        frame.Text.DrawIn(area.Inset(new Edges(glyph.Width, 0f, 0f, 0f)), community.StationLikes(id).ToString(),
+        frame.Text.DrawIn(area.Inset(new Edges(glyph.Width, 0f, 0f, 0f)), community.StationLikes(id).ToString(CultureInfo.InvariantCulture),
             new TextStyle(FontRole.Caption, color, TextAlign.Center));
         TapStationLike(frame, area, id);
     }
@@ -1745,8 +1746,8 @@ public sealed partial class MusicApplet
             var followersN = ShownFollowers(person, mine);
             var followingHit = stats.LeftSlice(stats.Width / 3f);
             var followersHit = stats.Inset(new Edges(stats.Width / 3f, 0f, stats.Width / 3f, 0f));
-            DrawStat(frame, followingHit, followingN.ToString(), "Following");
-            DrawStat(frame, followersHit, followersN.ToString(), "Followers");
+            DrawStat(frame, followingHit, followingN.ToString(CultureInfo.InvariantCulture), "Following");
+            DrawStat(frame, followersHit, followersN.ToString(CultureInfo.InvariantCulture), "Followers");
             var listed = FindCommunity(person.Id);
             var otherCount = listed.Listeners > 0 ? listed.Listeners :
                 listed.Viewers > 0 ? listed.Viewers : person.Listeners;
@@ -1754,7 +1755,7 @@ public sealed partial class MusicApplet
                 ? "Listeners"
                 : "Watching";
             DrawStat(frame, stats.RightSlice(stats.Width / 3f),
-                mine ? state.Favorites.Count.ToString() : otherCount.ToString(),
+                mine ? state.Favorites.Count.ToString(CultureInfo.InvariantCulture) : otherCount.ToString(CultureInfo.InvariantCulture),
                 mine ? "Saved" : otherLabel);
             if (Tap(frame, followingHit))
             {
@@ -2075,8 +2076,8 @@ public sealed partial class MusicApplet
             var stats = stack.Take(frame.Units(44f));
             var followingHit = stats.LeftSlice(stats.Width * 0.5f);
             var followersHit = stats.RightSlice(stats.Width * 0.5f);
-            DrawStat(frame, followingHit, state.FollowingCount().ToString(), "Following");
-            DrawStat(frame, followersHit, Math.Max(pearl.Current.Followers, 0).ToString(), "Followers");
+            DrawStat(frame, followingHit, state.FollowingCount().ToString(CultureInfo.InvariantCulture), "Following");
+            DrawStat(frame, followersHit, Math.Max(pearl.Current.Followers, 0).ToString(CultureInfo.InvariantCulture), "Followers");
             if (Tap(frame, followingHit))
             {
                 OpenFollowList(followers: false);
@@ -2300,7 +2301,7 @@ public sealed partial class MusicApplet
         sense.RescanPoints();
     }
 
-    private void DrawPortMenu(in AppletFrame frame, ref Stack stack, string id, string title,
+    private static void DrawPortMenu(in AppletFrame frame, ref Stack stack, string id, string title,
         IReadOnlyList<AudioPort> list, string defaultId, string currentId, string defaultLabel, Action<string> set)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), title,

@@ -312,7 +312,7 @@ public sealed class MarketApplet : IApplet
         }
     }
 
-    private void DrawStats(in AppletFrame frame, ref Stack stack, MarketBoard board)
+    private static void DrawStats(in AppletFrame frame, ref Stack stack, MarketBoard board)
     {
         var gap = frame.Units(8f);
         var row = stack.Take(frame.Units(52f));

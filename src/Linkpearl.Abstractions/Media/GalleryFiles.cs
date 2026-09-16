@@ -5,8 +5,8 @@ namespace Linkpearl.Media;
 
 public readonly struct GalleryShot
 {
-    public readonly string Title;
-    public readonly string Path;
+    public string Title { get; }
+    public string Path { get; }
 
     public GalleryShot(string title, string path)
     {

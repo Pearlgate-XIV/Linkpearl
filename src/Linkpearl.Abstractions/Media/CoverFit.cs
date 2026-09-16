@@ -6,8 +6,8 @@ namespace Linkpearl.Media;
 // long axis. Pure math, no textures, so the same crop can be unit-tested without Dalamud.
 public readonly struct CoverUv
 {
-    public readonly Vector2 Min;
-    public readonly Vector2 Max;
+    public Vector2 Min { get; }
+    public Vector2 Max { get; }
 
     public CoverUv(Vector2 min, Vector2 max)
     {

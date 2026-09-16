@@ -2,8 +2,8 @@ namespace Linkpearl.Geometry;
 
 public readonly struct Rect : IEquatable<Rect>
 {
-    public readonly Vector2 Min;
-    public readonly Vector2 Max;
+    public Vector2 Min { get; }
+    public Vector2 Max { get; }
 
     public Rect(Vector2 min, Vector2 max)
     {
@@ -58,7 +58,7 @@ public readonly struct Rect : IEquatable<Rect>
 
     public bool Equals(Rect other) => Min.Equals(other.Min) && Max.Equals(other.Max);
 
-    public override bool Equals(object? candidate) => candidate is Rect other && Equals(other);
+    public override bool Equals(object? obj) => obj is Rect other && Equals(other);
 
     public override int GetHashCode() => HashCode.Combine(Min, Max);
 

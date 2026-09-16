@@ -36,9 +36,9 @@ public interface IShellIntents
 
 public readonly struct AppletIntent
 {
-    public readonly string AppletId;
-    public readonly string Action;
-    public readonly string Payload;
+    public string AppletId { get; }
+    public string Action { get; }
+    public string Payload { get; }
 
     public AppletIntent(string appletId, string action, string payload)
     {

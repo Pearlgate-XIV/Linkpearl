@@ -6,24 +6,24 @@ namespace Linkpearl.Chassis;
 // window: Phone and Tablet windows keep this aspect so the nubs stay on the metal.
 public readonly struct ChassisPlate
 {
-    public readonly string FileName;
-    public readonly float Aspect;
-    public readonly float ScreenLeft;
-    public readonly float ScreenTop;
-    public readonly float ScreenRight;
-    public readonly float ScreenBottom;
-    public readonly float VolumeTop;
-    public readonly float VolumeBottom;
-    public readonly float PowerTop;
-    public readonly float PowerBottom;
-    public readonly float BodyLeft;
-    public readonly float BodyTop;
-    public readonly float BodyRight;
-    public readonly float BodyBottom;
-    public readonly float Corner;
-    public readonly float ScreenCorner;
-    public readonly float Gasket;
-    public readonly string BackFileName;
+    public string FileName { get; }
+    public float Aspect { get; }
+    public float ScreenLeft { get; }
+    public float ScreenTop { get; }
+    public float ScreenRight { get; }
+    public float ScreenBottom { get; }
+    public float VolumeTop { get; }
+    public float VolumeBottom { get; }
+    public float PowerTop { get; }
+    public float PowerBottom { get; }
+    public float BodyLeft { get; }
+    public float BodyTop { get; }
+    public float BodyRight { get; }
+    public float BodyBottom { get; }
+    public float Corner { get; }
+    public float ScreenCorner { get; }
+    public float Gasket { get; }
+    public string BackFileName { get; }
 
     public ChassisPlate(string fileName, float width, float height, float screenLeft, float screenTop,
         float screenRight, float screenBottom, float volumeTop, float volumeBottom, float powerTop,

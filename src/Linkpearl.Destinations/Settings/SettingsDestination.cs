@@ -29,6 +29,12 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         Ink = 5,
     }
 
+    private static readonly string[] LetteringLabels = { "Small", "Default", "Large" };
+    private static readonly string[] PhoneSizeLabels = { "Small", "Medium", "Large" };
+    private static readonly string[] FormLabels = { "Phone", "Tablet" };
+    private static readonly string[] FinishLabels = { "Crystal", "Etched" };
+    private static readonly string[] ShadeLabels = { "Light", "Medium", "Dark" };
+
     private readonly HandsetShapePreference shape;
     private readonly DisplayPreferences display;
     private readonly HostEnvironment environment;
@@ -897,7 +903,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private void DrawBoxedLink(in AppletFrame frame, Rect row, string title, Action tap)
+    private static void DrawBoxedLink(in AppletFrame frame, Rect row, string title, Action tap)
     {
         CardChrome.DrawGold(frame, row);
         var inner = row.Inset(new Edges(frame.Units(12f), 0f, frame.Units(12f), 0f));
@@ -1158,13 +1164,13 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawLetteringRow(AppletFrame frame, Rect row)
     {
-        DrawChoiceChips(frame, row, new[] { "Small", "Default", "Large" }, (int)display.Lettering,
+        DrawChoiceChips(frame, row, LetteringLabels, (int)display.Lettering,
             index => display.Lettering = (LetteringSize)index);
     }
 
     private void DrawPhoneSizeRow(AppletFrame frame, Rect row)
     {
-        DrawChoiceChips(frame, row, new[] { "Small", "Medium", "Large" },
+        DrawChoiceChips(frame, row, PhoneSizeLabels,
             HandsetSizeCatalog.StepIndex(shape.ScaleStep),
             index => shape.ScaleStep = HandsetSizeCatalog.ScaleSteps[index]);
     }
@@ -1177,14 +1183,14 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawLayoutRow(AppletFrame frame, Rect row)
     {
-        DrawChoiceChips(frame, row, new[] { "Phone", "Tablet" },
+        DrawChoiceChips(frame, row, FormLabels,
             shape.Form == HandsetForm.Tablet ? 1 : 0,
             index => shape.Form = index == 1 ? HandsetForm.Tablet : HandsetForm.Phone);
     }
 
     private void DrawFinishRow(AppletFrame frame, Rect row)
     {
-        DrawChoiceChips(frame, row, new[] { "Crystal", "Etched" },
+        DrawChoiceChips(frame, row, FinishLabels,
             shape.Finish == HandsetFinish.Etched ? 1 : 0,
             index => shape.Finish = index == 1 ? HandsetFinish.Etched : HandsetFinish.Crystal);
     }
@@ -1267,7 +1273,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Dim",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        DrawChoiceChips(frame, stack.Take(frame.Units(36f)), new[] { "Light", "Medium", "Dark" },
+        DrawChoiceChips(frame, stack.Take(frame.Units(36f)), ShadeLabels,
             (int)display.Shade, index => display.Shade = (ShadeLevel)index);
     }
 
@@ -1517,19 +1523,16 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         return count * OptionHeight(frame) + (count - 1) * frame.Units(8f);
     }
 
-    private static float StackRun(in AppletFrame frame, params float[] heights) =>
-        StackRun(frame, (IReadOnlyList<float>)heights);
-
-    private static float StackRun(in AppletFrame frame, IReadOnlyList<float> heights)
+    private static float StackRun(in AppletFrame frame, params float[] heights)
     {
-        if (heights.Count == 0)
+        if (heights.Length == 0)
         {
             return 0f;
         }
 
         var gap = frame.Units(8f);
         var total = heights[0];
-        for (var index = 1; index < heights.Count; index++)
+        for (var index = 1; index < heights.Length; index++)
         {
             total += gap + heights[index];
         }
@@ -1685,7 +1688,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         Chip(frame, row.RightSlice(row.Width * 0.48f), right, rightOn, rightTap, rightHint);
     }
 
-    private void DrawPortCombo(AppletFrame frame, ref Stack stack, string id, string title,
+    private static void DrawPortCombo(AppletFrame frame, ref Stack stack, string id, string title,
         IReadOnlyList<AudioPort> ports, string defaultId, string currentId, Action<string> set)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), title,

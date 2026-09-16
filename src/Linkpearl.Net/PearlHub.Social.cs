@@ -1,4 +1,5 @@
 using Linkpearl.Diagnostics;
+using System.Globalization;
 
 namespace Linkpearl.Net;
 
@@ -1028,7 +1029,7 @@ public sealed partial class PearlHub
         }
 
         var when = item.CreatedAtUnix > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
+            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
             : "now";
         var owner = item.OwnerId ?? string.Empty;
         var urls = item.MediaUrls is { Length: > 0 } many
@@ -1079,7 +1080,7 @@ public sealed partial class PearlHub
         }
 
         var when = item.CreatedAtUnix > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
+            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
             : "now";
         return new PearlPost(item.Id, item.AuthorId ?? string.Empty,
             Display(item.AuthorDisplayName, "Someone"), item.AuthorHandle ?? string.Empty,
@@ -1126,7 +1127,7 @@ public sealed partial class PearlHub
             }
 
             var when = item.CreatedAtUnix > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
+                ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
                 : "now";
             mapped.Add(new PearlComment(item.AuthorDisplayName ?? "Someone", body, when, item.Mine, item.Id ?? string.Empty));
         }
@@ -1145,7 +1146,7 @@ public sealed partial class PearlHub
         foreach (var item in items)
         {
             var when = item.CreatedAtUnix > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
+                ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
                 : "now";
             mapped.Add(new PearlNote(item.Id ?? string.Empty, item.Kind ?? "note", item.ActorId ?? string.Empty,
                 item.ActorName ?? "Someone", item.Line ?? string.Empty, item.PostId ?? string.Empty, when));
@@ -1173,7 +1174,7 @@ public sealed partial class PearlHub
                 ext = path[dot..];
             }
 
-            return hash.ToString("x8") + ext;
+            return hash.ToString("x8", CultureInfo.InvariantCulture) + ext;
         }
     }
 

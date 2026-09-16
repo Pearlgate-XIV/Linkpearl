@@ -304,7 +304,7 @@ public sealed class AppsDock
         StepSlide(deltaSeconds);
     }
 
-    public void DrawHandle(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float scale)
+    public static void DrawHandle(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float scale)
     {
         DrawSide(paint, input, theme, EdgeHandles.Left(screen, scale), Corner.Right, pointLeft: true);
         DrawSide(paint, input, theme, EdgeHandles.Right(screen, scale), Corner.Left, pointLeft: false);

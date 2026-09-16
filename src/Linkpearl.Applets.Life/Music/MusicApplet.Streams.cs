@@ -264,7 +264,7 @@ public sealed partial class MusicApplet
             stream.Source.Length > 0 ? stream.Source : "twitch");
     }
 
-    private void DrawStationAudience(in AppletFrame frame, Rect area, CommunityStation station, bool compact)
+    private static void DrawStationAudience(in AppletFrame frame, Rect area, CommunityStation station, bool compact)
     {
         MusicChrome.Audience(frame, area, Math.Max(0, station.Listeners), Math.Max(0, station.Viewers), compact);
     }

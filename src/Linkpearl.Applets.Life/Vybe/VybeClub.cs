@@ -1,3 +1,4 @@
+using System.Globalization;
 using Linkpearl.Applets.Life.Calendar;
 using Linkpearl.Net;
 
@@ -129,7 +130,7 @@ internal static class VybeClubs
     {
         calendar.Put(new CalendarItem
         {
-            Id = EventPrefix(clubId) + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(),
+            Id = EventPrefix(clubId) + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
             Kind = CalendarKind.Event,
             Title = title,
             StartsAt = starts,

@@ -14,9 +14,9 @@ public enum SideEdge : byte
 // upper-right edge. Position and length are fractions/units of the window so they scale.
 public readonly struct SideButton
 {
-    public readonly SideEdge Edge;
-    public readonly float CenterFraction;
-    public readonly float LengthUnits;
+    public SideEdge Edge { get; }
+    public float CenterFraction { get; }
+    public float LengthUnits { get; }
 
     public SideButton(SideEdge edge, float centerFraction = 0.22f, float lengthUnits = 34f)
     {

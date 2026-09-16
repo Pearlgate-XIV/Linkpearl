@@ -37,8 +37,8 @@ public interface IAppletBackground
 
 public readonly struct AppletBadge
 {
-    public readonly int Count;
-    public readonly bool AsDot;
+    public int Count { get; }
+    public bool AsDot { get; }
 
     public AppletBadge(int count, bool asDot = false)
     {
@@ -53,8 +53,8 @@ public readonly struct AppletBadge
 
 public readonly struct AppletEntry
 {
-    public readonly string? RouteHint;
-    public readonly Rect? OriginTile;
+    public string? RouteHint { get; }
+    public Rect? OriginTile { get; }
 
     public AppletEntry(string? routeHint, Rect? originTile)
     {

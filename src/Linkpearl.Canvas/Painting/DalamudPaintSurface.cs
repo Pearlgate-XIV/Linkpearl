@@ -36,7 +36,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         drawList.AddRect(area.Min, area.Max, ImGui.GetColorU32(color), radius, ToDrawFlags(corners), thickness);
     }
 
-    public void FillGradient(Rect area, Vector4 from, Vector4 to, GradientAxis axis)
+    public void FillGradient(Rect area, Vector4 from, Vector4 stop, GradientAxis axis)
     {
         if (area.IsEmpty)
         {
@@ -44,7 +44,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         }
 
         var fromColor = ImGui.GetColorU32(from);
-        var toColor = ImGui.GetColorU32(to);
+        var toColor = ImGui.GetColorU32(stop);
         if (axis == GradientAxis.Vertical)
         {
             drawList.AddRectFilledMultiColor(area.Min, area.Max, fromColor, fromColor, toColor, toColor);
@@ -183,7 +183,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         drawList.PathFillConvex(ImGui.GetColorU32(color));
     }
 
-    public void FillAppTile(Rect area, Vector4 from, Vector4 to)
+    public void FillAppTile(Rect area, Vector4 from, Vector4 stop)
     {
         if (area.IsEmpty)
         {
@@ -191,7 +191,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         }
 
         var top = new Vector4(from.X, from.Y, from.Z, 1f);
-        var bottom = new Vector4(to.X, to.Y, to.Z, 1f);
+        var bottom = new Vector4(stop.X, stop.Y, stop.Z, 1f);
         FillAppTile(area, Mix(top, bottom, 0.55f));
 
         const int slices = 40;
@@ -268,8 +268,8 @@ public sealed class DalamudPaintSurface : IPaintSurface
     private static Vector4 Mix(Vector4 from, Vector4 to, float amount) =>
         from + (to - from) * Math.Clamp(amount, 0f, 1f);
 
-    public void Line(Vector2 from, Vector2 to, Vector4 color, float thickness) =>
-        drawList.AddLine(from, to, ImGui.GetColorU32(color), thickness);
+    public void Line(Vector2 from, Vector2 until, Vector4 color, float thickness) =>
+        drawList.AddLine(from, until, ImGui.GetColorU32(color), thickness);
 
     public void StrokeArc(Vector2 center, float radius, float start, float sweep, Vector4 color, float thickness)
     {

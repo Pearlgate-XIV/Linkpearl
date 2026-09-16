@@ -1,3 +1,4 @@
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Geometry;
@@ -148,7 +149,7 @@ internal sealed class StudioMusicDock
             DrawMark(frame, like, "♥", null, liked ? new Vector4(1f, 0.36f, 0.56f, 1f) : muted, liked);
             if (likes > 0)
             {
-                frame.Text.DrawIn(like.Inset(new Edges(0f, like.Height * 0.52f, 0f, 0f)), likes.ToString(),
+                frame.Text.DrawIn(like.Inset(new Edges(0f, like.Height * 0.52f, 0f, 0f)), likes.ToString(CultureInfo.InvariantCulture),
                     new TextStyle(FontRole.Caption, liked ? new Vector4(1f, 0.36f, 0.56f, 1f) : muted,
                         TextAlign.Center, scale: 0.72f));
             }

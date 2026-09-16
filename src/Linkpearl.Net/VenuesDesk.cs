@@ -328,7 +328,7 @@ public sealed class VenuesDesk : IVenuesDesk, IDisposable
         }
     }
 
-    private bool TryRead(byte[] bytes, out VenueSpot[] mapped, out SortedSet<string> dc)
+    private static bool TryRead(byte[] bytes, out VenueSpot[] mapped, out SortedSet<string> dc)
     {
         mapped = [];
         dc = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);

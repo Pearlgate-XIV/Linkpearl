@@ -595,7 +595,7 @@ public sealed class ProfileChrome
 
         if (colorWell == well)
         {
-            inkPicker.Draw(frame, stack.Take(inkPicker.Height(frame)), r, g, b, set);
+            inkPicker.Draw(frame, stack.Take(InkPicker.Height(frame)), r, g, b, set);
         }
     }
 

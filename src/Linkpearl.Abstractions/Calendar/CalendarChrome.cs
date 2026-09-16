@@ -11,12 +11,12 @@ public readonly record struct CalendarDayLine(string Id, string Title, string Wh
 
 public struct CalendarAppHit
 {
-    public int MonthStep;
-    public bool JumpToday;
-    public DateTime? PickedDay;
-    public bool AddEvent;
-    public bool AddReminder;
-    public string? OpenId;
+    public int MonthStep { get; set; }
+    public bool JumpToday { get; set; }
+    public DateTime? PickedDay { get; set; }
+    public bool AddEvent { get; set; }
+    public bool AddReminder { get; set; }
+    public string? OpenId { get; set; }
 }
 
 public static class CalendarChrome
@@ -93,7 +93,10 @@ public static class CalendarChrome
         }
 
         DrawAgenda(frame, stack.Take(frame.Units(92f) + dayLines.Count * frame.Units(40f)), selected, dayLines, bells,
-            ink, hush, accent, out hit.AddEvent, out hit.AddReminder, out hit.OpenId);
+            ink, hush, accent, out var addEvent, out var addReminder, out var openId);
+        hit.AddEvent = addEvent;
+        hit.AddReminder = addReminder;
+        hit.OpenId = openId;
         return page.Height - stack.Remaining.Height;
     }
 

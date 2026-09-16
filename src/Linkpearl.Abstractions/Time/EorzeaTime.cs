@@ -7,8 +7,8 @@ public readonly struct EorzeaTime
 {
     public const double EarthToEorzea = 144.0 / 7.0;
 
-    public readonly int Hour;
-    public readonly int Minute;
+    public int Hour { get; }
+    public int Minute { get; }
 
     public EorzeaTime(int hour, int minute)
     {

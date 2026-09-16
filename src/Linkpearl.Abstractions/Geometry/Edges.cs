@@ -2,10 +2,10 @@ namespace Linkpearl.Geometry;
 
 public readonly struct Edges : IEquatable<Edges>
 {
-    public readonly float Left;
-    public readonly float Top;
-    public readonly float Right;
-    public readonly float Bottom;
+    public float Left { get; }
+    public float Top { get; }
+    public float Right { get; }
+    public float Bottom { get; }
 
     public Edges(float uniform)
     {
@@ -43,7 +43,7 @@ public readonly struct Edges : IEquatable<Edges>
         Left.Equals(other.Left) && Top.Equals(other.Top) && Right.Equals(other.Right) &&
         Bottom.Equals(other.Bottom);
 
-    public override bool Equals(object? candidate) => candidate is Edges other && Equals(other);
+    public override bool Equals(object? obj) => obj is Edges other && Equals(other);
 
     public override int GetHashCode() => HashCode.Combine(Left, Top, Right, Bottom);
 

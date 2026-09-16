@@ -4,11 +4,11 @@ namespace Linkpearl.Layout;
 
 public readonly struct TileGrid
 {
-    public readonly int Columns;
-    public readonly int Rows;
-    public readonly Vector2 CellSize;
-    public readonly float Gap;
-    public readonly Rect Area;
+    public int Columns { get; }
+    public int Rows { get; }
+    public Vector2 CellSize { get; }
+    public float Gap { get; }
+    public Rect Area { get; }
 
     public TileGrid(Rect area, int columns, int rows, float gap)
     {

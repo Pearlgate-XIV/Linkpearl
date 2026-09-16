@@ -614,7 +614,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawPlusAbout(in AppletFrame frame, ref Stack stack, bool night)
+    private static void DrawPlusAbout(in AppletFrame frame, ref Stack stack, bool night)
     {
         var tone = VybeChrome.Tone(night);
         VybeChrome.LockMark(frame, stack.Take(frame.Units(72f)));
@@ -1168,7 +1168,7 @@ public sealed partial class VybeApplet
         DrawCommentComposer(frame, composer, fieldId, night, sent);
     }
 
-    private float CommentPostHeight(in AppletFrame frame, PearlPost post, float width)
+    private static float CommentPostHeight(in AppletFrame frame, PearlPost post, float width)
     {
         var pad = frame.Units(12f);
         var wrap = MathF.Max(1f, width - pad * 2f);
@@ -1217,7 +1217,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private float CommentRowHeight(in AppletFrame frame, PearlComment comment, float width)
+    private static float CommentRowHeight(in AppletFrame frame, PearlComment comment, float width)
     {
         var pad = frame.Units(12f);
         var face = frame.Units(16f) * 2.6f;
@@ -1377,7 +1377,7 @@ public sealed partial class VybeApplet
         return 3 + Math.Abs(person.Id % 17) + extra;
     }
 
-    private string StoryRepostId(in ScenePerson person) =>
+    private static string StoryRepostId(in ScenePerson person) =>
         "story-repost-" + (person.Id < 0 ? "me" : person.Id.ToString(CultureInfo.InvariantCulture));
 
     private bool StoryAlreadyReposted(in ScenePerson person)
@@ -2818,7 +2818,7 @@ public sealed partial class VybeApplet
         var faces = Slot(send.Min.X - gap - slot);
         var pin = Slot(faces.Min.X - gap - slot);
         talkTray.DrawPlus(frame, plus, idle);
-        if (talkTray.DrawPlace(frame, pin, idle))
+        if (ChatTray.DrawPlace(frame, pin, idle))
         {
             sendBit(TalkLocation());
         }

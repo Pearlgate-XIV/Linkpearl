@@ -9,6 +9,8 @@ namespace Linkpearl.Applets.Life.Vybe;
 
 internal static class VybePostTags
 {
+    private static readonly char[] TagSeparators = { ' ', ',', ';' };
+
     public static readonly string[] Discover =
     {
         "glamour", "photography", "venue", "friends", "miqote", "event", "fashion", "roleplay",
@@ -198,7 +200,7 @@ internal static class VybePostTags
 
     public static void AbsorbTyped(List<string> tags, string raw)
     {
-        var parts = raw.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        var parts = raw.Split(TagSeparators, StringSplitOptions.RemoveEmptyEntries);
         for (var index = 0; index < parts.Length; index++)
         {
             TryAdd(tags, parts[index]);

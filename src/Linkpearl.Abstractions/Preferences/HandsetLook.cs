@@ -6,10 +6,10 @@ namespace Linkpearl.Preferences;
 
 public readonly struct StillCrop
 {
-    public readonly string Path;
-    public readonly float Zoom;
-    public readonly float FocusX;
-    public readonly float FocusY;
+    public string Path { get; }
+    public float Zoom { get; }
+    public float FocusX { get; }
+    public float FocusY { get; }
 
     public StillCrop(string path, float zoom, float focusX, float focusY)
     {

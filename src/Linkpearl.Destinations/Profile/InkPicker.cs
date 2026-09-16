@@ -11,7 +11,7 @@ public sealed class InkPicker
     private bool dragPlate;
     private bool dragHue;
 
-    public float Height(in AppletFrame frame) => frame.Units(168f);
+    public static float Height(in AppletFrame frame) => frame.Units(168f);
 
     public void Draw(in AppletFrame frame, Rect area, float red, float green, float blue, Action<Vector4> set)
     {

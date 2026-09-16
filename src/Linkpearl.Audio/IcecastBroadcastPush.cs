@@ -128,9 +128,9 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
         CloseQuiet();
     }
 
-    public void WritePcm(byte[] pcm16Stereo, int bytes, int rate)
+    public void WritePcm(byte[] pcm16Stereo, int bytes, int sampleRate)
     {
-        if (pcm16Stereo.Length == 0 || bytes <= 0 || rate <= 0)
+        if (pcm16Stereo.Length == 0 || bytes <= 0 || sampleRate <= 0)
         {
             return;
         }
@@ -145,18 +145,18 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
 
             if (wire is null)
             {
-                Hold(pcm16Stereo, bytes, rate);
+                Hold(pcm16Stereo, bytes, sampleRate);
                 return;
             }
 
-            if (lame is null || sampleRate != rate)
+            if (lame is null || this.sampleRate != sampleRate)
             {
                 try
                 {
                     LameNative.Bind();
                     lame?.Dispose();
-                    lame = new LameMP3FileWriter(wire, new WaveFormat(rate, 16, 2), 128);
-                    sampleRate = rate;
+                    lame = new LameMP3FileWriter(wire, new WaveFormat(sampleRate, 16, 2), 128);
+                    this.sampleRate = sampleRate;
                     notice = "Sending MP3 to Icecast.";
                 }
                 catch (Exception error)

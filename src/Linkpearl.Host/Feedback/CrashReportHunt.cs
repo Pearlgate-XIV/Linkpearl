@@ -1,3 +1,4 @@
+using System.Globalization;
 using Linkpearl.Feedback;
 
 namespace Linkpearl.Host.Feedback;
@@ -178,7 +179,7 @@ internal static class CrashReportHunt
     {
         var size = bytes < 1024 * 1024
             ? Math.Max(1, bytes / 1024) + " KB"
-            : (bytes / (1024f * 1024f)).ToString("0.0") + " MB";
-        return size + " · " + at.ToLocalTime().ToString("MMM d h:mm tt");
+            : (bytes / (1024f * 1024f)).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+        return size + " · " + at.ToLocalTime().ToString("MMM d h:mm tt", CultureInfo.InvariantCulture);
     }
 }

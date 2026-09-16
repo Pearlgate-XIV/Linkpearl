@@ -55,7 +55,7 @@ public sealed class WifeSyncBridge : IWifeSync
 
     public string PluginName => Resolve()?.Plugin ?? string.Empty;
 
-    public void SetOn(bool on)
+    public void SetOn(bool enabled)
     {
         var resolved = Resolve();
         if (resolved is null)
@@ -63,11 +63,11 @@ public sealed class WifeSyncBridge : IWifeSync
             return;
         }
 
-        lastWanted = on;
+        lastWanted = enabled;
         var paused = TryReadFullPause(resolved.Value.Plugin);
         var command = resolved.Value.Command;
 
-        if (on)
+        if (enabled)
         {
             if (paused == true)
             {

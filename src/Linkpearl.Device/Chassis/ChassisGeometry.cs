@@ -8,12 +8,12 @@ namespace Linkpearl.Device.Chassis;
 // itself is perfectly square (radius zero).
 public readonly struct ChassisGeometry
 {
-    public readonly Rect Body;
-    public readonly Rect Glass;
-    public readonly Rect Screen;
-    public readonly float BodyRadius;
-    public readonly float GlassRadius;
-    public readonly float ScreenRadius;
+    public Rect Body { get; }
+    public Rect Glass { get; }
+    public Rect Screen { get; }
+    public float BodyRadius { get; }
+    public float GlassRadius { get; }
+    public float ScreenRadius { get; }
 
     private ChassisGeometry(Rect body, float frameWidth, float glassWidth, float bodyRadius)
     {

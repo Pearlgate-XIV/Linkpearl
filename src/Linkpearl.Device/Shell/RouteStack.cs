@@ -13,8 +13,8 @@ public enum ShellMotion : byte
 
 public readonly struct RecentTask
 {
-    public readonly string Id;
-    public readonly string Place;
+    public string Id { get; }
+    public string Place { get; }
 
     public RecentTask(string id, string place)
     {

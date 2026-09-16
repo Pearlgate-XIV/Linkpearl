@@ -347,7 +347,7 @@ public sealed class HandsetShell
             scale, outerFrame.DeltaSeconds, currentTab, preferences.ReduceMotion);
         if (showPager)
         {
-            appsDock.DrawHandle(outerFrame.Paint, outerFrame.Input, outerFrame.Theme, screen, scale);
+            AppsDock.DrawHandle(outerFrame.Paint, outerFrame.Input, outerFrame.Theme, screen, scale);
         }
         SoftKeyBar.Paint(outerFrame.Paint, outerFrame.Theme, outerFrame.Input, screen, scale, canGoBack);
         banner.Draw(outerFrame, screen, hub, notices);

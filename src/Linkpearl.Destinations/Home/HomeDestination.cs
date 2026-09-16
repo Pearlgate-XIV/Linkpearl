@@ -229,7 +229,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         }
     }
 
-    private void DrawAnnouncementMark(in AppletFrame frame, Rect area)
+    private static void DrawAnnouncementMark(in AppletFrame frame, Rect area)
     {
         HomeMarks.Draw(frame, area, HomeMark.Mask, frame.Theme.Palette.WarmAccent);
     }

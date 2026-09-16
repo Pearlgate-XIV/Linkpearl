@@ -1,3 +1,4 @@
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
@@ -893,7 +894,7 @@ public sealed class VenuesApplet : IApplet
         travelNote = "Lifestream could not start that trip. Try again in a moment.";
     }
 
-    private void DrawStatus(in AppletFrame frame, Rect row, VenueSpot spot)
+    private static void DrawStatus(in AppletFrame frame, Rect row, VenueSpot spot)
     {
         var x = 0f;
         var gap = frame.Units(6f);
@@ -925,7 +926,7 @@ public sealed class VenuesApplet : IApplet
         var world = game.Character.WorldName.Trim();
         var now = DateTimeOffset.UtcNow;
         var stamp = desk.Revision;
-        var bucket = lane is 0 or 1 ? (now.ToUnixTimeSeconds() / 30).ToString() : string.Empty;
+        var bucket = lane is 0 or 1 ? (now.ToUnixTimeSeconds() / 30).ToString(CultureInfo.InvariantCulture) : string.Empty;
         var key = lane + "|" + (sfw ? "1" : "0") + "|" + (here ? "1" : "0") + "|" + center + "|" + needle + "|" +
                   world + "|" + book.Revision + "|" + bucket;
         if (stamp == shownStamp && string.Equals(key, shownKey, StringComparison.Ordinal))

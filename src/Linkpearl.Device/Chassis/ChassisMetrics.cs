@@ -11,10 +11,10 @@ public readonly struct ChassisMetrics
     private const float RailFraction = 0.012f;
     private const float ScreenCornerFraction = 0f;
 
-    public readonly float RailWidth;
-    public readonly float FrameWidth;
-    public readonly float GlassWidth;
-    public readonly float BodyCornerRadius;
+    public float RailWidth { get; }
+    public float FrameWidth { get; }
+    public float GlassWidth { get; }
+    public float BodyCornerRadius { get; }
 
     private ChassisMetrics(float railWidth, float frameWidth, float glassWidth, float bodyCornerRadius)
     {

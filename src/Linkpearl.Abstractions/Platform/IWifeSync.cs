@@ -8,5 +8,5 @@ public interface IWifeSync
 
     string PluginName { get; }
 
-    void SetOn(bool on);
+    void SetOn(bool enabled);
 }

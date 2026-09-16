@@ -7,7 +7,7 @@ using Linkpearl.Modules;
 
 namespace Linkpearl.Net;
 
-public sealed class GiphyGifDesk : IGifDesk
+public sealed class GiphyGifDesk : IGifDesk, IDisposable
 {
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -40,6 +40,8 @@ public sealed class GiphyGifDesk : IGifDesk
         this.search = search;
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Linkpearl/0.1.0");
     }
+
+    public void Dispose() => http.Dispose();
 
     public string Brand => "GIPHY";
 

@@ -1403,8 +1403,8 @@ public sealed class TalkInbox : ITalk, IDisposable
             return leftPrefix ? -1 : 1;
         }
 
-        var party = string.CompareOrdinal(left.Reason, "Party") == 0;
-        var otherParty = string.CompareOrdinal(right.Reason, "Party") == 0;
+        var party = string.Equals(left.Reason, "Party", StringComparison.Ordinal);
+        var otherParty = string.Equals(right.Reason, "Party", StringComparison.Ordinal);
         if (party != otherParty)
         {
             return party ? -1 : 1;

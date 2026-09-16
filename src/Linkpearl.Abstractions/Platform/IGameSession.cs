@@ -2,11 +2,11 @@ namespace Linkpearl.Platform;
 
 public readonly struct CharacterIdentity : IEquatable<CharacterIdentity>
 {
-    public readonly ulong ContentId;
-    public readonly string Name;
-    public readonly string WorldName;
-    public readonly uint HomeWorldId;
-    public readonly uint CurrentWorldId;
+    public ulong ContentId { get; }
+    public string Name { get; }
+    public string WorldName { get; }
+    public uint HomeWorldId { get; }
+    public uint CurrentWorldId { get; }
 
     public CharacterIdentity(ulong contentId, string name, string worldName, uint homeWorldId, uint currentWorldId)
     {
@@ -23,7 +23,7 @@ public readonly struct CharacterIdentity : IEquatable<CharacterIdentity>
 
     public bool Equals(CharacterIdentity other) => ContentId == other.ContentId;
 
-    public override bool Equals(object? candidate) => candidate is CharacterIdentity other && Equals(other);
+    public override bool Equals(object? obj) => obj is CharacterIdentity other && Equals(other);
 
     public override int GetHashCode() => ContentId.GetHashCode();
 

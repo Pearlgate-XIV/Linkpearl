@@ -405,7 +405,7 @@ public sealed class HandsetWindow : Window
             clipped = true;
             if (boot.Covering)
             {
-                boot.PaintVeil(paint, screen);
+                HandsetBoot.PaintVeil(paint, screen);
             }
             else
             {

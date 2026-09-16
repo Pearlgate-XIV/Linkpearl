@@ -49,7 +49,7 @@ public static class GameEmoteDraft
                 return true;
             }
 
-            if (tail.IndexOf(' ') >= 0 || !LooksToken(tail))
+            if (tail.Contains(' ') || !LooksToken(tail))
             {
                 return false;
             }

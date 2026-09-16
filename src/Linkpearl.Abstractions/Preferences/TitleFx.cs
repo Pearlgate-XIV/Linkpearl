@@ -4,11 +4,11 @@ namespace Linkpearl.Preferences;
 
 public readonly struct MarkLook
 {
-    public readonly Vector4 Ink;
-    public readonly Vector4 Edge;
-    public readonly bool Glow;
-    public readonly TitleMotion Motion;
-    public readonly NameGlowWeight Weight;
+    public Vector4 Ink { get; }
+    public Vector4 Edge { get; }
+    public bool Glow { get; }
+    public TitleMotion Motion { get; }
+    public NameGlowWeight Weight { get; }
 
     public MarkLook(Vector4 ink, Vector4 edge, bool glow, TitleMotion motion, NameGlowWeight weight)
     {

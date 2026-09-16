@@ -267,24 +267,18 @@ internal sealed class PeopleFindState
 
     public static void Flip(List<string> bag, string value)
     {
-        if (bag.Contains(value))
+        if (!bag.Remove(value))
         {
-            bag.Remove(value);
-            return;
+            bag.Add(value);
         }
-
-        bag.Add(value);
     }
 
     public static void FlipInt(List<int> bag, int value)
     {
-        if (bag.Contains(value))
+        if (!bag.Remove(value))
         {
-            bag.Remove(value);
-            return;
+            bag.Add(value);
         }
-
-        bag.Add(value);
     }
 }
 
@@ -990,7 +984,7 @@ internal static class PeopleFindBook
 
         for (var index = 0; index < fields.Length; index++)
         {
-            if (fields[index].IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (fields[index].Contains(search, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -1029,8 +1023,8 @@ internal static class PeopleFindBook
             {
                 var got = VybePostTags.Normalize(have[inner]);
                 if (got.Length > 0 &&
-                    (got.IndexOf(want, StringComparison.Ordinal) >= 0 ||
-                     want.IndexOf(got, StringComparison.Ordinal) >= 0))
+                    (got.Contains(want, StringComparison.Ordinal) ||
+                     want.Contains(got, StringComparison.Ordinal)))
                 {
                     return true;
                 }

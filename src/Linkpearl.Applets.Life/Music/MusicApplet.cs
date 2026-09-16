@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Venues;
@@ -2117,7 +2118,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         frame.Paint.Fill(area, new Vector4(0f, 0f, 0f, 0.55f), frame.Units(8f));
         frame.Text.DrawIn(area.TopSlice(area.Height * 0.55f), liked ? "♥" : "♡",
             new TextStyle(FontRole.CaptionStrong, color, TextAlign.Center));
-        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.45f), RadioLikes(station).ToString(),
+        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.45f), RadioLikes(station).ToString(CultureInfo.InvariantCulture),
             new TextStyle(FontRole.Caption, color, TextAlign.Center));
     }
 
@@ -2154,7 +2155,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         var color = ink ?? (liked ? MusicChrome.LikePink : MusicChrome.LikePink with { W = 0.72f });
         frame.Text.DrawIn(area.TopSlice(area.Height * 0.58f), liked ? "♥" : "♡",
             new TextStyle(FontRole.Title, color, TextAlign.Center));
-        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.42f), community.StationLikes(id).ToString(),
+        frame.Text.DrawIn(area.BottomSlice(area.Height * 0.42f), community.StationLikes(id).ToString(CultureInfo.InvariantCulture),
             new TextStyle(FontRole.Caption, color, TextAlign.Center));
     }
 

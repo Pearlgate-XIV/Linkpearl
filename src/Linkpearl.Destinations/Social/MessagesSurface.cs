@@ -1427,7 +1427,7 @@ internal sealed class MessagesSurface
 
         if (!marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
         {
-            marks.Offer(openId, key, who, line.Body, frame.Input.Pointer);
+            marks.Offer(openId, key, who, line.Body ?? string.Empty, frame.Input.Pointer);
         }
     }
 

@@ -23,13 +23,13 @@ public enum TextAlign : byte
 
 public readonly struct TextStyle
 {
-    public readonly FontRole Role;
-    public readonly Vector4 Color;
-    public readonly TextAlign Align;
-    public readonly float LineSpacing;
-    public readonly float Scale;
-    public readonly Vector4 Glow;
-    public readonly float GlowSpread;
+    public FontRole Role { get; }
+    public Vector4 Color { get; }
+    public TextAlign Align { get; }
+    public float LineSpacing { get; }
+    public float Scale { get; }
+    public Vector4 Glow { get; }
+    public float GlowSpread { get; }
 
     public TextStyle(FontRole role, Vector4 color, TextAlign align = TextAlign.Left, float lineSpacing = 1f,
         float scale = 1f, Vector4 glow = default, float glowSpread = 0f)

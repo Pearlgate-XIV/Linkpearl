@@ -20,8 +20,8 @@ public enum GameChannel : byte
 
 public readonly struct GamePeer
 {
-    public readonly string Name;
-    public readonly string World;
+    public string Name { get; }
+    public string World { get; }
 
     public GamePeer(string name, string world)
     {
@@ -32,10 +32,10 @@ public readonly struct GamePeer
 
 public readonly struct GameFriend
 {
-    public readonly string Name;
-    public readonly string World;
-    public readonly string Place;
-    public readonly bool Online;
+    public string Name { get; }
+    public string World { get; }
+    public string Place { get; }
+    public bool Online { get; }
 
     public GameFriend(string name, string world, string place, bool online)
     {
@@ -48,13 +48,13 @@ public readonly struct GameFriend
 
 public readonly struct GameChatLine
 {
-    public readonly GameChannel Channel;
-    public readonly int ChannelIndex;
-    public readonly string Sender;
-    public readonly string SenderWorld;
-    public readonly string Body;
-    public readonly DateTimeOffset Received;
-    public readonly bool Mine;
+    public GameChannel Channel { get; }
+    public int ChannelIndex { get; }
+    public string Sender { get; }
+    public string SenderWorld { get; }
+    public string Body { get; }
+    public DateTimeOffset Received { get; }
+    public bool Mine { get; }
 
     public GameChatLine(GameChannel channel, int channelIndex, string sender, string senderWorld, string body,
         DateTimeOffset received, bool mine)

@@ -34,7 +34,7 @@ internal sealed class HandsetBoot
         time = 0f;
     }
 
-    public void PaintVeil(IPaintSurface paint, Rect screen) =>
+    public static void PaintVeil(IPaintSurface paint, Rect screen) =>
         paint.Fill(screen, new Vector4(0.06f, 0.05f, 0.04f, 1f));
 
     public void Cancel()

@@ -2066,7 +2066,7 @@ public sealed class DisplayPreferences
         DropQuickApp(id);
     }
 
-    private string[][] LoadPages(string[]? installed, string[]? screens)
+    private static string[][] LoadPages(string[]? installed, string[]? screens)
     {
         if (screens is { Length: > 0 })
         {
@@ -2206,13 +2206,13 @@ public sealed class DisplayPreferences
         return copy;
     }
 
-    private static string[] WithoutIds(IReadOnlyList<string> ids, IReadOnlyList<string> drop)
+    private static string[] WithoutIds(IReadOnlyList<string> ids, string[] drop)
     {
         var next = new List<string>(ids.Count);
         for (var index = 0; index < ids.Count; index++)
         {
             var skip = false;
-            for (var other = 0; other < drop.Count; other++)
+            for (var other = 0; other < drop.Length; other++)
             {
                 if (string.Equals(ids[index], drop[other], StringComparison.Ordinal))
                 {
@@ -2585,10 +2585,10 @@ public sealed class DisplayPreferences
         return seats;
     }
 
-    private static bool[] DefaultHalves(IReadOnlyList<string> ids)
+    private static bool[] DefaultHalves(string[] ids)
     {
-        var half = new bool[ids.Count];
-        for (var index = 0; index < ids.Count; index++)
+        var half = new bool[ids.Length];
+        for (var index = 0; index < ids.Length; index++)
         {
             half[index] = ids[index] is "announcements" or "apps";
         }
@@ -2596,7 +2596,7 @@ public sealed class DisplayPreferences
         return half;
     }
 
-    private static bool SameStudioSet(IReadOnlyList<string> ids)
+    private static bool SameStudioSet(List<string> ids)
     {
         if (ids.Count != DefaultStudioWidgets.Length)
         {
@@ -2626,9 +2626,9 @@ public sealed class DisplayPreferences
         return copy;
     }
 
-    private static int FirstEmpty(IReadOnlyList<string> ids)
+    private static int FirstEmpty(string[] ids)
     {
-        for (var index = 0; index < ids.Count; index++)
+        for (var index = 0; index < ids.Length; index++)
         {
             if (ids[index].Length == 0)
             {
@@ -2639,11 +2639,11 @@ public sealed class DisplayPreferences
         return -1;
     }
 
-    private static string[] SanitizeSlots(IReadOnlyList<string> ids)
+    private static string[] SanitizeSlots(string[] ids)
     {
-        var kept = new List<string>(ids.Count);
+        var kept = new List<string>(ids.Length);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = 0; index < ids.Count; index++)
+        for (var index = 0; index < ids.Length; index++)
         {
             var id = AliasAppId((ids[index] ?? string.Empty).Trim());
             if (id.Length == 0)

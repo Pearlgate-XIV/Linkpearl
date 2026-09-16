@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -141,13 +142,13 @@ public sealed class UniversalisMarket : IUniversalisMarket
                 worlds = (worldBody ?? [])
                     .Where(row => row.Name is { Length: > 0 } && row.Name[0] < 128 && !row.Name.StartsWith("Cloud",
                         StringComparison.OrdinalIgnoreCase))
-                    .Select(row => new MarketWorld(row.Id, row.Name))
+                    .Select(row => new MarketWorld(row.Id, row.Name ?? string.Empty))
                     .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
                 centers = (dcBody ?? [])
                     .Where(row => row.Name is { Length: > 0 } && row.Name[0] < 128 &&
                                   !row.Name.Contains("Cloud", StringComparison.OrdinalIgnoreCase))
-                    .Select(row => new MarketDataCenter(row.Name, row.Region ?? string.Empty, row.Worlds ?? []))
+                    .Select(row => new MarketDataCenter(row.Name ?? string.Empty, row.Region ?? string.Empty, row.Worlds ?? []))
                     .ToArray();
                 if (notice.StartsWith("Search", StringComparison.Ordinal))
                 {
@@ -478,7 +479,7 @@ public sealed class UniversalisMarket : IUniversalisMarket
         };
     }
 
-    private static string Gil(int value) => value.ToString("N0") + "g";
+    private static string Gil(int value) => value.ToString("N0", CultureInfo.InvariantCulture) + "g";
 
     private sealed class WorldDto
     {

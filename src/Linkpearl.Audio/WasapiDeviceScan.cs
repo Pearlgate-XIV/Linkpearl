@@ -191,11 +191,11 @@ internal static class WasapiDeviceScan
         {
             if (capture)
             {
-                DirectSoundCaptureEnumerateW(callback, IntPtr.Zero);
+                _ = DirectSoundCaptureEnumerateW(callback, IntPtr.Zero);
             }
             else
             {
-                DirectSoundEnumerateW(callback, IntPtr.Zero);
+                _ = DirectSoundEnumerateW(callback, IntPtr.Zero);
             }
         }
         catch (Exception)

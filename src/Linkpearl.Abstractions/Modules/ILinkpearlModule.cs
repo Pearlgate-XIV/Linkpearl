@@ -19,9 +19,9 @@ public interface IModuleCatalog
 
 public readonly struct ModuleIdentity : IEquatable<ModuleIdentity>
 {
-    public readonly string Id;
-    public readonly string DisplayName;
-    public readonly int Order;
+    public string Id { get; }
+    public string DisplayName { get; }
+    public int Order { get; }
 
     public ModuleIdentity(string id, string displayName, int order = 0)
     {
@@ -32,7 +32,7 @@ public readonly struct ModuleIdentity : IEquatable<ModuleIdentity>
 
     public bool Equals(ModuleIdentity other) => string.Equals(Id, other.Id, StringComparison.Ordinal);
 
-    public override bool Equals(object? candidate) => candidate is ModuleIdentity other && Equals(other);
+    public override bool Equals(object? obj) => obj is ModuleIdentity other && Equals(other);
 
     public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Id);
 

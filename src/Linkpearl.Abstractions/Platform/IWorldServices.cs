@@ -5,10 +5,10 @@ namespace Linkpearl.Platform;
 
 public readonly struct WeatherWindow
 {
-    public readonly string Name;
-    public readonly uint IconId;
-    public readonly DateTimeOffset Starts;
-    public readonly DateTimeOffset Ends;
+    public string Name { get; }
+    public uint IconId { get; }
+    public DateTimeOffset Starts { get; }
+    public DateTimeOffset Ends { get; }
 
     public WeatherWindow(string name, uint iconId, DateTimeOffset starts, DateTimeOffset ends)
     {
@@ -46,10 +46,10 @@ public interface IMapPilot
 
 public readonly struct AetheryteEntry
 {
-    public readonly uint Id;
-    public readonly string Name;
-    public readonly ushort TerritoryId;
-    public readonly uint GilCost;
+    public uint Id { get; }
+    public string Name { get; }
+    public ushort TerritoryId { get; }
+    public uint GilCost { get; }
 
     public AetheryteEntry(uint id, string name, ushort territoryId, uint gilCost)
     {
@@ -62,11 +62,11 @@ public readonly struct AetheryteEntry
 
 public readonly struct JobFace
 {
-    public readonly uint Id;
-    public readonly string Name;
-    public readonly string Abbreviation;
-    public readonly uint IconId;
-    public readonly byte Role;
+    public uint Id { get; }
+    public string Name { get; }
+    public string Abbreviation { get; }
+    public uint IconId { get; }
+    public byte Role { get; }
 
     public JobFace(uint id, string name, string abbreviation, uint iconId, byte role)
     {

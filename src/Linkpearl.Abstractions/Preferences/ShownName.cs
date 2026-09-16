@@ -40,8 +40,8 @@ public static class ShownName
         var local = Sanitize(stored);
         var raw = local.Length > 0 ? local : handset;
         if (display.NameStyle == NameStyle.Full &&
-            local.IndexOf(' ') < 0 &&
-            handset.IndexOf(' ') >= 0 &&
+            !local.Contains(' ') &&
+            handset.Contains(' ') &&
             (local.Length == 0 || handset.StartsWith(local, StringComparison.Ordinal)))
         {
             raw = handset;

@@ -153,7 +153,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             return string.Empty;
         }
 
-        return trimmed.StartsWith("@", StringComparison.Ordinal) ? trimmed : "@" + trimmed;
+        return trimmed.StartsWith('@') ? trimmed : "@" + trimmed;
     }
 
     private void EnsureVybeSeat()
@@ -2128,7 +2128,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private static Rect FeedSlice(Rect area, int index, float cell) =>
         Rect.FromSize(new Vector2(area.Min.X + cell * index, area.Min.Y), new Vector2(cell, area.Height));
 
-    private bool DrawPlusSplit(in AppletFrame frame, Rect area, string sfw, bool plusOn, bool night)
+    private static bool DrawPlusSplit(in AppletFrame frame, Rect area, string sfw, bool plusOn, bool night)
     {
         _ = night;
         var gap = frame.Units(8f);
@@ -3904,7 +3904,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         post.AuthorHandle.StartsWith("group:", StringComparison.Ordinal) ||
         post.AuthorId.StartsWith("club:", StringComparison.Ordinal);
 
-    private PearlPost[] WithoutGroups(PearlPost[] posts)
+    private static PearlPost[] WithoutGroups(PearlPost[] posts)
     {
         var keep = new List<PearlPost>(posts.Length);
         for (var index = 0; index < posts.Length; index++)
@@ -4066,7 +4066,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
             return true;
         }
 
-        if (post.Body.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+        if (post.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -4079,8 +4079,8 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
         for (var index = 0; index < marks.Length; index++)
         {
-            if (VybePostTags.Normalize(marks[index]).IndexOf(VybePostTags.Normalize(needle),
-                    StringComparison.Ordinal) >= 0)
+            if (VybePostTags.Normalize(marks[index]).Contains(VybePostTags.Normalize(needle),
+                    StringComparison.Ordinal))
             {
                 return true;
             }
@@ -4525,7 +4525,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         }
     }
 
-    private bool DrawLocalStill(in AppletFrame frame, Rect area, string path, bool night)
+    private static bool DrawLocalStill(in AppletFrame frame, Rect area, string path, bool night)
     {
         if (path.Length == 0 || !File.Exists(path))
         {
@@ -4939,7 +4939,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         }
     }
 
-    private string FeedRepostId(string postId) => "repost-" + postId;
+    private static string FeedRepostId(string postId) => "repost-" + postId;
 
     private bool PostShared(string postId)
     {
@@ -5181,7 +5181,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
     private bool SheetBlocking() =>
         state.DropPostId.Length > 0 || state.ReportOpen;
 
-    private bool CanDropPost(PearlPost post) => post.Id.Length > 0;
+    private static bool CanDropPost(PearlPost post) => post.Id.Length > 0;
 
     private void DropPost(string id)
     {
