@@ -160,6 +160,8 @@ public sealed class HandsetConfig : IPluginConfiguration
 
     public bool QuietWhenBusy { get; set; }
 
+    public bool ChatE2E { get; set; } = true;
+
     public bool WakeInPocket { get; set; }
 
     public bool StayInPortraits { get; set; } = true;

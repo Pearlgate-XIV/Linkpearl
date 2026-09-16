@@ -124,7 +124,8 @@ public sealed class HandsetHost : IDisposable
         ApplyFreshBoot(paths);
 
         pearl = new PearlHub(string.Empty, config.SessionToken, session, clock, log,
-            token => clock.Post(() => RememberToken(token)), paths.State("media-cache"));
+            token => clock.Post(() => RememberToken(token)), paths.State("media-cache"),
+            () => config.ChatE2E);
         services.AddSingleton<IPearlHub>(pearl);
 
         chat = new FfxivChatBridge(chatGui, clientState, partyList, objectTable, dataManager, session, framework,
@@ -481,6 +482,7 @@ public sealed class HandsetHost : IDisposable
         preferences.PhotosFolder = config.PhotosFolder ?? string.Empty;
         preferences.Quiet = config.Quiet;
         preferences.QuietWhenBusy = config.QuietWhenBusy;
+        preferences.ChatE2E = config.ChatE2E;
         preferences.WakeInPocket = config.WakeInPocket;
         preferences.StayInPortraits = config.StayInPortraits;
         preferences.TuckForCutscenes = config.TuckForCutscenes;
@@ -558,6 +560,7 @@ public sealed class HandsetHost : IDisposable
         config.PhotosFolder = display.PhotosFolder;
         config.Quiet = display.Quiet;
         config.QuietWhenBusy = display.QuietWhenBusy;
+        config.ChatE2E = display.ChatE2E;
         config.WakeInPocket = display.WakeInPocket;
         config.StayInPortraits = display.StayInPortraits;
         config.TuckForCutscenes = display.TuckForCutscenes;
@@ -704,6 +707,7 @@ public sealed class HandsetHost : IDisposable
         config.PhotosFolder = stock.PhotosFolder;
         config.Quiet = stock.Quiet;
         config.QuietWhenBusy = stock.QuietWhenBusy;
+        config.ChatE2E = stock.ChatE2E;
         config.WakeInPocket = stock.WakeInPocket;
         config.StayInPortraits = stock.StayInPortraits;
         config.TuckForCutscenes = stock.TuckForCutscenes;

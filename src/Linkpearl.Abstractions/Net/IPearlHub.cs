@@ -46,7 +46,14 @@ public readonly record struct PearlAnnouncement(
 
 public readonly record struct PearlHit(string Kind, string Title, string Subtitle, string Id);
 
-public readonly record struct PearlChatLine(bool Mine, string Body, string When, string Author, string Id = "");
+public readonly record struct PearlChatLine(
+    bool Mine,
+    string Body,
+    string When,
+    string Author,
+    string Id = "",
+    bool Sealed = false,
+    bool Opened = true);
 
 public readonly record struct PearlMedia(string Id, string Url, int Width, int Height);
 

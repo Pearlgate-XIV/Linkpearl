@@ -50,6 +50,10 @@ internal sealed class GateClient : IDisposable
         return (int)response.StatusCode;
     }
 
+    public Task<(T? Body, int Status)> PutAsync<T>(string path, HttpContent? content, JsonTypeInfo<T> info,
+        CancellationToken token) =>
+        SendAsync(HttpMethod.Put, path, content, info, token);
+
     public Task<(T? Body, int Status)> PatchAsync<T>(string path, HttpContent? content, JsonTypeInfo<T> info,
         CancellationToken token) =>
         SendAsync(HttpMethod.Patch, path, content, info, token);

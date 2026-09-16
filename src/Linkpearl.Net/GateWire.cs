@@ -59,7 +59,8 @@ internal sealed record ConversationDto(
     string? OtherUserId,
     string? LastMessagePreview,
     long LastMessageAtUnix,
-    int UnreadCount);
+    int UnreadCount,
+    int LastMessageEncVersion = 0);
 
 internal sealed record ConversationPageDto(ConversationDto[]? Items, string? NextCursor);
 
@@ -125,7 +126,7 @@ internal sealed record AnnouncementDto(
 
 internal sealed record AnnouncementPageDto(AnnouncementDto[]? Items, string? NextCursor);
 
-internal sealed record SendChatDto(string Body);
+internal sealed record SendChatDto(string Body, int Kind = 0, int EncVersion = 0, string? CommitmentTag = null);
 
 internal sealed record CreateChatDto(string? UserId, string? OtherUserId = null);
 
@@ -139,11 +140,55 @@ internal sealed record ChatMessageDto(
     string? SenderDisplayName = null,
     string? SenderId = null,
     long CreatedAtUnix = 0,
-    string? ConversationId = null);
+    string? ConversationId = null,
+    int EncVersion = 0,
+    string? CommitmentTag = null);
 
 internal sealed record ChatMessagePageDto(ChatMessageDto[]? Items, ChatMessageDto[]? Messages);
 
 internal sealed record HealthDto(bool Ok, string? Service);
+
+internal sealed record FeatureFlagsDto(bool Music, Dictionary<string, bool>? Apps);
+
+internal sealed record PutMyKeysDto(string PublicKey, WrappedPrivateKeyDto? PrivateKey = null);
+
+internal sealed record WrappedPrivateKeyDto(string Salt, int Iterations, string Nonce, string Ciphertext);
+
+internal sealed record MyKeysDto(
+    string? PublicKey,
+    WrappedPrivateKeyDto? PrivateKey,
+    int KeyVersion,
+    long CreatedAtUnix,
+    long? RotatedAtUnix);
+
+internal sealed record UserPublicKeyDto(string UserId, string PublicKey, int KeyVersion);
+
+internal sealed record PublicKeysRequestDto(string[] UserIds);
+
+internal sealed record PublicKeysDto(UserPublicKeyDto[]? Items);
+
+internal sealed record KeyWrapDto(
+    int Generation,
+    string WrappedKey,
+    string CreatedById,
+    int RecipientKeyVersion,
+    long CreatedAtUnix);
+
+internal sealed record NewWrapDto(string RecipientUserId, int RecipientKeyVersion, string WrappedKey);
+
+internal sealed record CreateGenerationDto(int Generation, NewWrapDto[] Wraps);
+
+internal sealed record AddWrapsDto(int Generation, NewWrapDto[] Wraps);
+
+internal sealed record ConversationKeysDto(
+    string ConversationId,
+    int CurrentGeneration,
+    KeyWrapDto[]? MyWraps,
+    UserPublicKeyDto[]? MemberKeys,
+    string[]? MembersWithoutKeys,
+    string[]? StaleWrapUserIds,
+    string[]? MissingWrapUserIds,
+    bool NeedsNewGeneration);
 
 internal sealed record PatronDto(bool? Linked, bool? Patron, bool? IsPatron, string? Url, string? LinkUrl);
 
@@ -332,7 +377,9 @@ internal sealed record GateRealtimeDto(
     int UnreadCount = 0,
     long LastMessageAtUnix = 0,
     ChatMessageDto? Message = null,
-    ConversationDto? Conversation = null);
+    ConversationDto? Conversation = null,
+    int EncVersion = 0,
+    string? CommitmentTag = null);
 
 [JsonSerializable(typeof(ChallengeRequestDto))]
 [JsonSerializable(typeof(ChallengeReplyDto))]
@@ -359,6 +406,18 @@ internal sealed record GateRealtimeDto(
 [JsonSerializable(typeof(ChatMessageDto))]
 [JsonSerializable(typeof(ChatMessagePageDto))]
 [JsonSerializable(typeof(HealthDto))]
+[JsonSerializable(typeof(FeatureFlagsDto))]
+[JsonSerializable(typeof(PutMyKeysDto))]
+[JsonSerializable(typeof(WrappedPrivateKeyDto))]
+[JsonSerializable(typeof(MyKeysDto))]
+[JsonSerializable(typeof(UserPublicKeyDto))]
+[JsonSerializable(typeof(PublicKeysRequestDto))]
+[JsonSerializable(typeof(PublicKeysDto))]
+[JsonSerializable(typeof(KeyWrapDto))]
+[JsonSerializable(typeof(NewWrapDto))]
+[JsonSerializable(typeof(CreateGenerationDto))]
+[JsonSerializable(typeof(AddWrapsDto))]
+[JsonSerializable(typeof(ConversationKeysDto))]
 [JsonSerializable(typeof(PatronDto))]
 [JsonSerializable(typeof(MediaDto))]
 [JsonSerializable(typeof(PostDto))]

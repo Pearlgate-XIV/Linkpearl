@@ -56,6 +56,7 @@ public sealed class DisplayPreferences
     private string photosFolder = string.Empty;
     private bool quiet;
     private bool quietWhenBusy;
+    private bool chatE2E = true;
     private bool wakeInPocket;
     private bool stayInPortraits = true;
     private bool tuckForCutscenes = true;
@@ -926,6 +927,12 @@ public sealed class DisplayPreferences
     {
         get => quietWhenBusy;
         set => Set(ref quietWhenBusy, value);
+    }
+
+    public bool ChatE2E
+    {
+        get => chatE2E;
+        set => Set(ref chatE2E, value);
     }
 
     public bool Hushed(bool busy) => quiet || (quietWhenBusy && busy);
