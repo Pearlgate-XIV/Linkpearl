@@ -24,7 +24,7 @@ public sealed class HandsetWindow : Window
 {
     private const ImGuiWindowFlags ChromeFlags =
         ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse |
-        ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoResize;
+        ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove;
 
     private readonly HandsetShell shell;
     private readonly HandsetFontService fonts;
@@ -48,13 +48,12 @@ public sealed class HandsetWindow : Window
     private readonly SideButton volumeButton = new(SideEdge.Right, 0.16f, 42f);
     private readonly PocketUnlock pocketUnlock = new();
     private readonly HandsetBoot boot = new();
+    private readonly WindowGrab windowGrab = new();
     private bool wantFold;
     private float fold;
     private bool presencePocket;
     private bool presenceVanish;
-    private bool pocketMoving;
     private bool pocketPress;
-    private Vector2 pocketGrab;
     private Vector2 pocketPressAt;
     private bool placedOnce;
     private bool placeOnce;
@@ -64,7 +63,6 @@ public sealed class HandsetWindow : Window
     private Rect lastScreen;
     private float lastOuterRadius;
     private float lastGripScale = 1f;
-    private bool holdSide;
     private float volumeCue;
 
     public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
@@ -109,6 +107,7 @@ public sealed class HandsetWindow : Window
         persistShape();
         persistOpen(false);
         persistMinimized(wantFold);
+        DropWindowGrab(remember: true);
         try
         {
             persistPlacement();
@@ -129,8 +128,7 @@ public sealed class HandsetWindow : Window
         EnsurePocketSeed();
         wantFold = true;
         pocketUnlock.Reset();
-        pocketMoving = false;
-        pocketPress = false;
+        DropWindowGrab(remember: false);
         textField.Release();
         boot.Cancel();
         persistMinimized(true);
@@ -148,8 +146,7 @@ public sealed class HandsetWindow : Window
 
         wantFold = false;
         pocketUnlock.Reset();
-        pocketMoving = false;
-        pocketPress = false;
+        DropWindowGrab(remember: false);
         persistMinimized(false);
         savePlacement = true;
     }
@@ -159,8 +156,7 @@ public sealed class HandsetWindow : Window
         wantFold = true;
         fold = 1f;
         pocketUnlock.Reset();
-        pocketMoving = false;
-        pocketPress = false;
+        DropWindowGrab(remember: false);
         textField.Release();
         boot.Cancel();
     }
@@ -190,16 +186,20 @@ public sealed class HandsetWindow : Window
         }
 
         ApplyWindowSize();
+        if (windowGrab.ShouldDrop(IsOpen) || ImGui.IsKeyPressed(ImGuiKey.Escape, false))
+        {
+            DropWindowGrab(remember: windowGrab.IsDragging);
+        }
+
         if (resizeGrip.IsDragging)
         {
             ImGui.SetNextWindowPos(
                 ResizeGrip.PosFromAnchor(resizeGrip.ActiveCorner, resizeGrip.Anchor, Size ?? FullSize()),
                 ImGuiCond.Always);
         }
-        else if (pocketMoving)
+        else if (windowGrab.IsDragging)
         {
-            ImGui.SetNextWindowPos(
-                HandsetPlacement.Clamp(ImGui.GetMousePos() - pocketGrab, Size ?? FaceSize()),
+            ImGui.SetNextWindowPos(windowGrab.Follow(ImGui.GetMousePos(), Size ?? FaceOrFull()),
                 ImGuiCond.Always);
         }
         else if (resizeGrip.Holding && lastOuter.Width > 16f)
@@ -210,17 +210,8 @@ public sealed class HandsetWindow : Window
         {
             ApplyWindowPos();
         }
-        var pointer = ImGui.GetMousePos();
-        var overScreen = lastScreen.Width > 16f && lastScreen.Contains(pointer);
-        var roundCorners = shapePreference.Case == HandsetCase.Android;
-        var board = lastShell.IsEmpty ? lastOuter : lastShell;
-        var overCorner = board.Width > 16f &&
-            ResizeGrip.Hits(board, lastScreen, lastGripScale, lastOuterRadius, roundCorners, pointer);
-        Flags = ChromeFlags | ImGuiWindowFlags.NoBackground |
-            (shapePreference.PositionLocked || wantFold || fold > 0.02f || resizeGrip.Holding || overCorner ||
-                shell.HoldsWindow || holdSide || overScreen
-                ? ImGuiWindowFlags.NoMove
-                : 0);
+
+        Flags = ChromeFlags | ImGuiWindowFlags.NoBackground;
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, CaseRounding());
@@ -405,7 +396,12 @@ public sealed class HandsetWindow : Window
             var lockArea = LockButton.Area(windowRect, screen, scale);
             var lockHit = showLock ? LockButton.HitArea(windowRect, screen, scale) : Rect.Empty;
             var pointer = input.Pointer;
-            holdSide = volumeHit.Contains(pointer) || powerHit.Contains(pointer);
+            windowGrab.WasFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !blocked;
+            if (windowGrab.ShouldDrop(IsOpen))
+            {
+                DropWindowGrab(remember: true);
+            }
+
             var overChrome = powerHit.Contains(pointer) || volumeHit.Contains(pointer) || lockHit.Contains(pointer);
             IInputProbe frameInput = overChrome || boot.Covering ? SilentInput.Instance : input;
             var frame = new AppletFrame(screen, paint, text, frameInput, theme, router, textField, textures, paths,
@@ -423,32 +419,28 @@ public sealed class HandsetWindow : Window
                     ? PocketUnlock.HitOn(glass, dip, hasNotice)
                     : Rect.Empty;
                 var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice, pocketFace);
-                if (!blocked && !pocketMoving && !pocketUnlock.IsDragging &&
-                    ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                if (!blocked && !windowGrab.IsDragging && !pocketUnlock.IsDragging &&
+                    ImGui.IsMouseClicked(ImGuiMouseButton.Left) &&
+                    WindowGrab.HitsChrome(pointer, windowRect, screen, pocket: true,
+                        shapePreference.PositionLocked, powerHit, volumeHit, lockHit, sliderHit, noticeHit))
                 {
-                    if (!sliderHit.Contains(pointer) && !noticeHit.Contains(pointer) &&
-                        !powerHit.Contains(pointer) && !volumeHit.Contains(pointer) &&
-                        windowRect.Contains(pointer))
+                    pocketPressAt = pointer;
+                    if (pocketFace == PocketFace.Slider)
                     {
-                        pocketGrab = pointer - windowRect.Min;
-                        pocketPressAt = pointer;
-                        if (pocketFace == PocketFace.Slider)
-                        {
-                            pocketMoving = true;
-                        }
-                        else
-                        {
-                            pocketPress = true;
-                        }
+                        windowGrab.Begin(pointer, windowRect.Min);
+                    }
+                    else
+                    {
+                        pocketPress = true;
                     }
                 }
 
-                if (pocketPress && !pocketMoving && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                if (pocketPress && !windowGrab.IsDragging && ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
                     var drag = pointer - pocketPressAt;
                     if (drag.LengthSquared() > 36f)
                     {
-                        pocketMoving = true;
+                        windowGrab.Begin(pocketPressAt, windowRect.Min);
                         pocketPress = false;
                     }
                 }
@@ -456,7 +448,7 @@ public sealed class HandsetWindow : Window
                 if (fonts.Ready)
                 {
                     woke = shell.DrawMinimized(frame, screen, pocketUnlock,
-                        allowSlide: !pocketMoving && !overChrome, pocketFace);
+                        allowSlide: !windowGrab.IsDragging && !overChrome, pocketFace);
                 }
             }
             else
@@ -514,7 +506,7 @@ public sealed class HandsetWindow : Window
 
                 if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
-                    if (pocketPress && !pocketMoving)
+                    if (pocketPress && !windowGrab.IsDragging)
                     {
                         pocketPress = false;
                         Restore();
@@ -522,13 +514,7 @@ public sealed class HandsetWindow : Window
                     }
 
                     pocketPress = false;
-                    if (pocketMoving)
-                    {
-                        CapturePocketFromWindow();
-                        savePlacement = true;
-                    }
-
-                    pocketMoving = false;
+                    DropWindowGrab(remember: true);
                 }
 
                 if (ChromeClicked(powerHit))
@@ -541,6 +527,17 @@ public sealed class HandsetWindow : Window
             }
 
             var locked = shapePreference.PositionLocked;
+            if (!locked && !blocked && !windowGrab.IsDragging && !resizeGrip.Holding &&
+                !shell.HoldsWindow && !boot.Covering && fold <= 0.02f &&
+                ImGui.IsMouseClicked(ImGuiMouseButton.Left) &&
+                WindowGrab.HitsChrome(pointer, windowRect, screen, pocket: false, locked,
+                    powerHit, volumeHit, lockHit, Rect.Empty, Rect.Empty) &&
+                !ResizeGrip.Hits(lastShell, lastScreen, gripScale, lastOuterRadius,
+                    shapePreference.Case == HandsetCase.Android, pointer))
+            {
+                windowGrab.Begin(pointer, windowRect.Min);
+            }
+
             if (showLock)
             {
                 LockButton.Draw(paint, theme, lockArea, locked);
@@ -564,7 +561,7 @@ public sealed class HandsetWindow : Window
                 return;
             }
 
-            if (!locked && !lockClicked && !resizeGrip.Holding && fold <= 0.02f)
+            if (!locked && !lockClicked && !resizeGrip.Holding && !windowGrab.IsDragging && fold <= 0.02f)
             {
                 CaptureOpenFromWindow();
                 if (!ImGui.IsMouseDown(ImGuiMouseButton.Left) && placement.Dirty)
@@ -592,7 +589,7 @@ public sealed class HandsetWindow : Window
     private void TickResize(DalamudPaintSurface paint, Rect windowRect, IInputProbe input, float gripScale,
         bool asleep)
     {
-        if (asleep || fold > 0.02f)
+        if (asleep || fold > 0.02f || windowGrab.IsDragging)
         {
             resizeGrip.Cancel();
             return;
@@ -835,7 +832,7 @@ public sealed class HandsetWindow : Window
 
     private void ApplyWindowPos()
     {
-        if (pocketMoving)
+        if (windowGrab.IsDragging)
         {
             return;
         }
@@ -882,7 +879,7 @@ public sealed class HandsetWindow : Window
 
     private void RememberLivePlacement()
     {
-        if (pocketMoving || fold > 0.02f && fold < 0.98f)
+        if (windowGrab.IsDragging || fold > 0.02f && fold < 0.98f)
         {
             return;
         }
@@ -945,6 +942,25 @@ public sealed class HandsetWindow : Window
             CaptureOpenFromWindow();
         }
     }
+
+    private void DropWindowGrab(bool remember)
+    {
+        pocketPress = false;
+        if (!windowGrab.IsDragging)
+        {
+            return;
+        }
+
+        if (remember)
+        {
+            CapturePlacement();
+            savePlacement = true;
+        }
+
+        windowGrab.Drop();
+    }
+
+    private Vector2 FaceOrFull() => fold > 0.5f ? FaceSize() : FullSize();
 
     private void EnsurePocketSeed()
     {
