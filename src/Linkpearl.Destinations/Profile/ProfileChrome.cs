@@ -420,6 +420,12 @@ public sealed class ProfileChrome
 
         if (frame.Input.ConsumeClick(done))
         {
+            display.CommitBanner();
+            if (display.UsingBanner)
+            {
+                pearl.SetBanner(BannerFiles.Absolute(paths, display.CustomBannerFile));
+            }
+
             DismissPicker();
         }
 
@@ -1402,7 +1408,22 @@ public sealed class ProfileChrome
         display.ResetBannerCrop();
         display.CustomBannerFile = fileName;
         textures.ForgetFile(BannerFiles.Absolute(paths, fileName));
+        pearl.SetBanner(BannerFiles.Absolute(paths, fileName));
         sheet = Sheet.PlaceBanner;
+    }
+
+    public void ClearBanner()
+    {
+        var previous = display.CustomBannerFile;
+        if (previous.Length > 0)
+        {
+            textures.ForgetFile(BannerFiles.Absolute(paths, previous));
+        }
+
+        display.ResetBannerCrop();
+        display.CustomBannerFile = string.Empty;
+        BannerFiles.Clear(paths);
+        pearl.SetBanner(string.Empty);
     }
 
     private static void DrawEdit(in AppletFrame frame, Rect area, Vector4 gold)

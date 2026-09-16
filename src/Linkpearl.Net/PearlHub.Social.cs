@@ -13,6 +13,7 @@ internal enum SocialKind : byte
     Publish = 6,
     Story = 7,
     Avatar = 8,
+    Banner = 9,
 }
 
 internal readonly record struct SocialWrite(
@@ -148,9 +149,13 @@ public sealed partial class PearlHub
             string.Empty));
     }
 
-    public void SetAvatar(string mediaPath)
+    public void SetAvatar(string mediaPath) => QueueProfileStill(SocialKind.Avatar, mediaPath);
+
+    public void SetBanner(string mediaPath) => QueueProfileStill(SocialKind.Banner, mediaPath);
+
+    private void QueueProfileStill(SocialKind kind, string mediaPath)
     {
-        if (!File.Exists(mediaPath) || !Current.SignedIn)
+        if (!Current.SignedIn)
         {
             return;
         }
@@ -160,7 +165,20 @@ public sealed partial class PearlHub
             return;
         }
 
-        Enqueue(new SocialWrite(SocialKind.Avatar, string.Empty, string.Empty, true, [mediaPath], string.Empty));
+        var path = mediaPath.Trim();
+        if (path.Length > 0 && !File.Exists(path))
+        {
+            Replace(Current with
+            {
+                Notice = kind == SocialKind.Banner
+                    ? "Could not save that banner."
+                    : "Could not save that photo.",
+                Generation = NextGeneration(),
+            });
+            return;
+        }
+
+        Enqueue(new SocialWrite(kind, string.Empty, string.Empty, true, path.Length > 0 ? [path] : [], string.Empty));
     }
 
     public void PublishStory(string body, string mediaPath)
@@ -246,7 +264,7 @@ public sealed partial class PearlHub
     public void PrefetchMedia(string url)
     {
         var key = url.Trim();
-        if (key.Length == 0)
+        if (!GateMedia.IsRemote(key))
         {
             return;
         }
@@ -401,10 +419,23 @@ public sealed partial class PearlHub
             var (plusLane, _) = await LoadVybePlusProfilePostsAsync(vybeId, token).ConfigureAwait(false);
             var posts = MergePosts(plusLane, sfw);
             RememberPosts(posts);
+            var (avatarUrl, bannerUrl) = await LoadWatchedProfileMediaAsync(userId, token).ConfigureAwait(false);
+            if (avatarUrl.Length > 0)
+            {
+                PrefetchMedia(avatarUrl);
+            }
+
+            if (bannerUrl.Length > 0)
+            {
+                PrefetchMedia(bannerUrl);
+            }
+
             Replace(Current with
             {
                 ProfilePosts = posts,
                 WatchedUserId = userId,
+                WatchedUserAvatarUrl = avatarUrl,
+                WatchedUserBannerUrl = bannerUrl,
                 Generation = NextGeneration(),
             });
         }
@@ -476,6 +507,7 @@ public sealed partial class PearlHub
                 SocialKind.Publish => await RunPublishAsync(write, token).ConfigureAwait(false),
                 SocialKind.Story => await RunStoryWriteAsync(write, token).ConfigureAwait(false),
                 SocialKind.Avatar => await RunAvatarWriteAsync(write, token).ConfigureAwait(false),
+                SocialKind.Banner => await RunBannerWriteAsync(write, token).ConfigureAwait(false),
                 _ => 0,
             };
 
@@ -528,9 +560,9 @@ public sealed partial class PearlHub
         foreach (var path in write.MediaPaths)
         {
             var uploaded = await UploadMediaAsync(path, token).ConfigureAwait(false);
-            if (uploaded is { Length: > 0 })
+            if (uploaded is { Id.Length: > 0 })
             {
-                ids.Add(uploaded);
+                ids.Add(uploaded.Id);
             }
         }
 
@@ -726,7 +758,8 @@ public sealed partial class PearlHub
         string? mediaId = null;
         if (write.MediaPaths.Length > 0)
         {
-            mediaId = await UploadMediaAsync(write.MediaPaths[0], token).ConfigureAwait(false);
+            var uploaded = await UploadMediaAsync(write.MediaPaths[0], token).ConfigureAwait(false);
+            mediaId = uploaded?.Id;
         }
 
         var body = new StoryBodyDto(write.Body.Length == 0 ? null : write.Body, mediaId);
@@ -734,25 +767,89 @@ public sealed partial class PearlHub
             .ConfigureAwait(false);
     }
 
-    private async Task<int> RunAvatarWriteAsync(SocialWrite write, CancellationToken token)
+    private async Task<int> RunAvatarWriteAsync(SocialWrite write, CancellationToken token) =>
+        await RunProfileStillWriteAsync(write, "/me/avatar", avatar: true, token).ConfigureAwait(false);
+
+    private async Task<int> RunBannerWriteAsync(SocialWrite write, CancellationToken token) =>
+        await RunProfileStillWriteAsync(write, "/me/banner", avatar: false, token).ConfigureAwait(false);
+
+    private async Task<int> RunProfileStillWriteAsync(SocialWrite write, string slotPath, bool avatar,
+        CancellationToken token)
     {
         if (write.MediaPaths.Length == 0)
         {
-            return 400;
+            return await PatchProfileMediaAsync(avatar, string.Empty, token).ConfigureAwait(false);
         }
 
-        var mediaId = await UploadMediaAsync(write.MediaPaths[0], token).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(mediaId))
+        var uploaded = await UploadMediaAsync(write.MediaPaths[0], token).ConfigureAwait(false);
+        if (uploaded is null)
         {
             return 404;
         }
 
-        return await client.PostAsync("/me/avatar",
-                GateClient.JsonBody(new AvatarBodyDto(mediaId), GateJson.Default.AvatarBodyDto), token)
+        var (user, status) = await client.PostAsync(slotPath,
+                GateClient.JsonBody(new AvatarBodyDto(uploaded.Id), GateJson.Default.AvatarBodyDto),
+                GateJson.Default.GateUserDto, token)
             .ConfigureAwait(false);
+        if (status is >= 200 and < 300)
+        {
+            ApplyMeMedia(user, avatar, uploaded.Url);
+            return status;
+        }
+
+        if (status is 404 or 405 or 501 && uploaded.Url.Length > 0)
+        {
+            return await PatchProfileMediaAsync(avatar, uploaded.Url, token).ConfigureAwait(false);
+        }
+
+        return status;
     }
 
-    private async Task<string?> UploadMediaAsync(string path, CancellationToken token)
+    private async Task<int> PatchProfileMediaAsync(bool avatar, string url, CancellationToken token)
+    {
+        var body = avatar
+            ? new ProfilePatchDto(AvatarUrl: url)
+            : new ProfilePatchDto(BannerUrl: url);
+        var (user, status) = await client.PatchAsync("/me",
+                GateClient.JsonBody(body, GateJson.Default.ProfilePatchDto), GateJson.Default.GateUserDto, token)
+            .ConfigureAwait(false);
+        if (status is >= 200 and < 300)
+        {
+            ApplyMeMedia(user, avatar, url);
+        }
+
+        return status;
+    }
+
+    private void ApplyMeMedia(GateUserDto? user, bool avatar, string fallbackUrl)
+    {
+        var url = avatar
+            ? GateMedia.AvatarUrl(user, fallbackUrl)
+            : GateMedia.BannerUrl(user, fallbackUrl);
+        if (avatar)
+        {
+            Replace(Current with
+            {
+                MeAvatarUrl = url,
+                WatchedUserAvatarUrl = WatchingMe() ? url : Current.WatchedUserAvatarUrl,
+                Generation = NextGeneration(),
+            });
+            return;
+        }
+
+        Replace(Current with
+        {
+            MeBannerUrl = url,
+            WatchedUserBannerUrl = WatchingMe() ? url : Current.WatchedUserBannerUrl,
+            Generation = NextGeneration(),
+        });
+    }
+
+    private bool WatchingMe() =>
+        string.Equals(Current.WatchedUserId, "me", StringComparison.Ordinal) ||
+        (Current.MeId.Length > 0 && string.Equals(Current.WatchedUserId, Current.MeId, StringComparison.Ordinal));
+
+    private async Task<UploadedMedia?> UploadMediaAsync(string path, CancellationToken token)
     {
         byte[] bytes;
         try
@@ -774,7 +871,13 @@ public sealed partial class PearlHub
             return null;
         }
 
-        return reply?.Id;
+        var id = GateMedia.Id(reply);
+        if (id.Length == 0)
+        {
+            return null;
+        }
+
+        return new UploadedMedia(id, GateMedia.PublicUrl(reply));
     }
 
     private void RememberPosts(PearlPost[] posts)
@@ -1094,4 +1197,26 @@ public sealed partial class PearlHub
 
         return "image/jpeg";
     }
+
+    private async Task<(string AvatarUrl, string BannerUrl)> LoadWatchedProfileMediaAsync(string userId,
+        CancellationToken token)
+    {
+        if (string.Equals(userId, "me", StringComparison.Ordinal) ||
+            string.Equals(userId, Current.MeId, StringComparison.Ordinal))
+        {
+            return (Current.MeAvatarUrl, Current.MeBannerUrl);
+        }
+
+        var (user, status) = await client
+            .GetAsync("/users/" + Uri.EscapeDataString(userId), GateJson.Default.GateUserDto, token)
+            .ConfigureAwait(false);
+        if (status is < 200 or >= 300 || user is null)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        return (GateMedia.AvatarUrl(user), GateMedia.BannerUrl(user));
+    }
 }
+
+internal readonly record struct UploadedMedia(string Id, string Url);

@@ -416,6 +416,9 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
     private string OwnBannerPath() => state.ProfileBannerPath;
 
+    private string OwnBannerStill() =>
+        VybeChrome.StillReady(state.ProfileBannerPath) ? state.ProfileBannerPath : pearl.Current.MeBannerUrl;
+
     AppletManifest IApplet.Manifest => Manifest;
 
     public AppletBadge Badge
@@ -2489,8 +2492,8 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
         var night = state.Night;
         var tone = VybeChrome.Tone(night);
-        var hero = DrawProfileHero(frame, area, night, OwnBannerPath(), tone.AccentDim,
-            string.Empty, OwnFacePath(), tone.Accent, own: true, back: false);
+        var hero = DrawProfileHero(frame, area, night, OwnBannerStill(), tone.AccentDim,
+            pearl.Current.MeAvatarUrl, OwnFacePath(), tone.Accent, own: true, back: false);
         if (hero.Save)
         {
             state.Open(NightPage.Saves);
@@ -4319,12 +4322,28 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
 
     private bool DrawBleedStill(in AppletFrame frame, Rect area, string path)
     {
-        if (path.Length == 0 || !File.Exists(path))
+        if (path.Length == 0)
         {
             return false;
         }
 
-        var texture = frame.Textures.FromFile(path);
+        var local = path;
+        if (!File.Exists(local))
+        {
+            if (!LooksRemoteStill(path))
+            {
+                return false;
+            }
+
+            pearl.PrefetchMedia(path);
+            local = pearl.LocalMedia(path) ?? string.Empty;
+            if (local.Length == 0 || !File.Exists(local))
+            {
+                return false;
+            }
+        }
+
+        var texture = frame.Textures.FromFile(local);
         if (texture is not { IsReady: true })
         {
             return false;
@@ -4333,6 +4352,11 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         DrawOwnStill(frame, area, texture, path, ownFace: false, circle: false);
         return true;
     }
+
+    private static bool LooksRemoteStill(string value) =>
+        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("/media/", StringComparison.OrdinalIgnoreCase);
 
     private void DrawOwnStill(in AppletFrame frame, Rect area, ITextureHandle texture, string path, bool ownFace,
         bool circle)

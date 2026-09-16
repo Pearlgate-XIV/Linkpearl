@@ -18,7 +18,8 @@ public readonly record struct PearlPerson(
     string AvatarUrl,
     string Race = "",
     string World = "",
-    string TimeZoneId = "");
+    string TimeZoneId = "",
+    string BannerUrl = "");
 
 public readonly record struct PearlStorySlide(
     string Id,
@@ -134,6 +135,8 @@ public sealed record PearlSnapshot
 
     public string MeAvatarUrl { get; init; } = string.Empty;
 
+    public string MeBannerUrl { get; init; } = string.Empty;
+
     public string MyNumber { get; init; } = string.Empty;
 
     public int Followers { get; init; }
@@ -189,6 +192,10 @@ public sealed record PearlSnapshot
     public long MuteUntilUnix { get; init; }
 
     public string WatchedUserId { get; init; } = string.Empty;
+
+    public string WatchedUserAvatarUrl { get; init; } = string.Empty;
+
+    public string WatchedUserBannerUrl { get; init; } = string.Empty;
 
     public string WatchedPostId { get; init; } = string.Empty;
 
@@ -276,6 +283,8 @@ public interface IPearlHub
     void RemoveFriend(string userId);
 
     void SetAvatar(string mediaPath);
+
+    void SetBanner(string mediaPath);
 
     void PublishStory(string body, string mediaPath);
 

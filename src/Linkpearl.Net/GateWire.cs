@@ -45,7 +45,9 @@ internal sealed record GateUserDto(
     bool? Banned = null,
     bool? Muted = null,
     long MuteUntilUnix = 0,
-    string? BanReason = null);
+    string? BanReason = null,
+    string? BannerUrl = null,
+    string? CoverUrl = null);
 
 internal sealed record VerifyReplyDto(bool Ok, string? Reason, string? Token, GateUserDto? User);
 
@@ -71,7 +73,8 @@ internal sealed record ContactDto(
     bool IsMutual,
     string? Race,
     string? World,
-    string? TimeZoneId = null);
+    string? TimeZoneId = null,
+    string? BannerUrl = null);
 
 internal sealed record ContactListDto(
     ContactDto[]? Contacts,
@@ -227,9 +230,22 @@ internal sealed record NoteDto(
 
 internal sealed record NotePageDto(NoteDto[]? Items);
 
-internal sealed record MediaReplyDto(string? Id, string? Url, int Width, int Height);
+internal sealed record MediaReplyDto(
+    string? Id,
+    string? Url,
+    int Width,
+    int Height,
+    string? Key = null,
+    string? PublicUrl = null);
 
 internal sealed record AvatarBodyDto(string MediaId);
+
+internal sealed record ProfilePatchDto(
+    string? DisplayName = null,
+    string? Handle = null,
+    string? Bio = null,
+    string? AvatarUrl = null,
+    string? BannerUrl = null);
 
 internal sealed record StoryBodyDto(string? Body, string? MediaId);
 
@@ -359,6 +375,7 @@ internal sealed record GateRealtimeDto(
 [JsonSerializable(typeof(NotePageDto))]
 [JsonSerializable(typeof(MediaReplyDto))]
 [JsonSerializable(typeof(AvatarBodyDto))]
+[JsonSerializable(typeof(ProfilePatchDto))]
 [JsonSerializable(typeof(StoryBodyDto))]
 [JsonSerializable(typeof(RetainerDto))]
 [JsonSerializable(typeof(RetainerPageDto))]
@@ -378,4 +395,68 @@ internal sealed record GateRealtimeDto(
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal sealed partial class GateJson : JsonSerializerContext
 {
+}
+
+internal static class GateMedia
+{
+    public static bool IsRemote(string value) =>
+        value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("/media/", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsPublic(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var trimmed = url.Trim();
+        return !trimmed.TrimEnd('/').EndsWith("/media", StringComparison.Ordinal);
+    }
+
+    public static string Id(MediaReplyDto? reply)
+    {
+        if (!string.IsNullOrWhiteSpace(reply?.Id))
+        {
+            return reply.Id.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(reply?.Key) ? string.Empty : reply.Key.Trim();
+    }
+
+    public static string PublicUrl(MediaReplyDto? reply)
+    {
+        if (IsPublic(reply?.Url))
+        {
+            return reply!.Url!.Trim();
+        }
+
+        return IsPublic(reply?.PublicUrl) ? reply!.PublicUrl!.Trim() : string.Empty;
+    }
+
+    public static string AvatarUrl(GateUserDto? user, string fallback = "")
+    {
+        if (IsPublic(user?.AvatarUrl))
+        {
+            return user!.AvatarUrl!.Trim();
+        }
+
+        return IsPublic(fallback) ? fallback.Trim() : string.Empty;
+    }
+
+    public static string BannerUrl(GateUserDto? user, string fallback = "")
+    {
+        if (IsPublic(user?.BannerUrl))
+        {
+            return user!.BannerUrl!.Trim();
+        }
+
+        if (IsPublic(user?.CoverUrl))
+        {
+            return user!.CoverUrl!.Trim();
+        }
+
+        return IsPublic(fallback) ? fallback.Trim() : string.Empty;
+    }
 }

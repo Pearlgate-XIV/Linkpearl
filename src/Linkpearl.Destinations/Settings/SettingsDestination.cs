@@ -1257,6 +1257,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
                 display.CustomBannerFile = string.Empty;
                 BannerFiles.Clear(paths);
                 bannerError = string.Empty;
+                profile.ClearBanner();
             });
         }
 
@@ -1321,6 +1322,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             display.CustomBannerFile = fileName;
             textures.ForgetFile(BannerFiles.Absolute(paths, fileName));
             bannerError = string.Empty;
+            pearl.SetBanner(BannerFiles.Absolute(paths, fileName));
             profile.OpenBanner();
             return;
         }

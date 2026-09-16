@@ -880,6 +880,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 MeHandle = me.Handle ?? string.Empty,
                 MeBio = me.Bio ?? string.Empty,
                 MeAvatarUrl = me.AvatarUrl ?? string.Empty,
+                MeBannerUrl = GateMedia.BannerUrl(me),
                 MyNumber = LineNumber(me.PhoneNumber, contacts),
                 Followers = me.Followers,
                 Following = me.Following,
@@ -910,6 +911,14 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 Muted = muted,
                 MuteUntilUnix = muteUntil,
                 WatchedUserId = watchedUser,
+                WatchedUserAvatarUrl = string.Equals(watchedUser, "me", StringComparison.Ordinal) ||
+                                       string.Equals(watchedUser, meId, StringComparison.Ordinal)
+                    ? me.AvatarUrl ?? string.Empty
+                    : prior.WatchedUserAvatarUrl,
+                WatchedUserBannerUrl = string.Equals(watchedUser, "me", StringComparison.Ordinal) ||
+                                       string.Equals(watchedUser, meId, StringComparison.Ordinal)
+                    ? GateMedia.BannerUrl(me)
+                    : prior.WatchedUserBannerUrl,
                 WatchedPostId = watchedPost,
                 UnreadTotal = CountUnread(chats),
                 Generation = NextGeneration(),
@@ -996,6 +1005,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             MeHandle = user?.Handle ?? string.Empty,
             MeBio = user?.Bio ?? string.Empty,
             MeAvatarUrl = user?.AvatarUrl ?? string.Empty,
+            MeBannerUrl = GateMedia.BannerUrl(user),
             MyNumber = LineNumber(user?.PhoneNumber, null),
             Followers = user?.Followers ?? 0,
             Following = user?.Following ?? 0,
@@ -1474,7 +1484,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var name = string.IsNullOrWhiteSpace(item.Alias) ? item.DisplayName : item.Alias;
             mapped[index] = new PearlPerson(item.UserId, name ?? string.Empty, item.Handle ?? string.Empty,
                 item.PhoneNumber ?? string.Empty, item.IsMutual, item.AvatarUrl ?? string.Empty,
-                item.Race ?? string.Empty, item.World ?? string.Empty, item.TimeZoneId ?? string.Empty);
+                item.Race ?? string.Empty, item.World ?? string.Empty, item.TimeZoneId ?? string.Empty,
+                item.BannerUrl ?? string.Empty);
         }
 
         return mapped;
@@ -1499,7 +1510,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
             mapped.Add(new PearlPerson(id, Display(user.DisplayName, user.Name), user.Handle ?? string.Empty,
                 string.Empty, false, user.AvatarUrl ?? string.Empty, string.Empty, user.World ?? string.Empty,
-                user.TimeZoneId ?? string.Empty));
+                user.TimeZoneId ?? string.Empty, GateMedia.BannerUrl(user)));
         }
 
         return mapped.ToArray();

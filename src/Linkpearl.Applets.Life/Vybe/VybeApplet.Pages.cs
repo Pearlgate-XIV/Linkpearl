@@ -504,8 +504,8 @@ public sealed partial class VybeApplet
                     ? "This is the first thing people see in Discover."
                     : "Your account is ready. Finish how you show up in Discover.", night);
             var heroArea = stack.Take(frame.Units(188f));
-            var hero = DrawProfileHero(frame, heroArea, night, OwnBannerPath(),
-                VybeChrome.Tone(night).AccentDim, string.Empty, OwnFacePath(),
+            var hero = DrawProfileHero(frame, heroArea, night, OwnBannerStill(),
+                VybeChrome.Tone(night).AccentDim, pearl.Current.MeAvatarUrl, OwnFacePath(),
                 VybeChrome.Tone(night).Accent, own: true, back: false, tools: false);
             if (hero.Face)
             {
@@ -1612,8 +1612,23 @@ public sealed partial class VybeApplet
         }
 
         var tone = VybeChrome.Tone(night);
-        var hero = DrawProfileHero(frame, area, night, string.Empty, person.Wash with { W = 0.92f },
-            person.AvatarUrl, person.AvatarUrl, person.Wash, own: false, back: true);
+        var snap = pearl.Current;
+        var banner = person.BannerUrl;
+        var face = person.AvatarUrl;
+        if (banner.Length == 0 &&
+            string.Equals(snap.WatchedUserId, person.GateId, StringComparison.Ordinal))
+        {
+            banner = snap.WatchedUserBannerUrl;
+        }
+
+        if (face.Length == 0 &&
+            string.Equals(snap.WatchedUserId, person.GateId, StringComparison.Ordinal))
+        {
+            face = snap.WatchedUserAvatarUrl;
+        }
+
+        var hero = DrawProfileHero(frame, area, night, banner, person.Wash with { W = 0.92f },
+            face, face, person.Wash, own: false, back: true);
         if (hero.Back)
         {
             state.Back();
@@ -3472,6 +3487,7 @@ public sealed partial class VybeApplet
             state.FaceZoom = 1f;
             state.FaceFocusX = 0.5f;
             state.FaceFocusY = 0.5f;
+            pearl.SetAvatar(string.Empty);
         }
         else
         {
@@ -3479,6 +3495,7 @@ public sealed partial class VybeApplet
             state.BannerZoom = 1f;
             state.BannerFocusX = 0.5f;
             state.BannerFocusY = 0.5f;
+            pearl.SetBanner(string.Empty);
         }
 
         photoDrag = false;
@@ -3562,6 +3579,7 @@ public sealed partial class VybeApplet
             state.FaceFocusY = 0.5f;
             state.Save(paths);
             ShowPlacePhoto();
+            PublishOwnStill(face: true);
             return;
         }
 
@@ -3573,6 +3591,7 @@ public sealed partial class VybeApplet
             state.BannerFocusY = 0.5f;
             state.Save(paths);
             ShowPlacePhoto();
+            PublishOwnStill(face: false);
             return;
         }
 
@@ -3675,6 +3694,7 @@ public sealed partial class VybeApplet
             }
 
             state.Save(paths);
+            PublishOwnStill(state.PickingAvatar);
             return true;
         }
         catch (IOException)
@@ -3706,6 +3726,16 @@ public sealed partial class VybeApplet
                     : "Drag to move. Scroll to zoom so the whole photo or just part of it sits in the banner."
                 : "Tap the plus, then pick a photo from your gallery.",
             new TextStyle(FontRole.Caption, tone.Mute));
+        if (!pearl.Current.SignedIn)
+        {
+            VybeChrome.Mute(frame, inner.Inset(new Edges(0f, frame.Units(64f), 0f, 0f)).TopSlice(frame.Units(20f)),
+                "Sign in from You so other players can see this picture.", night);
+        }
+        else if (pearl.Current.Notice.Length > 0)
+        {
+            VybeChrome.Mute(frame, inner.Inset(new Edges(0f, frame.Units(64f), 0f, 0f)).TopSlice(frame.Units(20f)),
+                pearl.Current.Notice, night);
+        }
 
         var actions = inner.BottomSlice(frame.Units(hasStill ? 88f : 44f));
         var pair = hasStill ? actions.BottomSlice(frame.Units(44f)) : actions;
@@ -3784,8 +3814,32 @@ public sealed partial class VybeApplet
         {
             photoDrag = false;
             state.Save(paths);
+            PublishOwnStill(face);
             state.Back();
         }
+    }
+
+    private void PublishOwnStill(bool face)
+    {
+        if (face)
+        {
+            if (VybeChrome.StillReady(state.ProfileFacePath))
+            {
+                pearl.SetAvatar(state.ProfileFacePath);
+                return;
+            }
+
+            pearl.SetAvatar(string.Empty);
+            return;
+        }
+
+        if (VybeChrome.StillReady(state.ProfileBannerPath))
+        {
+            pearl.SetBanner(state.ProfileBannerPath);
+            return;
+        }
+
+        pearl.SetBanner(string.Empty);
     }
 
     private void TickPhotoPlace(in AppletFrame frame, Rect preview, string path)

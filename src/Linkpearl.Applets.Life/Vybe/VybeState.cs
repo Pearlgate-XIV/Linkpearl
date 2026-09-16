@@ -1443,7 +1443,7 @@ internal sealed class VybeState
                 handle, person.World.Length > 0 ? person.World : person.PhoneNumber, string.Empty, person.IsMutual, 0,
                 false, WashOf(id),
                 Array.Empty<string>(), Array.Empty<string>(), person.AvatarUrl, TimeZoneId: person.TimeZoneId,
-                Race: SceneBook.NamedRace(0, person.Race)));
+                Race: SceneBook.NamedRace(0, person.Race), BannerUrl: person.BannerUrl));
             if (person.IsMutual)
             {
                 Connected.Add(id);
@@ -2027,7 +2027,7 @@ internal readonly record struct ScenePerson(
     int Id, string GateId, string Name, string Handle, string World, string Line, bool Online, int Photos, bool NightOnly,
     Vector4 Wash, string[] Intents, string[] Tags, string AvatarUrl = "", string Gender = "", string Sexuality = "",
     string Relationship = "", bool? DmsOpen = null, bool PlusMember = false, string TimeZoneId = "",
-    string Race = "");
+    string Race = "", string BannerUrl = "");
 
 internal readonly record struct ScenePost(
     int Id, string Author, int AuthorId, string When, string Body, string Place, bool ConnectionsOnly, int Likes,
