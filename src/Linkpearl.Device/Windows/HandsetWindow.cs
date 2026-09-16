@@ -58,6 +58,7 @@ public sealed class HandsetWindow : Window
     private bool placedOnce;
     private bool placeOnce;
     private bool savePlacement;
+    private bool pocketFace;
     private Rect lastOuter;
     private Rect lastShell;
     private Rect lastScreen;
@@ -144,12 +145,12 @@ public sealed class HandsetWindow : Window
             return;
         }
 
+        // Same wake as the original single mini: drop the fold target and let size
+        // lerp from the pocket face to FullSize() (the user's ScaleStep). Snapping
+        // fold to 0 here draws Home in the still-mini window.
         wantFold = false;
-        fold = 0f;
-        placeOnce = true;
         pocketUnlock.Reset();
         DropWindowGrab(remember: false);
-        shell.AlignAfterWake();
         persistMinimized(false);
         savePlacement = true;
     }
@@ -276,17 +277,23 @@ public sealed class HandsetWindow : Window
     {
         RememberLivePlacement();
         var deltaSeconds = ImGui.GetIO().DeltaTime;
-        if (!wantFold && fold <= 0.02f && !presenceVanish)
+        if (!presenceVanish && !resizeGrip.IsDragging)
         {
-            var full = FullSize();
+            var want = Vector2.Lerp(FullSize(), FaceSize(), Ease(fold));
             var now = ImGui.GetWindowSize();
-            if (now.X + 8f < full.X || now.Y + 8f < full.Y)
+            if (MathF.Abs(now.X - want.X) > 1f || MathF.Abs(now.Y - want.Y) > 1f)
             {
-                ImGui.SetWindowSize(full);
+                ImGui.SetWindowSize(want);
             }
         }
 
         var asleep = wantFold || fold > 0.04f;
+        if (pocketFace && !asleep)
+        {
+            shell.AlignAfterWake();
+        }
+
+        pocketFace = asleep;
         var gripScale = MathF.Max(0.75f, ImGuiHelpers.GlobalScale);
         var windowRect = new Rect(ImGui.GetWindowPos(), ImGui.GetWindowPos() + ImGui.GetWindowSize());
         if (windowRect.Width < 16f || windowRect.Height < 16f)
@@ -808,16 +815,16 @@ public sealed class HandsetWindow : Window
     private void ApplyWindowSize()
     {
         SizeCondition = ImGuiCond.Always;
-        if (!resizeGrip.IsDragging && fold <= 0.02f)
+        // Never rewrite ScaleStep from the mini, or on the first open measurement.
+        // Wake must return the size the user set, not a FitScale of the pocket.
+        if (!resizeGrip.IsDragging && !wantFold && fold <= 0.02f)
         {
-            var viewport = ImGui.GetMainViewport();
-            var work = viewport.WorkSize;
-            var jumped = lastWorkSize == Vector2.Zero
-                || MathF.Abs(work.X - lastWorkSize.X) > 12f
-                || MathF.Abs(work.Y - lastWorkSize.Y) > 12f;
+            var work = ImGui.GetMainViewport().WorkSize;
+            var jumped = lastWorkSize != Vector2.Zero
+                && (MathF.Abs(work.X - lastWorkSize.X) > 12f
+                    || MathF.Abs(work.Y - lastWorkSize.Y) > 12f);
             if (jumped)
             {
-                lastWorkSize = work;
                 var fit = HandsetSizeCatalog.FitScale(shapePreference.Form, shapePreference.Case, work,
                     ImGuiHelpers.GlobalScale, display.Landscape);
                 if (shapePreference.ScaleStep > fit + 0.002f)
@@ -825,6 +832,8 @@ public sealed class HandsetWindow : Window
                     shapePreference.ScaleStep = fit;
                 }
             }
+
+            lastWorkSize = work;
         }
 
         var full = FullSize();
@@ -906,7 +915,12 @@ public sealed class HandsetWindow : Window
 
         if (!wantFold && fold <= 0.02f)
         {
-            placement.RememberOpen(ImGui.GetWindowPos());
+            var full = FullSize();
+            var now = ImGui.GetWindowSize();
+            if (now.X + 8f >= full.X && now.Y + 8f >= full.Y)
+            {
+                placement.RememberOpen(ImGui.GetWindowPos());
+            }
         }
         else if (wantFold && fold >= 0.98f)
         {
