@@ -2,12 +2,13 @@ using Dalamud.Bindings.ImGui;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Painting;
+using Linkpearl.Preferences;
 using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 
-// Vertical slide-to-wake on the pocket face. Track size is locked to UI scale (DPI), not
-// pocket window size, so a larger or smaller communicator keeps the same slider.
+// Vertical slide-to-wake on every pocket size (Tiny icon, Medium lock, Large communicator).
+// Track length is capped to the well, so the same control still fits a tiny face.
 public sealed class PocketUnlock
 {
     public const float WidthUnits = 24f;
@@ -29,24 +30,24 @@ public sealed class PocketUnlock
         grab = 0f;
     }
 
-    public static Rect TrackOn(Rect screen, float dip, bool notice = false)
+    public static Rect TrackOn(Rect screen, float dip, bool notice = false, PocketFace face = PocketFace.Slider)
     {
         var width = WidthUnits * dip;
-        var top = screen.Min.Y + MinimizedFace.TrackTop(dip, notice);
-        var bottom = screen.Max.Y - MinimizedFace.TrackBottom(dip);
+        var top = screen.Min.Y + MinimizedFace.TrackTop(dip, notice, face);
+        var bottom = screen.Max.Y - MinimizedFace.TrackBottom(dip, face);
         var room = MathF.Max(0f, bottom - top);
         var height = MathF.Min(HeightUnits * dip, room);
         var y = top + MathF.Max(0f, (room - height) * 0.45f);
         return Rect.FromSize(new Vector2(screen.Center.X - width * 0.5f, y), new Vector2(width, height));
     }
 
-    public static Rect HitOn(Rect screen, float dip, bool notice = false) =>
-        TrackOn(screen, dip, notice).Expand(3f * dip);
+    public static Rect HitOn(Rect screen, float dip, bool notice = false, PocketFace face = PocketFace.Slider) =>
+        TrackOn(screen, dip, notice, face).Expand(3f * dip);
 
     public bool Draw(IPaintSurface paint, IInputProbe input, ITheme theme, Rect screen, float dip, float deltaSeconds,
-        bool allowSlide, bool notice = false)
+        bool allowSlide, bool notice = false, PocketFace face = PocketFace.Slider)
     {
-        var track = TrackOn(screen, dip, notice);
+        var track = TrackOn(screen, dip, notice, face);
         if (track.IsEmpty)
         {
             return false;
@@ -56,7 +57,7 @@ public sealed class PocketUnlock
         var minY = track.Min.Y + pad;
         var maxY = track.Max.Y - pad;
         var travel = MathF.Max(maxY - minY, 1f);
-        var hit = HitOn(screen, dip, notice);
+        var hit = HitOn(screen, dip, notice, face);
 
         if (allowSlide && !dragging && hit.Contains(input.Pointer) &&
             ImGui.IsMouseClicked(ImGuiMouseButton.Left))

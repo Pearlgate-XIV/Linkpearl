@@ -8,32 +8,32 @@ using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 
-// Miniature phone: icon face, lock screen, or slide-to-wake communicator.
+// Miniature phone: icon, lock, or communicator. All three carry the slide-to-wake grab.
 public static class MinimizedFace
 {
     public const float ClockUnits = 22f;
     public const float NoticeUnits = 32f;
     public const float DateUnits = 16f;
     public const float GapUnits = 4f;
+    public const float SliderUnits = 56f;
+    public const float IconUnits = 48f;
 
     public static PocketFace Face(float pocketScale) => HandsetShapePreference.FaceFor(pocketScale);
 
     public static float LayoutDip(Rect screen, float uiScale, PocketFace face, bool notice)
     {
+        float units;
         if (face == PocketFace.Icon)
         {
-            return uiScale;
+            units = IconUnits + GapUnits + SliderUnits;
         }
-
-        var units = ClockUnits + GapUnits + DateUnits + GapUnits;
-        if (notice)
+        else
         {
-            units += NoticeUnits + GapUnits;
-        }
-
-        if (face == PocketFace.Slider)
-        {
-            units += 56f;
+            units = ClockUnits + GapUnits + DateUnits + GapUnits + SliderUnits;
+            if (notice)
+            {
+                units += NoticeUnits + GapUnits;
+            }
         }
 
         var inner = GlassSafe.Inner(screen, uiScale);
@@ -41,12 +41,43 @@ public static class MinimizedFace
         return MathF.Max(0.2f, MathF.Min(uiScale, fit));
     }
 
-    public static float TrackTop(float dip, bool notice) =>
-        (notice
+    public static float TrackTop(float dip, bool notice, PocketFace face = PocketFace.Slider)
+    {
+        if (face == PocketFace.Icon)
+        {
+            return GapUnits * dip;
+        }
+
+        return (notice
             ? ClockUnits + GapUnits + NoticeUnits + GapUnits
             : ClockUnits + GapUnits) * dip;
+    }
 
-    public static float TrackBottom(float dip) => (DateUnits + GapUnits) * dip;
+    public static float TrackBottom(float dip, PocketFace face = PocketFace.Slider) =>
+        face == PocketFace.Icon ? GapUnits * dip : (DateUnits + GapUnits) * dip;
+
+    public static Rect UnlockWell(Rect inner, float dip, PocketFace face)
+    {
+        if (face != PocketFace.Icon || inner.IsEmpty)
+        {
+            return inner;
+        }
+
+        var iconH = IconHeight(inner, dip);
+        var top = inner.Min.Y + iconH + GapUnits * dip;
+        if (top >= inner.Max.Y)
+        {
+            return inner;
+        }
+
+        return new Rect(new Vector2(inner.Min.X, top), inner.Max);
+    }
+
+    public static Rect UnlockHit(Rect screen, float dip, bool notice, PocketFace face)
+    {
+        var inner = GlassSafe.Inner(screen, dip);
+        return PocketUnlock.HitOn(UnlockWell(inner, dip, face), dip, notice && face != PocketFace.Icon, face);
+    }
 
     public static Rect NoticeOn(Rect screen, float dip, bool notice, PocketFace face = PocketFace.Slider)
     {
@@ -81,25 +112,32 @@ public static class MinimizedFace
 
         if (face == PocketFace.Icon)
         {
-            DrawIconFace(frame, inner, noticeCount, noticeMark);
-            return false;
+            var iconH = IconHeight(inner, dip);
+            DrawIconFace(frame, inner.TopSlice(iconH), noticeCount, noticeMark);
         }
-
-        frame.Text.DrawIn(inner.TopSlice(ClockUnits * dip), clockText,
-            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
-        if (notice)
+        else
         {
-            DrawNoticeChip(frame, NoticeOn(screen, dip, true, face), noticeCount, noticeMark);
+            frame.Text.DrawIn(inner.TopSlice(ClockUnits * dip), clockText,
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Ink, TextAlign.Center));
+            if (notice)
+            {
+                DrawNoticeChip(frame, NoticeOn(screen, dip, true, face), noticeCount, noticeMark);
+            }
+
+            frame.Text.DrawIn(inner.BottomSlice(DateUnits * dip), dateText,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
         }
 
-        frame.Text.DrawIn(inner.BottomSlice(DateUnits * dip), dateText,
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink, TextAlign.Center));
-        if (face != PocketFace.Slider)
-        {
-            return false;
-        }
+        var well = UnlockWell(inner, dip, face);
+        return unlock.Draw(frame.Paint, frame.Input, frame.Theme, well, dip, frame.DeltaSeconds, allowSlide,
+            notice && face != PocketFace.Icon, face);
+    }
 
-        return unlock.Draw(frame.Paint, frame.Input, frame.Theme, inner, dip, frame.DeltaSeconds, allowSlide, notice);
+    private static float IconHeight(Rect inner, float dip)
+    {
+        var slider = MathF.Min(PocketUnlock.HeightUnits * dip, inner.Height * 0.55f);
+        var room = MathF.Max(0f, inner.Height - slider - GapUnits * dip);
+        return MathF.Min(MathF.Min(inner.Width, IconUnits * dip), room);
     }
 
     private static void DrawIconFace(in AppletFrame frame, Rect inner, int count, string mark)

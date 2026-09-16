@@ -414,10 +414,7 @@ public sealed class HandsetWindow : Window
                     game.IsInGpose ? HandsetShapePreference.PocketSteps[0] : shapePreference.PocketScale);
                 var hasNotice = shell.PocketNoticeCount() > 0;
                 var dip = MinimizedFace.LayoutDip(screen, ui, pocketFace, hasNotice);
-                var glass = GlassSafe.Inner(screen, dip);
-                var sliderHit = pocketFace == PocketFace.Slider
-                    ? PocketUnlock.HitOn(glass, dip, hasNotice)
-                    : Rect.Empty;
+                var sliderHit = MinimizedFace.UnlockHit(screen, dip, hasNotice, pocketFace);
                 var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice, pocketFace);
                 if (!blocked && !windowGrab.IsDragging && !pocketUnlock.IsDragging &&
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left) &&
