@@ -79,6 +79,16 @@ dotnet build Linkpearl.slnx -c Release            # the shippable build
 dotnet build src/Linkpearl.Host -c Debug          # produces LinkpearlDev.dll/.json for dev-plugin loading
 ```
 
+On Windows `DALAMUD_HOME` is the XIVLauncher hooks folder instead:
+
+```powershell
+$env:DALAMUD_HOME = "$env:AppData\XIVLauncher\addon\Hooks\dev"
+dotnet build src\Linkpearl.Host -c Debug
+```
+
+Every project targets `net10.0-windows`, which off Windows needs the Windows targeting packs;
+`Directory.Build.props` turns that on for Linux hosts so the plain command above works there too.
+
 Both configs currently build with 0 errors, ~83 warnings (all pre-existing, stylistic: `CA1051`
 visible-field warnings on small geometry value-types, one `CA1711` naming nit on `RouteStack`,
 one `IDE0005` doc-file nag). Don't chase these down as a project unless asked — they're known and
@@ -115,10 +125,28 @@ Same file on Linux: `~/Linkpearl/src/Linkpearl.Host/bin/Debug/LinkpearlDev.dll`.
 `-c Debug` so wallpaper PNGs and the json sit next to that dll. Release output is a different
 assembly name (`Linkpearl.dll`) and will not refresh this entry.
 
-Dev plugin locations persist across game restarts and auto-load on launch — but **do not** get
-picked up automatically if you rebuild the DLL while the game is already running; that needs a
-manual toggle in `/xlplugins` (find the dev plugin entry, disable, re-enable) to force Dalamud
-to re-read the file from disk.
+Dev plugin locations persist across game restarts and auto-load on launch. Dalamud watches the
+assembly's LastWrite time, so a rebuild in place is picked up on its own — but only if the
+timestamp actually moves. A rebuild that lands identical bytes, or a copy that preserves the
+source timestamp, looks untouched and needs a manual disable/re-enable in `/xlplugins`. The Debug
+build already pokes its own output for this (`PokeDevPluginForReload` in `Linkpearl.Host.csproj`).
+
+### Loading it from a separate folder (Windows)
+
+If the dev-plugin folder is somewhere other than the build output — the usual setup when the repo
+lives on one drive and the game on another — build, mirror `bin\Debug` into that folder, and touch
+the DLL there:
+
+```powershell
+./tools/install-dev-plugin.ps1 -Destination 'C:\path\to\LinkpearlDev'
+```
+
+Set `LINKPEARL_DEV_PLUGIN` once (`setx LINKPEARL_DEV_PLUGIN '<that path>'`) and the parameter can
+be dropped. The script sets `DALAMUD_HOME` to the XIVLauncher hooks folder, runs the Debug build,
+copies everything except `libmp3lame*` (the game holds those natives open while the plugin runs,
+and they never change), then stamps `LinkpearlDev.dll` so the phone restarts by itself. Point the
+folder at an exact path; a similarly named folder elsewhere on the Desktop is a different install
+and the game will keep loading the stale one.
 
 **A real crash already happened and got fixed** (see `STATUS.md`): Dalamud constructs plugins off
 the main thread, but most game-state reads (anything touching `IObjectTable`, likely others) are

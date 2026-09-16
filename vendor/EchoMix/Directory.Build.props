@@ -6,7 +6,10 @@
     <EnableNETAnalyzers>false</EnableNETAnalyzers>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+  <!-- This file stops the repo root Directory.Build.props from reaching the vendor tree, so the
+       Linux-only settings the plugin build needs are repeated here. -->
   <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))'">
     <DalamudLibPath>$(DALAMUD_HOME)/</DalamudLibPath>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 </Project>
