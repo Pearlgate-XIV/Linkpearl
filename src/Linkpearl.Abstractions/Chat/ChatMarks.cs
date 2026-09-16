@@ -290,7 +290,11 @@ public sealed class ChatMarks
             menuOn = false;
             if (chosen == "Copy")
             {
-                if (pick is null || !pick.Copy(frame, menuKey, menuPreview))
+                if (pick is not null)
+                {
+                    pick.Copy(frame, menuKey, menuPreview);
+                }
+                else
                 {
                     frame.TextField.PutClipboard(ChatPick.Plain(menuPreview));
                 }

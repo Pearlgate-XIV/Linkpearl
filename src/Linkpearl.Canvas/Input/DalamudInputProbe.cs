@@ -14,6 +14,7 @@ public sealed class DalamudInputProbe : IInputProbe
     private static readonly bool[] dragged = new bool[3];
 
     private readonly HashSet<(Vector2 Min, Vector2 Max)> claimed = new();
+    private static bool copyTaken;
 
     public bool Live { get; set; } = true;
 
@@ -28,6 +29,7 @@ public sealed class DalamudInputProbe : IInputProbe
     public void BeginFrame()
     {
         claimed.Clear();
+        copyTaken = false;
         RememberDrags();
     }
 
@@ -106,13 +108,19 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public bool CopyChord()
     {
-        if (!Live || ImGui.GetIO().WantTextInput)
+        if (!Live || copyTaken || ImGui.GetIO().WantTextInput)
         {
             return false;
         }
 
         var chord = ImGui.GetIO().KeyCtrl || ImGui.GetIO().KeySuper;
-        return chord && ImGui.IsKeyPressed(ImGuiKey.C, false);
+        if (!chord || !ImGui.IsKeyPressed(ImGuiKey.C, false))
+        {
+            return false;
+        }
+
+        copyTaken = true;
+        return true;
     }
 
     private bool PointerOnClaim()
