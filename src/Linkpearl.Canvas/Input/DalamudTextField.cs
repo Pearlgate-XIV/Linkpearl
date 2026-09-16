@@ -208,17 +208,12 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushClipRect(area.Min, area.Max, true);
         ImGui.SetCursorScreenPos(area.Min);
         ImGui.SetNextItemWidth(area.Width);
-        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Text, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.TextDisabled, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Border, Vector4.Zero);
+        var hidden = PushHiddenFieldChrome(hideGlyphs: true, ink);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, MathF.Min(area.Height * 0.35f, 12f));
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(padX, padY));
 
-        var flags = ImGuiInputTextFlags.EnterReturnsTrue;
+        var flags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.NoHorizontalScroll;
         if (secret)
         {
             flags |= ImGuiInputTextFlags.Password;
@@ -231,7 +226,7 @@ public sealed class DalamudTextField : ITextField
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
         ImGui.PopStyleVar(3);
-        ImGui.PopStyleColor(6);
+        ImGui.PopStyleColor(hidden);
         ImGui.PopClipRect();
 
         if (itemActive)
@@ -323,12 +318,7 @@ public sealed class DalamudTextField : ITextField
 
         ImGui.PushClipRect(area.Min, area.Max, true);
         ImGui.SetCursorScreenPos(area.Min);
-        ImGui.PushStyleColor(ImGuiCol.FrameBg, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.Text, ink);
-        ImGui.PushStyleColor(ImGuiCol.TextDisabled, ink with { W = 0.42f });
-        ImGui.PushStyleColor(ImGuiCol.Border, Vector4.Zero);
+        var hidden = PushHiddenFieldChrome(hideGlyphs: false, ink);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(pad * 0.35f, pad * 0.25f));
@@ -340,7 +330,7 @@ public sealed class DalamudTextField : ITextField
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
         ImGui.PopStyleVar(3);
-        ImGui.PopStyleColor(6);
+        ImGui.PopStyleColor(hidden);
         ImGui.PopClipRect();
 
         if (itemActive)
@@ -478,6 +468,29 @@ public sealed class DalamudTextField : ITextField
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(12);
         return selected;
+    }
+
+    // InputText still draws selection/nav/child/histogram fills after FrameBg is cleared.
+    private static int PushHiddenFieldChrome(bool hideGlyphs, Vector4 ink)
+    {
+        var count = 0;
+        Push(ImGuiCol.FrameBg, Vector4.Zero, ref count);
+        Push(ImGuiCol.FrameBgHovered, Vector4.Zero, ref count);
+        Push(ImGuiCol.FrameBgActive, Vector4.Zero, ref count);
+        Push(ImGuiCol.Text, hideGlyphs ? Vector4.Zero : ink, ref count);
+        Push(ImGuiCol.TextDisabled, hideGlyphs ? Vector4.Zero : ink with { W = 0.42f }, ref count);
+        Push(ImGuiCol.Border, Vector4.Zero, ref count);
+        Push(ImGuiCol.TextSelectedBg, Vector4.Zero, ref count);
+        Push(ImGuiCol.NavHighlight, Vector4.Zero, ref count);
+        Push(ImGuiCol.ChildBg, Vector4.Zero, ref count);
+        Push(ImGuiCol.PlotHistogram, Vector4.Zero, ref count);
+        return count;
+
+        static void Push(ImGuiCol slot, Vector4 color, ref int count)
+        {
+            ImGui.PushStyleColor(slot, color);
+            count++;
+        }
     }
 
     private void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
