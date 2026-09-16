@@ -19,13 +19,18 @@ internal sealed class PhonePad
 
     private string digits = string.Empty;
     private string nameDraft = string.Empty;
+    private string miss = string.Empty;
 
     public void Compose(in AppletFrame frame, ITalk talk, MessagesSurface messages)
     {
+        const string intro =
+            "Dial opens PearlChat only when the number matches a saved contact. Use PearlChat to message players.";
         var stack = new LayoutFlow(frame.Content, StackAxis.Vertical, frame.Units(8f));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)),
-            "Dial opens PearlChat only when the number matches a saved contact. Use PearlChat to message players.",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        var wrapW = MathF.Max(1f, frame.Content.Width);
+        var introH = MathF.Max(frame.Units(18f),
+            frame.Text.MeasureWrapped(intro, FontRole.Caption, wrapW).Y);
+        frame.Text.DrawWrapped(stack.Take(introH), intro,
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Left, 1.12f));
 
         var display = stack.Take(frame.Units(40f));
         CardChrome.DrawGold(frame, display);
@@ -42,11 +47,20 @@ internal sealed class PhonePad
         if (Chip(frame, actions.LeftSlice(actions.Width * 0.48f), "Clear"))
         {
             digits = string.Empty;
+            miss = string.Empty;
         }
 
         if (Chip(frame, actions.RightSlice(actions.Width * 0.48f), "Call"))
         {
             Dial(talk, messages);
+        }
+
+        if (miss.Length > 0)
+        {
+            var missH = MathF.Max(frame.Units(28f),
+                frame.Text.MeasureWrapped(miss, FontRole.CaptionStrong, wrapW).Y + frame.Units(4f));
+            frame.Text.DrawWrapped(stack.Take(missH), miss,
+                new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.Negative, TextAlign.Center, 1.12f));
         }
     }
 
@@ -70,6 +84,7 @@ internal sealed class PhonePad
                 if (digits.Length < 16)
                 {
                     digits += Keys[index];
+                    miss = string.Empty;
                 }
             }
         }
@@ -83,20 +98,29 @@ internal sealed class PhonePad
             ParseName(typed, out var name, out var world);
             if (name.Length > 0)
             {
+                miss = string.Empty;
                 messages.Open(talk.StartTell(name, world));
                 return;
             }
         }
 
         var peers = talk.Peers();
-        for (var index = 0; index < peers.Count; index++)
+        if (digits.Length > 0 && peers.Count > 0)
         {
-            if (digits.Length > 0 && peers[index].Number.Equals(digits, StringComparison.Ordinal))
+            for (var index = 0; index < peers.Count; index++)
             {
-                messages.OpenProfile(peers[index].Id);
-                return;
+                if (peers[index].Number.Equals(digits, StringComparison.Ordinal))
+                {
+                    miss = string.Empty;
+                    messages.OpenProfile(peers[index].Id);
+                    return;
+                }
             }
         }
+
+        miss = digits.Length == 0 && typed.Length == 0
+            ? "Nothing to open. Enter Name@World or an exact saved number."
+            : "No matching person or destination. Stay on this pad and try an exact saved number or Name@World.";
     }
 
     private static void ParseName(string typed, out string name, out string world)

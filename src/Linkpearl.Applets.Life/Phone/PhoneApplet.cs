@@ -296,13 +296,33 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawKeypad(in AppletFrame frame, Rect area)
     {
+        const string previewHint =
+            "Green starts a local speaker and mic preview. It is not a call to another player. Use PearlChat to message someone.";
+
+        var gap = frame.Units(10f);
         var page = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawLineCard(frame, page.Take(frame.Units(52f)));
         var rest = page.TakeRemaining();
-        var cluster = frame.Units(380f);
-        var lift = MathF.Max(frame.Units(8f), (rest.Height - cluster) * 0.42f);
-        var stack = new LayoutFlow(rest.Inset(new Edges(0f, lift, 0f, 0f)), StackAxis.Vertical, frame.Units(10f));
-        var dial = stack.Take(frame.Units(52f));
+        var wrapW = MathF.Max(1f, rest.Width);
+        var captionH = MathF.Max(
+            frame.Units(36f),
+            frame.Text.MeasureWrapped(previewHint, FontRole.Caption, wrapW).Y + frame.Units(4f));
+        var dialH = frame.Units(52f);
+        var callH = frame.Units(56f);
+        var footerH = captionH + gap + callH;
+        var keysBudget = rest.Height - dialH - gap - footerH;
+        var keysH = keysBudget >= frame.Units(228f)
+            ? frame.Units(228f)
+            : MathF.Max(frame.Units(88f), keysBudget);
+        if (dialH + gap + keysH + gap + footerH > rest.Height)
+        {
+            keysH = MathF.Max(0f, rest.Height - dialH - gap - footerH);
+        }
+
+        var used = dialH + gap + keysH + gap + footerH;
+        var lift = MathF.Max(0f, (rest.Height - used) * 0.22f);
+        var stack = new LayoutFlow(rest.Inset(new Edges(0f, lift, 0f, 0f)), StackAxis.Vertical, gap);
+        var dial = stack.Take(dialH);
         frame.Paint.Fill(dial, Pill, dial.Height * 0.42f);
         frame.Paint.Stroke(dial, Chip, frame.Units(1.2f), dial.Height * 0.42f);
         var back = dial.RightSlice(frame.Units(36f));
@@ -315,11 +335,15 @@ public sealed class PhoneApplet : IApplet
             line.Backspace();
         }
 
-        DrawKeys(frame, stack.Take(frame.Units(228f)));
-        frame.Text.DrawWrapped(stack.Take(frame.Units(32f)),
-            "Green starts a local speaker and mic preview. It is not a call to another player. Use PearlChat to message someone.",
-            new TextStyle(FontRole.Caption, Muted, TextAlign.Center));
-        var callRow = stack.Take(frame.Units(56f));
+        if (keysH > frame.Units(8f))
+        {
+            DrawKeys(frame, stack.Take(keysH));
+        }
+
+        var hintInk = new Vector4(0.76f, 0.77f, 0.80f, 1f);
+        frame.Text.DrawWrapped(stack.Take(captionH), previewHint,
+            new TextStyle(FontRole.Caption, hintInk, TextAlign.Center, 1.12f));
+        var callRow = stack.Take(callH);
         var radius = frame.Units(24f);
         frame.Paint.FillCircle(callRow.Center, radius, Green);
         var mark = Rect.FromSize(callRow.Center - new Vector2(radius, radius),
