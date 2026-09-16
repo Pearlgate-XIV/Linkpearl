@@ -560,9 +560,9 @@ public sealed partial class PearlHub
         foreach (var path in write.MediaPaths)
         {
             var uploaded = await UploadMediaAsync(path, token).ConfigureAwait(false);
-            if (uploaded is { Id.Length: > 0 })
+            if (uploaded is UploadedMedia media && media.Id.Length > 0)
             {
-                ids.Add(uploaded.Id);
+                ids.Add(media.Id);
             }
         }
 
@@ -782,24 +782,24 @@ public sealed partial class PearlHub
         }
 
         var uploaded = await UploadMediaAsync(write.MediaPaths[0], token).ConfigureAwait(false);
-        if (uploaded is null)
+        if (uploaded is not UploadedMedia media)
         {
             return 404;
         }
 
         var (user, status) = await client.PostAsync(slotPath,
-                GateClient.JsonBody(new AvatarBodyDto(uploaded.Id), GateJson.Default.AvatarBodyDto),
+                GateClient.JsonBody(new AvatarBodyDto(media.Id), GateJson.Default.AvatarBodyDto),
                 GateJson.Default.GateUserDto, token)
             .ConfigureAwait(false);
         if (status is >= 200 and < 300)
         {
-            ApplyMeMedia(user, avatar, uploaded.Url);
+            ApplyMeMedia(user, avatar, media.Url);
             return status;
         }
 
-        if (status is 404 or 405 or 501 && uploaded.Url.Length > 0)
+        if (status is 404 or 405 or 501 && media.Url.Length > 0)
         {
-            return await PatchProfileMediaAsync(avatar, uploaded.Url, token).ConfigureAwait(false);
+            return await PatchProfileMediaAsync(avatar, media.Url, token).ConfigureAwait(false);
         }
 
         return status;
