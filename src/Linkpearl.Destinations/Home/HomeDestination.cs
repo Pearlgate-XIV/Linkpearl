@@ -130,16 +130,9 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             new Vector2(frame.Content.Max.X, header.Max.Y)));
         DrawHeader(frame, header, snapshot);
 
-        weather.Draw(frame, CardBand(stack.Take(frame.Units(132f))));
-        DrawHero(frame, CardBand(stack.Take(frame.Units(72f))), snapshot);
-
-        var gridBudget = stack.Remaining.Height;
-        var rowHeight = MathF.Max(0f, (gridBudget - gap * 3f) / 3f);
-
-        DrawPair(frame, CardBand(stack.Take(rowHeight)), gap, snapshot, isMessagesAndParty: true);
-        DrawPair(frame, CardBand(stack.Take(rowHeight)), gap, snapshot, isMessagesAndParty: false);
-        DrawMarketAndEvent(frame, CardBand(stack.Take(rowHeight)), gap, snapshot);
-
+        // Studio is Home. The dashboard widget grid stays in this type for later work
+        // but is not a second home in navigation.
+        _ = weather;
         return (content.Height - stack.Remaining.Height) + inset * 2f;
     }
 

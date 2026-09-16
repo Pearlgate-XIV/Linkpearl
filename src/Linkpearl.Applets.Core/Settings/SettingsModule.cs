@@ -1,4 +1,3 @@
-using Linkpearl.Applets.Core.Settings;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,7 +9,9 @@ public sealed class SettingsModule : ILinkpearlModule
 
     public void Configure(IServiceCollection services, ModuleContext context)
     {
-        services.AddSingleton<SettingsApplet>();
-        services.AddSingleton<IApplet>(provider => provider.GetRequiredService<SettingsApplet>());
+        // Settings is a destination (SettingsDestination). The old SettingsApplet stub
+        // is kept in the tree but not registered, so RouteTrail cannot open it.
+        _ = services;
+        _ = context;
     }
 }

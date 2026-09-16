@@ -456,22 +456,14 @@ public sealed class HandsetShell
 
         if (hub.TryTakeSearch())
         {
-            dock.Close();
-            appsDock.Close();
-            control.Close();
-            recents.Close();
-            quickApps.Close();
-            search.Open();
+            // Universal search has no product chrome entry. StudioHunt is the search surface.
+            _ = search;
         }
 
         if (hub.TryTakeMenu())
         {
-            search.Close();
-            appsDock.Close();
-            control.Close();
-            recents.Close();
-            quickApps.Close();
-            dock.Open();
+            // DestinationDock has no product chrome entry. Destinations open from Studio and Apps.
+            _ = dock;
         }
     }
 
@@ -993,7 +985,17 @@ public sealed class HandsetShell
 
     private void LaunchStudioApplet(string id, Rect origin, string? place)
     {
-        if (AppShelf.IsHidden(id) || !router.CanOpen(id))
+        if (AppShelf.IsHidden(id))
+        {
+            return;
+        }
+
+        if (TryOpenShortcut(id))
+        {
+            return;
+        }
+
+        if (!router.CanOpen(id))
         {
             return;
         }
@@ -1017,6 +1019,11 @@ public sealed class HandsetShell
             return;
         }
 
+        if (TryOpenShortcut(id))
+        {
+            return;
+        }
+
         if (router.CanOpen(id))
         {
             RememberLaunchSeat();
@@ -1025,16 +1032,21 @@ public sealed class HandsetShell
             return;
         }
 
-        if (AppShelf.Find(id) is { Kind: AppKind.Shortcut } spec)
-        {
-            hub.Open(spec.Tab, spec.Pane);
-            return;
-        }
-
         if (string.Equals(id, "you", StringComparison.Ordinal))
         {
             OpenDestination(DestinationTab.You, 0);
         }
+    }
+
+    private bool TryOpenShortcut(string id)
+    {
+        if (AppShelf.Find(id) is not { Kind: AppKind.Shortcut, Hidden: false } spec)
+        {
+            return false;
+        }
+
+        hub.Open(spec.Tab, spec.Pane);
+        return true;
     }
 
     private void LaunchQuickApp(string id) => LaunchQuickApp(id, "");
