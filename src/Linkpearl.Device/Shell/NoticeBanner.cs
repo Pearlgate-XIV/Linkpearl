@@ -1,6 +1,7 @@
 using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Destinations;
+using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
@@ -142,12 +143,13 @@ internal sealed class NoticeBanner
         var radius = box.Height * 0.5f;
         var fill = new Vector4(0.14f, 0.15f, 0.16f, fade);
         frame.Paint.Fill(box, fill, radius);
-        var pad = frame.Units(8f);
-        var icon = Rect.FromSize(new Vector2(box.Min.X + pad, box.Center.Y - frame.Units(21f)),
-            new Vector2(frame.Units(42f), frame.Units(42f)));
+        var pad = MathF.Max(frame.Units(6f), box.Height * 0.14f);
+        var iconSide = MathF.Min(frame.Units(32f), MathF.Max(8f, box.Height - pad * 2f));
+        var icon = Rect.FromSize(new Vector2(box.Min.X + pad, box.Center.Y - iconSide * 0.5f),
+            new Vector2(iconSide, iconSide));
         AppMarks.DrawFace(frame, icon, mark, false);
-        var copy = new Rect(new Vector2(icon.Max.X + frame.Units(8f), box.Min.Y + frame.Units(10f)),
-            new Vector2(box.Max.X - frame.Units(12f), box.Max.Y - frame.Units(10f)));
+        var copy = new Rect(new Vector2(icon.Max.X + pad, box.Min.Y + pad),
+            new Vector2(box.Max.X - pad, box.Max.Y - pad));
         var head = copy.TopSlice(frame.Units(18f));
         var name = title;
         var nameWidth = frame.Text.Measure(name, FontRole.CaptionStrong).X;
@@ -172,10 +174,12 @@ internal sealed class NoticeBanner
 
     private Rect RestBox(in AppletFrame frame, Rect screen)
     {
-        var width = screen.Width - frame.Units(20f);
+        var pad = GlassSafe.Pad(screen, frame.Scale);
+        var width = MathF.Max(0f, screen.Width - pad * 2f);
         var height = frame.Units(58f);
         var rest = StatusStrip.Height(frame.Scale) + frame.Units(56f);
         var top = rest - (1f - slide) * (height + frame.Units(20f));
+        top = MathF.Max(screen.Min.Y + pad, top);
         return Rect.FromSize(new Vector2(screen.Center.X - width * 0.5f, top), new Vector2(width, height));
     }
 }

@@ -1106,8 +1106,9 @@ public sealed class AppsDrawer
                 continue;
             }
 
-            var radius = frame.Units(6f);
-            frame.Paint.FillCircle(new Vector2(icon.Max.X - radius * 0.2f, icon.Min.Y + radius * 0.2f), radius,
+            var radius = MathF.Min(frame.Units(6f), MathF.Min(icon.Width, icon.Height) * 0.18f);
+            var inset = radius + 1f;
+            frame.Paint.FillCircle(new Vector2(icon.Max.X - inset, icon.Min.Y + inset), radius,
                 frame.Theme.Palette.Negative);
             return;
         }

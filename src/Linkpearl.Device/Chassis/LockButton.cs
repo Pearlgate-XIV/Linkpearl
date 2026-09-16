@@ -10,8 +10,9 @@ public static class LockButton
 {
     public const float WidthUnits = 18f;
     public const float HeightUnits = 30f;
-    public const float InwardUnits = 7f;
+    public const float InwardUnits = 12f;
     public const float MarksGapUnits = 2f;
+    public const float VerticalPadUnits = 4f;
 
     public static float ReservedRight(float scale) =>
         (InwardUnits + WidthUnits + MarksGapUnits) * scale;
@@ -20,12 +21,13 @@ public static class LockButton
     {
         _ = window;
         var width = WidthUnits * scale;
-        var height = HeightUnits * scale;
+        var height = HeightUnits * scale - VerticalPadUnits * scale * 2f;
         var inward = InwardUnits * scale;
         var right = screen.Max.X - inward;
+        var top = screen.Min.Y + VerticalPadUnits * scale;
         return new Rect(
-            new Vector2(right - width, screen.Min.Y),
-            new Vector2(right, screen.Min.Y + height));
+            new Vector2(right - width, top),
+            new Vector2(right, top + height));
     }
 
     public static Rect HitArea(Rect window, Rect screen, float scale) =>

@@ -53,7 +53,9 @@ public sealed class HandsetWindow : Window
     private bool presencePocket;
     private bool presenceVanish;
     private bool pocketMoving;
+    private bool pocketPress;
     private Vector2 pocketGrab;
+    private Vector2 pocketPressAt;
     private bool placedOnce;
     private bool placeOnce;
     private bool savePlacement;
@@ -128,6 +130,7 @@ public sealed class HandsetWindow : Window
         wantFold = true;
         pocketUnlock.Reset();
         pocketMoving = false;
+        pocketPress = false;
         textField.Release();
         boot.Cancel();
         persistMinimized(true);
@@ -146,6 +149,7 @@ public sealed class HandsetWindow : Window
         wantFold = false;
         pocketUnlock.Reset();
         pocketMoving = false;
+        pocketPress = false;
         persistMinimized(false);
         savePlacement = true;
     }
@@ -156,6 +160,7 @@ public sealed class HandsetWindow : Window
         fold = 1f;
         pocketUnlock.Reset();
         pocketMoving = false;
+        pocketPress = false;
         textField.Release();
         boot.Cancel();
     }
@@ -408,10 +413,16 @@ public sealed class HandsetWindow : Window
             textField.Dress(paint, text, textures, paths);
             if (asleep)
             {
-                var dip = ImGuiHelpers.GlobalScale;
+                var ui = ImGuiHelpers.GlobalScale;
+                var pocketFace = HandsetShapePreference.FaceFor(
+                    game.IsInGpose ? HandsetShapePreference.PocketSteps[0] : shapePreference.PocketScale);
                 var hasNotice = shell.PocketNoticeCount() > 0;
-                var sliderHit = PocketUnlock.HitOn(screen, dip, hasNotice);
-                var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice);
+                var dip = MinimizedFace.LayoutDip(screen, ui, pocketFace, hasNotice);
+                var glass = GlassSafe.Inner(screen, dip);
+                var sliderHit = pocketFace == PocketFace.Slider
+                    ? PocketUnlock.HitOn(glass, dip, hasNotice)
+                    : Rect.Empty;
+                var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice, pocketFace);
                 if (!blocked && !pocketMoving && !pocketUnlock.IsDragging &&
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
@@ -420,14 +431,32 @@ public sealed class HandsetWindow : Window
                         windowRect.Contains(pointer))
                     {
                         pocketGrab = pointer - windowRect.Min;
+                        pocketPressAt = pointer;
+                        if (pocketFace == PocketFace.Slider)
+                        {
+                            pocketMoving = true;
+                        }
+                        else
+                        {
+                            pocketPress = true;
+                        }
+                    }
+                }
+
+                if (pocketPress && !pocketMoving && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                {
+                    var drag = pointer - pocketPressAt;
+                    if (drag.LengthSquared() > 36f)
+                    {
                         pocketMoving = true;
+                        pocketPress = false;
                     }
                 }
 
                 if (fonts.Ready)
                 {
                     woke = shell.DrawMinimized(frame, screen, pocketUnlock,
-                        allowSlide: !pocketMoving && !overChrome);
+                        allowSlide: !pocketMoving && !overChrome, pocketFace);
                 }
             }
             else
@@ -485,6 +514,14 @@ public sealed class HandsetWindow : Window
 
                 if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
+                    if (pocketPress && !pocketMoving)
+                    {
+                        pocketPress = false;
+                        Restore();
+                        return;
+                    }
+
+                    pocketPress = false;
                     if (pocketMoving)
                     {
                         CapturePocketFromWindow();

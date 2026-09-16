@@ -768,6 +768,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             frame.Units(56f),
             frame.Units(36f),
             frame.Units(16f),
+            frame.Units(16f),
             frame.Units(36f)) + frame.Units(8f);
 
     private static float StatusGroupHeight(in AppletFrame frame) => OptionBand(frame, 2);
@@ -1424,8 +1425,17 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
                 HandsetSizeCatalog.FreeCeiling));
         DrawPhoneSizeRow(frame, stack.Take(frame.Units(36f)));
 
-        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Miniature size",
+        var miniTitle = stack.Take(frame.Units(16f));
+        frame.Text.DrawIn(miniTitle, "Miniature size",
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        var miniLabel = stack.Take(frame.Units(16f));
+        frame.Text.DrawIn(miniLabel, "Tiny, Medium, Large - tap to cycle",
+            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
+        if (frame.Input.ConsumeClick(miniTitle) || frame.Input.ConsumeClick(miniLabel))
+        {
+            shape.CyclePocket();
+        }
+
         DrawPocketSizeRow(frame, stack.Take(frame.Units(36f)));
     }
 
