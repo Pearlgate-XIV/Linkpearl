@@ -209,12 +209,12 @@ public sealed class DalamudTextField : ITextField
 
         if (!TakeDraw(id))
         {
-            var face = MathF.Max(ImGui.GetFontSize(), 1f);
-            var padY = MathF.Max((area.Height - face) * 0.5f, 0f);
-            var padX = MathF.Max(area.Height * 0.18f, 8f);
-            var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
-            var painted = secret && value.Length > 0 ? new string('•', value.Length) : value;
-            Paint(area, painted, placeholder, false, padX, padY, face, ink, painted.Length, 0, 0);
+            var skipFace = MathF.Max(ImGui.GetFontSize(), 1f);
+            var skipPadY = MathF.Max((area.Height - skipFace) * 0.5f, 0f);
+            var skipPadX = MathF.Max(area.Height * 0.18f, 8f);
+            var skipInk = new Vector4(0.96f, 0.96f, 0.97f, 1f);
+            var skipPainted = secret && value.Length > 0 ? new string('•', value.Length) : value;
+            Paint(area, skipPainted, placeholder, false, skipPadX, skipPadY, skipFace, skipInk, skipPainted.Length, 0, 0);
             return value;
         }
 
@@ -557,7 +557,7 @@ public sealed class DalamudTextField : ITextField
         }
     }
 
-    private bool TakeDraw(string id)
+    private static bool TakeDraw(string id)
     {
         var frame = ImGui.GetFrameCount();
         if (frame != drawnFrame)
