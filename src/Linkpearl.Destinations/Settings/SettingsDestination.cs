@@ -327,6 +327,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             PhoneLanguages.T("set.portraits.hint"));
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.cutscenes"), display.TuckForCutscenes,
             value => display.TuckForCutscenes = value, PhoneLanguages.T("set.cutscenes.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.chat.e2e"), display.ChatE2E,
+            value => display.ChatE2E = value, PhoneLanguages.T("set.chat.e2e.hint"));
     }
 
     private void DrawLanguagesPage(AppletFrame frame, ref Stack stack)
@@ -1453,6 +1455,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.StayInPortraits = value, PhoneLanguages.T("set.portraits.hint"));
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.cutscenes"), display.TuckForCutscenes,
             value => display.TuckForCutscenes = value, PhoneLanguages.T("set.cutscenes.hint"));
+        ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.chat.e2e"), display.ChatE2E,
+            value => display.ChatE2E = value, PhoneLanguages.T("set.chat.e2e.hint"));
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.silent"), display.Quiet,
             value => display.Quiet = value, PhoneLanguages.T("set.silent.hint"));
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.silent.duty"), display.QuietWhenBusy,

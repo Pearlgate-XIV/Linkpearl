@@ -155,6 +155,8 @@ public sealed partial class PearlHub
             frame.SenderDisplayName,
             frame.SenderId,
             frame.CreatedAtUnix,
-            frame.ConversationId ?? frame.ChatId), Current.MeId);
+            frame.ConversationId ?? frame.ChatId,
+            frame.EncVersion,
+            frame.CommitmentTag), Current.MeId);
     }
 }

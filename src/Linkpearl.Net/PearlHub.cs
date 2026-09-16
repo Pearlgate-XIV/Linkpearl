@@ -63,7 +63,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly GateRealtime realtime;
 
     public PearlHub(string baseUrl, string? savedToken, IGameSession game, IFrameLoop frames, ILinkpearlLog log,
-        Action<string?> persistToken, string? mediaCache = null)
+        Action<string?> persistToken, string? mediaCache = null, Func<bool>? allowE2E = null)
     {
         client = new GateClient(string.IsNullOrWhiteSpace(baseUrl) ? GateClient.DefaultBaseUrl : baseUrl);
         realtime = new GateRealtime(client, log, OnRealtime, OnRealtimeUnauthorized);
@@ -71,10 +71,14 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         this.frames = frames;
         this.log = log;
         this.persistToken = persistToken;
+        this.allowE2E = allowE2E ?? (() => true);
         this.mediaCache = string.IsNullOrWhiteSpace(mediaCache)
             ? Path.Combine(Path.GetTempPath(), "linkpearl-media")
             : mediaCache;
         Directory.CreateDirectory(this.mediaCache);
+        var state = Path.GetDirectoryName(this.mediaCache);
+        sealPath = Path.Combine(string.IsNullOrWhiteSpace(state) ? this.mediaCache : state, "chat-seal.json");
+        LoadIdentity();
         if (!string.IsNullOrWhiteSpace(savedToken))
         {
             client.SetBearer(savedToken);
@@ -787,6 +791,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 return;
             }
 
+            await ReadFlagsAsync(token).ConfigureAwait(false);
+            await PublishIdentityAsync(token).ConfigureAwait(false);
+
             var (noticesPage, noticesStatus) = await client
                 .GetAsync("/account/notices", GateJson.Default.AccountNoticePageDto, token)
                 .ConfigureAwait(false);
@@ -1044,6 +1051,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         friendWrites.Clear();
         chatCreates.Clear();
         creatingChats.Clear();
+        roomKeys.Clear();
         watchedPost = string.Empty;
         watchedUser = string.Empty;
         watchedStory = string.Empty;
@@ -1082,6 +1090,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 return;
             }
 
+            _ = await TryReadyRoomAsync(chatId, token).ConfigureAwait(false);
             var mapped = MapChatLines(page, Current.MeId);
             lock (gate)
             {
@@ -1099,7 +1108,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         try
         {
-            var content = GateClient.JsonBody(new SendChatDto(body), GateJson.Default.SendChatDto);
+            var packet = await SealOutgoingAsync(chatId, body, token).ConfigureAwait(false);
+            var content = GateClient.JsonBody(packet, GateJson.Default.SendChatDto);
             var path = "/chats/" + Uri.EscapeDataString(chatId) + "/messages";
             var status = await client.PostAsync(path, content, token).ConfigureAwait(false);
             if (status == 401)
@@ -1348,7 +1358,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
     }
 
-    private static List<PearlChatLine> MapChatLines(ChatMessagePageDto page, string meId)
+    private List<PearlChatLine> MapChatLines(ChatMessagePageDto page, string meId)
     {
         var items = page.Items ?? page.Messages;
         var mapped = new List<PearlChatLine>();
@@ -1367,25 +1377,6 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         }
 
         return mapped;
-    }
-
-    private static PearlChatLine? MapChatLine(ChatMessageDto item, string meId)
-    {
-        var body = item.Body ?? item.Text ?? item.Content ?? string.Empty;
-        if (body.Length == 0)
-        {
-            return null;
-        }
-
-        var mine = item.Mine ||
-                   (meId.Length > 0 && string.Equals(item.SenderId, meId, StringComparison.Ordinal));
-        var author = item.AuthorDisplayName ?? item.SenderDisplayName ??
-                     (mine ? "You" : "Them");
-        var when = item.CreatedAtUnix > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime()
-                .ToString("HH:mm", CultureInfo.InvariantCulture)
-            : "now";
-        return new PearlChatLine(mine, body, when, author, item.Id ?? string.Empty);
     }
 
     private List<PearlChatLine> MergePending(string chatId, List<PearlChatLine> fetched)
@@ -1423,7 +1414,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         return fetched;
     }
 
-    private static PearlChat[] MapChats(ConversationDto[]? items)
+    private PearlChat[] MapChats(ConversationDto[]? items)
     {
         if (items is null || items.Length == 0)
         {
@@ -1437,8 +1428,9 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var title = item.IsGroup
                 ? (string.IsNullOrWhiteSpace(item.Title) ? "Group" : item.Title)
                 : (string.IsNullOrWhiteSpace(item.OtherDisplayName) ? item.Title : item.OtherDisplayName);
+            var preview = OpenPreview(item.LastMessagePreview ?? string.Empty, item.LastMessageEncVersion, item.Id);
             mapped[index] = new PearlChat(item.Id, string.IsNullOrWhiteSpace(title) ? "Chat" : title,
-                item.LastMessagePreview ?? string.Empty, item.UnreadCount, item.LastMessageAtUnix, item.IsGroup,
+                preview, item.UnreadCount, item.LastMessageAtUnix, item.IsGroup,
                 item.OtherUserId ?? string.Empty);
         }
 
