@@ -2283,6 +2283,7 @@ public sealed class DisplayPreferences
     }
 
     private static string AliasAppId(string id) =>
+        // Leftover shelf ids; glass name is VYBE.
         id is "daylight" or "afterdark" ? "vybe" : id;
 
     private static string[] SanitizePlates(IReadOnlyList<string> files)

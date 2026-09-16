@@ -142,7 +142,7 @@ read outside a Draw/Update callback.
 ## What's deliberately not built yet
 
 Pearlgate chat send, realtime (websocket) updates, E2E chat crypto,
-AfterDark/Velvet UI, posting stories, Yellow Pages/Muster (those flags are off on the live
+Vybe Plus as a gated product surface, posting stories, Yellow Pages/Muster (those flags are off on the live
 server, and the phone says so instead of inventing venues), migrating Look off `HandsetConfig`
 into more `Linkpearl.Data` sections, `Linkpearl.Cinema`,
 the four apps to regain from Aetherphone (Casino, Coin, Housing, Hunts), localization catalogs,

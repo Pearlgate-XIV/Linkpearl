@@ -557,6 +557,7 @@ public sealed partial class PearlHub
                 return plus;
             }
 
+            // Leftover Gate path; product name is Vybe+.
             plus = await client.PostAsync("/afterdark/posts",
                     GateClient.JsonBody(
                         new CreateVybePlusPostBodyDto(
@@ -817,6 +818,7 @@ public sealed partial class PearlHub
             .ConfigureAwait(false);
         if (status is < 200 or >= 300)
         {
+            // Leftover Gate path; product name is Vybe+.
             (page, status) = await client
                 .GetAsync("/afterdark/feed?scope=all", GateJson.Default.VybePlusFeedPageDto, token)
                 .ConfigureAwait(false);
@@ -840,6 +842,7 @@ public sealed partial class PearlHub
             .ConfigureAwait(false);
         if (status is < 200 or >= 300)
         {
+            // Leftover Gate path; product name is Vybe+.
             path = string.Equals(userId, "me", StringComparison.Ordinal)
                 ? "/afterdark/users/me/posts"
                 : "/afterdark/users/" + Uri.EscapeDataString(userId) + "/posts";

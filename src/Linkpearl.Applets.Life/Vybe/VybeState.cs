@@ -713,7 +713,7 @@ internal sealed class VybeState
         var path = paths.State("vybe.json");
         if (!File.Exists(path))
         {
-            path = paths.State("afterdark.json");
+            path = paths.State("afterdark.json"); // leftover save; writes use vybe.json
         }
 
         var fromDisk = false;

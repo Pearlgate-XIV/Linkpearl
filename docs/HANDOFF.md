@@ -139,7 +139,7 @@ plugin-load failures; it's the source of truth, not speculation.
    stills survive unload under `state/` (`notes.json`, `search.json`, `photos/`). Alarms
    still use `alarms.json`. `Linkpearl.Data` owns those section files and schema stamps;
    Look is not migrated off `HandsetConfig`.
-3. Pearlgate beyond REST lists: websocket/realtime, E2E chat keys, posting stories, AfterDark.
+3. Pearlgate beyond REST lists: websocket/realtime, E2E chat keys, posting stories, Vybe.
    `Linkpearl.Net` already signs in, refreshes `/me` + chats + contacts + stories, and searches
    people.
 4. Wallpaper is in: `ScreenField` + bundled day/night plates. Look persists on `HandsetConfig`
