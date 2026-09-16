@@ -330,7 +330,7 @@ public sealed class ChatPick
         frame.Paint.Stroke(chip, gold with { W = 0.7f }, frame.Theme.Metrics.Hairline, chip.Height * 0.5f);
         frame.Text.DrawIn(chip, "Copy",
             new TextStyle(FontRole.CaptionStrong, gold, TextAlign.Center));
-        if (frame.Input.ConsumeClick(chip) || frame.Input.WasClicked(chip))
+        if (frame.Input.ConsumeClick(chip))
         {
             Copy(frame, key, body);
             saw = true;

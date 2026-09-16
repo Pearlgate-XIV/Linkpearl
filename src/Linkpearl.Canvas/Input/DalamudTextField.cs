@@ -28,6 +28,8 @@ public sealed class DalamudTextField : ITextField
     private int shownCaret;
     private int shownSelA;
     private int shownSelB;
+    private static int clipFrame = -1;
+    private static string clipText = string.Empty;
     private IPaintSurface? paint;
     private ITextPainter? text;
     private ITextureSource? textures;
@@ -715,9 +717,18 @@ public sealed class DalamudTextField : ITextField
 
     public void PutClipboard(string text)
     {
+        text ??= string.Empty;
+        var frame = ImGui.GetFrameCount();
+        if (frame == clipFrame && string.Equals(text, clipText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         try
         {
-            ImGui.SetClipboardText(text ?? string.Empty);
+            ImGui.SetClipboardText(text);
+            clipFrame = frame;
+            clipText = text;
         }
         catch (Exception)
         {
