@@ -115,7 +115,8 @@ internal sealed record ChatMessageDto(
     string? AuthorDisplayName,
     string? SenderDisplayName = null,
     string? SenderId = null,
-    long CreatedAtUnix = 0);
+    long CreatedAtUnix = 0,
+    string? ConversationId = null);
 
 internal sealed record ChatMessagePageDto(ChatMessageDto[]? Items, ChatMessageDto[]? Messages);
 
@@ -272,6 +273,31 @@ internal sealed record GifRowDto(
 
 internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 
+internal sealed record RealtimePingDto(string Type);
+
+internal sealed record GateRealtimeDto(
+    string? Type,
+    string? ConversationId = null,
+    string? ChatId = null,
+    string? Id = null,
+    string? Body = null,
+    string? Text = null,
+    string? Content = null,
+    bool Mine = false,
+    string? AuthorDisplayName = null,
+    string? SenderDisplayName = null,
+    string? SenderId = null,
+    long CreatedAtUnix = 0,
+    bool IsGroup = false,
+    string? Title = null,
+    string? OtherUserId = null,
+    string? OtherDisplayName = null,
+    string? LastMessagePreview = null,
+    int UnreadCount = 0,
+    long LastMessageAtUnix = 0,
+    ChatMessageDto? Message = null,
+    ConversationDto? Conversation = null);
+
 [JsonSerializable(typeof(ChallengeRequestDto))]
 [JsonSerializable(typeof(ChallengeReplyDto))]
 [JsonSerializable(typeof(VerifyRequestDto))]
@@ -320,6 +346,8 @@ internal sealed record GifPageDto(GifRowDto[]? Items, int Total);
 [JsonSerializable(typeof(MarketWatchBodyDto))]
 [JsonSerializable(typeof(GifRowDto))]
 [JsonSerializable(typeof(GifPageDto))]
+[JsonSerializable(typeof(RealtimePingDto))]
+[JsonSerializable(typeof(GateRealtimeDto))]
 [JsonSerializable(typeof(BanSnapshotDto))]
 [JsonSerializable(typeof(AccountNoticeDto))]
 [JsonSerializable(typeof(AccountNoticePageDto))]

@@ -58,11 +58,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private readonly HashSet<string> creatingChats = new(StringComparer.Ordinal);
     private readonly Queue<string> staffReads = new();
     private readonly Queue<(string Type, string Id, string Reason, string Detail, PearlReportLine[] Lines)> reports = new();
+    private readonly GateRealtime realtime;
 
     public PearlHub(string baseUrl, string? savedToken, IGameSession game, IFrameLoop frames, ILinkpearlLog log,
         Action<string?> persistToken, string? mediaCache = null)
     {
         client = new GateClient(string.IsNullOrWhiteSpace(baseUrl) ? GateClient.DefaultBaseUrl : baseUrl);
+        realtime = new GateRealtime(client, log, OnRealtime, OnRealtimeUnauthorized);
         this.game = game;
         this.frames = frames;
         this.log = log;
@@ -76,6 +78,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             client.SetBearer(savedToken);
             Replace(new PearlSnapshot { SignedIn = true, Busy = true, GateLive = true, Notice = "Connecting to Pearlgate..." });
             QueueRefresh();
+            realtime.SyncSession();
         }
 
         frames.Tick += OnTick;
@@ -395,6 +398,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     public void Dispose()
     {
         frames.Tick -= OnTick;
+        realtime.Dispose();
         lifetime.Cancel();
         lifetime.Dispose();
         client.Dispose();
@@ -734,6 +738,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
         client.SetBearer(string.Empty);
         persistToken(null);
+        realtime.Stop();
         xivFlowId = string.Empty;
         xivPollBusy = false;
         lock (gate)
@@ -961,6 +966,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         client.SetBearer(token);
         persistToken(token);
+        realtime.SyncSession();
         Replace(new PearlSnapshot
         {
             SignedIn = true,
@@ -988,6 +994,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     {
         client.SetBearer(string.Empty);
         persistToken(null);
+        realtime.Stop();
         xivFlowId = string.Empty;
         xivPollBusy = false;
         lock (gate)
@@ -1296,7 +1303,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             for (var index = 0; index < lines.Count; index++)
             {
                 var existing = lines[index];
-                if (existing.Mine && string.Equals(existing.Body, line.Body, StringComparison.Ordinal))
+                if (line.Id.Length > 0 && existing.Id.Length > 0 &&
+                    string.Equals(existing.Id, line.Id, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (existing.Mine && line.Mine && string.Equals(existing.Body, line.Body, StringComparison.Ordinal))
                 {
                     return;
                 }
@@ -1318,23 +1331,33 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
 
         foreach (var item in items)
         {
-            var body = item.Body ?? item.Text ?? item.Content ?? string.Empty;
-            if (body.Length == 0)
+            var line = MapChatLine(item, meId);
+            if (line is { } mappedLine)
             {
-                continue;
+                mapped.Add(mappedLine);
             }
-
-            var mine = item.Mine ||
-                       (meId.Length > 0 && string.Equals(item.SenderId, meId, StringComparison.Ordinal));
-            var author = item.AuthorDisplayName ?? item.SenderDisplayName ??
-                         (mine ? "You" : "Them");
-            var when = item.CreatedAtUnix > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime().ToString("HH:mm")
-                : "now";
-            mapped.Add(new PearlChatLine(mine, body, when, author, item.Id ?? string.Empty));
         }
 
         return mapped;
+    }
+
+    private static PearlChatLine? MapChatLine(ChatMessageDto item, string meId)
+    {
+        var body = item.Body ?? item.Text ?? item.Content ?? string.Empty;
+        if (body.Length == 0)
+        {
+            return null;
+        }
+
+        var mine = item.Mine ||
+                   (meId.Length > 0 && string.Equals(item.SenderId, meId, StringComparison.Ordinal));
+        var author = item.AuthorDisplayName ?? item.SenderDisplayName ??
+                     (mine ? "You" : "Them");
+        var when = item.CreatedAtUnix > 0
+            ? DateTimeOffset.FromUnixTimeSeconds(item.CreatedAtUnix).ToLocalTime()
+                .ToString("HH:mm", CultureInfo.InvariantCulture)
+            : "now";
+        return new PearlChatLine(mine, body, when, author, item.Id ?? string.Empty);
     }
 
     private List<PearlChatLine> MergePending(string chatId, List<PearlChatLine> fetched)

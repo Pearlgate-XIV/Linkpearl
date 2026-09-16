@@ -23,6 +23,10 @@ internal sealed class GateClient : IDisposable
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
+    public Uri BaseAddress => http.BaseAddress ?? new Uri(DefaultBaseUrl + "/");
+
+    public string Bearer => bearer;
+
     public void SetBearer(string? token) => bearer = token ?? string.Empty;
 
     public Task<(T? Body, int Status)> GetAsync<T>(string path, JsonTypeInfo<T> info, CancellationToken token) =>
