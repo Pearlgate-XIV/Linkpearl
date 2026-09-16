@@ -1,3 +1,4 @@
+using System.Text;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Plugin.Services;
@@ -24,6 +25,9 @@ public sealed class DalamudTextField : ITextField
     private double caretSince;
     private readonly Dictionary<string, int> carets = new(StringComparer.Ordinal);
     private readonly List<string> wireFaces = new();
+    private int shownCaret;
+    private int shownSelA;
+    private int shownSelB;
     private IPaintSurface? paint;
     private ITextPainter? text;
     private ITextureSource? textures;
@@ -191,13 +195,14 @@ public sealed class DalamudTextField : ITextField
         }
 
         using var font = fonts.Handle(FontRole.Body).Push();
-        var line = ImGui.GetTextLineHeight();
-        var padY = area.Height > line * 2.2f
-            ? MathF.Max(area.Height * 0.06f, 6f)
-            : MathF.Max((area.Height - line) * 0.5f, 0f);
+        var face = MathF.Max(ImGui.CalcTextSize("Ag").Y, 1f);
+        var padY = MathF.Max((area.Height - face) * 0.5f, 0f);
         var padX = MathF.Max(area.Height * 0.18f, 8f);
         var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
         var native = ownerId == id;
+        shownCaret = -1;
+        shownSelA = 0;
+        shownSelB = 0;
 
         if (pendingFocus == id)
         {
@@ -213,15 +218,21 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(padX, padY));
 
-        var flags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.NoHorizontalScroll;
+        var flags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.NoHorizontalScroll |
+                    ImGuiInputTextFlags.CallbackAlways;
         if (secret)
         {
             flags |= ImGuiInputTextFlags.Password;
         }
 
+        if (secret)
+        {
+            wireFaces.Clear();
+        }
+
         var current = secret ? value : EmojiBits.ToWire(value, wireFaces);
         var enter = ImGui.InputTextWithHint($"##{id}", placeholder, ref current,
-            Math.Max(maxLength + (secret ? 0 : wireFaces.Count * 8), 1), flags);
+            Math.Max(maxLength + (secret ? 0 : wireFaces.Count * 8), 1), flags, OnPick);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
@@ -287,13 +298,10 @@ public sealed class DalamudTextField : ITextField
             shown = secret ? shown[..maxLength] : shown[..EmojiBits.ClampIndex(shown, maxLength)];
         }
 
-        if (shown.Length != value.Length)
-        {
-            carets[id] = shown.Length;
-        }
-
-        Paint(area, secret && shown.Length > 0 ? new string('•', shown.Length) : shown, placeholder, focused, padX,
-            padY, line, ink);
+        var painted = secret && shown.Length > 0 ? new string('•', shown.Length) : shown;
+        var caretAt = shownCaret < 0 ? painted.Length : Math.Clamp(shownCaret, 0, painted.Length);
+        carets[id] = caretAt;
+        Paint(area, painted, placeholder, focused, padX, padY, face, ink, caretAt, shownSelA, shownSelB);
         _ = native;
         return shown;
     }
@@ -318,7 +326,7 @@ public sealed class DalamudTextField : ITextField
 
         ImGui.PushClipRect(area.Min, area.Max, true);
         ImGui.SetCursorScreenPos(area.Min);
-        var hidden = PushHiddenFieldChrome(hideGlyphs: false, ink);
+        var hidden = PushHiddenFieldChrome(hideGlyphs: false, hideSelection: false, ink);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 8f);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(pad * 0.35f, pad * 0.25f));
@@ -471,7 +479,10 @@ public sealed class DalamudTextField : ITextField
     }
 
     // InputText still draws selection/nav/child/histogram fills after FrameBg is cleared.
-    private static int PushHiddenFieldChrome(bool hideGlyphs, Vector4 ink)
+    private static int PushHiddenFieldChrome(bool hideGlyphs, Vector4 ink) =>
+        PushHiddenFieldChrome(hideGlyphs, hideGlyphs, ink);
+
+    private static int PushHiddenFieldChrome(bool hideGlyphs, bool hideSelection, Vector4 ink)
     {
         var count = 0;
         Push(ImGuiCol.FrameBg, Vector4.Zero, ref count);
@@ -480,7 +491,8 @@ public sealed class DalamudTextField : ITextField
         Push(ImGuiCol.Text, hideGlyphs ? Vector4.Zero : ink, ref count);
         Push(ImGuiCol.TextDisabled, hideGlyphs ? Vector4.Zero : ink with { W = 0.42f }, ref count);
         Push(ImGuiCol.Border, Vector4.Zero, ref count);
-        Push(ImGuiCol.TextSelectedBg, Vector4.Zero, ref count);
+        Push(ImGuiCol.TextSelectedBg, hideSelection ? Vector4.Zero : new Vector4(0.26f, 0.59f, 0.98f, 0.45f),
+            ref count);
         Push(ImGuiCol.NavHighlight, Vector4.Zero, ref count);
         Push(ImGuiCol.ChildBg, Vector4.Zero, ref count);
         Push(ImGuiCol.PlotHistogram, Vector4.Zero, ref count);
@@ -493,15 +505,51 @@ public sealed class DalamudTextField : ITextField
         }
     }
 
-    private void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
-        float line, Vector4 ink)
+    private int OnPick(ref ImGuiInputTextCallbackData data)
     {
-        _ = padY;
-        _ = line;
+        var span = data.BufTextSpan;
+        shownCaret = ShownIndex(span, data.CursorPos);
+        var from = Math.Min(data.SelectionStart, data.SelectionEnd);
+        var to = Math.Max(data.SelectionStart, data.SelectionEnd);
+        shownSelA = ShownIndex(span, from);
+        shownSelB = ShownIndex(span, to);
+        return 0;
+    }
+
+    private int ShownIndex(ReadOnlySpan<byte> utf8, int bytes)
+    {
+        bytes = ClampUtf8(utf8, bytes);
+        var wire = Encoding.UTF8.GetString(utf8[..bytes]);
+        return wireFaces.Count == 0 ? wire.Length : EmojiBits.FromWire(wire, wireFaces).Length;
+    }
+
+    private static int ClampUtf8(ReadOnlySpan<byte> utf8, int bytes)
+    {
+        if (bytes <= 0)
+        {
+            return 0;
+        }
+
+        if (bytes >= utf8.Length)
+        {
+            return utf8.Length;
+        }
+
+        while (bytes > 0 && (utf8[bytes] & 0xC0) == 0x80)
+        {
+            bytes--;
+        }
+
+        return bytes;
+    }
+
+    private void Paint(Rect area, string current, string placeholder, bool focused, float padX, float padY,
+        float line, Vector4 ink, int caretAt, int selectFrom, int selectTo)
+    {
         if (paint is not null && text is not null && textures is not null && paths is not null)
         {
-            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, focused,
-                CaretOn(focused));
+            EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, padY, focused,
+                CaretOn(focused), caretAt, selectFrom, selectTo);
             return;
         }
 
@@ -511,6 +559,16 @@ public sealed class DalamudTextField : ITextField
         var hint = empty && !focused;
         var shown = hint ? placeholder : current;
         var origin = area.Min + new Vector2(padX, padY);
+        if (!hint && selectTo > selectFrom)
+        {
+            var from = EmojiBits.ClampIndex(shown, selectFrom);
+            var to = EmojiBits.ClampIndex(shown, selectTo);
+            var left = origin.X + ImGui.CalcTextSize(shown[..from]).X;
+            var right = origin.X + ImGui.CalcTextSize(shown[..to]).X;
+            draw.AddRectFilled(new Vector2(left, origin.Y), new Vector2(right, origin.Y + line),
+                ImGui.GetColorU32(new Vector4(0.26f, 0.59f, 0.98f, 0.45f)));
+        }
+
         if (hint || !empty)
         {
             draw.AddText(origin, ImGui.GetColorU32(hint ? ink with { W = 0.42f } : ink), shown);
@@ -520,7 +578,8 @@ public sealed class DalamudTextField : ITextField
         {
             var face = MathF.Max(line, 1f);
             var caretH = MathF.Max(10f, face * 0.82f);
-            var caretX = Math.Clamp(empty ? origin.X : origin.X + ImGui.CalcTextSize(shown).X + 1f,
+            var at = empty ? 0 : EmojiBits.ClampIndex(shown, caretAt < 0 ? shown.Length : caretAt);
+            var caretX = Math.Clamp(origin.X + (empty ? 0f : ImGui.CalcTextSize(shown[..at]).X + 1f),
                 area.Min.X + 1f, area.Max.X - 2f);
             var top = origin.Y + MathF.Max(0f, (face - caretH) * 0.5f);
             draw.AddLine(new Vector2(caretX, top), new Vector2(caretX, top + caretH),
