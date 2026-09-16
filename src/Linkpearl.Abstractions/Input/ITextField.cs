@@ -44,6 +44,8 @@ public interface ITextField
     {
     }
 
+    bool TryCopySelection() => false;
+
     bool TakingKeys => false;
 
     void Dress(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths)

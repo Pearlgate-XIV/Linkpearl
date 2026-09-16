@@ -44,6 +44,6 @@ public interface IInputProbe
     // Mouse-up this frame that was not a drag, anywhere on screen (including off the phone).
     bool PointerReleased(PointerButton button = PointerButton.Primary);
 
-    // Ctrl/Cmd+C this frame, ignoring composer capture.
+    // Ctrl/Cmd+C this frame. Consumed so chip/menu/composer copy once.
     bool CopyChord() => false;
 }

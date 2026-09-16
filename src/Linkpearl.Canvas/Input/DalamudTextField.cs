@@ -30,6 +30,9 @@ public sealed class DalamudTextField : ITextField
     private int shownSelB;
     private static int clipFrame = -1;
     private static string clipText = string.Empty;
+    private static int drawnFrame = -1;
+    private static readonly HashSet<string> drawnIds = new(StringComparer.Ordinal);
+    private string shownCopy = string.Empty;
     private IPaintSurface? paint;
     private ITextPainter? text;
     private ITextureSource? textures;
@@ -60,6 +63,13 @@ public sealed class DalamudTextField : ITextField
     {
         if (Capturing)
         {
+            var io = ImGui.GetIO();
+            if (!DalamudInputProbe.CopyTaken && (io.KeyCtrl || io.KeySuper) &&
+                ImGui.IsKeyPressed(ImGuiKey.C, false))
+            {
+                TryCopySelection();
+            }
+
             return;
         }
 
@@ -80,6 +90,14 @@ public sealed class DalamudTextField : ITextField
             primed = true;
             return;
         }
+
+        if (ImGui.GetIO().WantTextInput)
+        {
+            RememberHeld(keys);
+            strokes.Clear();
+            return;
+        }
+
         var control = Pressed(keys, VirtualKey.CONTROL) || Pressed(keys, VirtualKey.LCONTROL) ||
                       Pressed(keys, VirtualKey.RCONTROL);
         var shift = Pressed(keys, VirtualKey.SHIFT) || Pressed(keys, VirtualKey.LSHIFT) ||
@@ -189,6 +207,17 @@ public sealed class DalamudTextField : ITextField
             return value;
         }
 
+        if (!TakeDraw(id))
+        {
+            var face = MathF.Max(ImGui.GetFontSize(), 1f);
+            var padY = MathF.Max((area.Height - face) * 0.5f, 0f);
+            var padX = MathF.Max(area.Height * 0.18f, 8f);
+            var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
+            var painted = secret && value.Length > 0 ? new string('•', value.Length) : value;
+            Paint(area, painted, placeholder, false, padX, padY, face, ink, painted.Length, 0, 0);
+            return value;
+        }
+
         if (retainFocus && ownerId != id && ImGui.IsKeyPressed(ImGuiKey.Enter) &&
             !ImGui.GetIO().WantTextInput)
         {
@@ -223,7 +252,7 @@ public sealed class DalamudTextField : ITextField
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(padX, padY));
 
         var flags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.NoHorizontalScroll |
-                    ImGuiInputTextFlags.CallbackAlways;
+                    ImGuiInputTextFlags.CallbackAlways | ImGuiInputTextFlags.CallbackCharFilter;
         if (secret)
         {
             flags |= ImGuiInputTextFlags.Password;
@@ -308,6 +337,11 @@ public sealed class DalamudTextField : ITextField
         var painted = secret && shown.Length > 0 ? new string('•', shown.Length) : shown;
         var caretAt = shownCaret < 0 ? painted.Length : Math.Clamp(shownCaret, 0, painted.Length);
         carets[id] = caretAt;
+        if (focused)
+        {
+            shownCopy = shown;
+        }
+
         Paint(area, painted, placeholder, focused, inkPadX, inkPadY, face, ink, caretAt, shownSelA, shownSelB);
         _ = native;
         return shown;
@@ -316,6 +350,11 @@ public sealed class DalamudTextField : ITextField
     public string Write(string id, Rect area, string value, string placeholder, int maxLength)
     {
         if (area.Width < 1f || area.Height < 1f)
+        {
+            return value;
+        }
+
+        if (!TakeDraw(id))
         {
             return value;
         }
@@ -340,7 +379,8 @@ public sealed class DalamudTextField : ITextField
 
         var current = EmojiBits.ToWire(value, wireFaces);
         ImGui.InputTextMultiline("##" + id, ref current, Math.Max(maxLength + wireFaces.Count * 8, 1),
-            new Vector2(area.Width, area.Height), ImGuiInputTextFlags.AllowTabInput);
+            new Vector2(area.Width, area.Height),
+            ImGuiInputTextFlags.AllowTabInput | ImGuiInputTextFlags.CallbackCharFilter, OnPick);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
 
@@ -378,6 +418,11 @@ public sealed class DalamudTextField : ITextField
 
         _ = native;
         var shown = EmojiBits.FromWire(current, wireFaces);
+        if (itemActive)
+        {
+            shownCopy = shown;
+        }
+
         return shown.Length <= maxLength ? shown : shown[..Math.Max(maxLength, 0)];
     }
 
@@ -512,8 +557,26 @@ public sealed class DalamudTextField : ITextField
         }
     }
 
+    private bool TakeDraw(string id)
+    {
+        var frame = ImGui.GetFrameCount();
+        if (frame != drawnFrame)
+        {
+            drawnIds.Clear();
+            drawnFrame = frame;
+        }
+
+        return drawnIds.Add(id);
+    }
+
     private int OnPick(ref ImGuiInputTextCallbackData data)
     {
+        if (data.EventFlag == ImGuiInputTextFlags.CallbackCharFilter)
+        {
+            var io = ImGui.GetIO();
+            return io.KeyCtrl || io.KeySuper || io.KeyAlt ? 1 : 0;
+        }
+
         var span = data.BufTextSpan;
         shownCaret = ShownIndex(span, data.CursorPos);
         var from = Math.Min(data.SelectionStart, data.SelectionEnd);
@@ -713,6 +776,25 @@ public sealed class DalamudTextField : ITextField
         {
             return string.Empty;
         }
+    }
+
+    public bool TryCopySelection()
+    {
+        if (shownSelB <= shownSelA || shownCopy.Length == 0)
+        {
+            return false;
+        }
+
+        var lo = Math.Clamp(shownSelA, 0, shownCopy.Length);
+        var hi = Math.Clamp(shownSelB, lo, shownCopy.Length);
+        if (hi <= lo)
+        {
+            return false;
+        }
+
+        PutClipboard(shownCopy[lo..hi]);
+        DalamudInputProbe.MarkCopy();
+        return true;
     }
 
     public void PutClipboard(string text)

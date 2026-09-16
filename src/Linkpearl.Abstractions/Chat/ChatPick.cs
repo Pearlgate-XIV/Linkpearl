@@ -68,9 +68,12 @@ public sealed class ChatPick
             DrawChip(frame);
         }
 
-        if (!frame.TextField.TakingKeys && frame.Input.CopyChord() && to > from && body.Length > 0)
+        if (frame.Input.CopyChord())
         {
-            Copy(frame, key, body);
+            if (!frame.TextField.TryCopySelection() && to > from && body.Length > 0)
+            {
+                Copy(frame, key, body);
+            }
         }
 
         if (frame.Input.EscapePressed() && (to > from || Busy))

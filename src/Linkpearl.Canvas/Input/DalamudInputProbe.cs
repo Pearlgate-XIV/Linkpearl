@@ -108,7 +108,7 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public bool CopyChord()
     {
-        if (!Live || copyTaken || ImGui.GetIO().WantTextInput)
+        if (!Live || copyTaken)
         {
             return false;
         }
@@ -122,6 +122,10 @@ public sealed class DalamudInputProbe : IInputProbe
         copyTaken = true;
         return true;
     }
+
+    public static bool CopyTaken => copyTaken;
+
+    public static void MarkCopy() => copyTaken = true;
 
     private bool PointerOnClaim()
     {

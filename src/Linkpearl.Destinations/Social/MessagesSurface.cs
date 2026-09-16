@@ -527,7 +527,6 @@ internal sealed class MessagesSurface
         frame.Paint.Fill(messages, frame.Theme.Palette.SurfaceSunken with { W = 0.90f }, frame.Units(14f));
         pick.Begin();
         DrawLines(frame, messages.Inset(frame.Units(12f)), thread);
-        pick.End(frame);
         if (replies > 0f)
         {
             DrawReplies(frame, replyRow, thread);
@@ -535,6 +534,7 @@ internal sealed class MessagesSurface
 
         tray.TickFiles(files, SendBit);
         DrawComposer(frame, bar, thread);
+        pick.End(frame);
         var fields = frame.TextField;
         tray.DrawSheet(frame, sheet, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
             frame.Theme.Palette.Accent, frame.Theme.Palette.SurfaceRaised, files, string.Empty,

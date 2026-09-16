@@ -80,8 +80,8 @@ internal sealed class LiveChatSurface
         DrawFilters(frame, filters);
         pick.Begin();
         DrawLines(frame, log, thread, partyReady);
-        pick.End(frame);
         DrawComposer(frame, composer, thread, partyReady);
+        pick.End(frame);
         DrawChannels(frame, sendBar, partyReady);
         DrawLineMenu(frame, frame.Content);
         marks.DrawMenu(frame, frame.Content, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
