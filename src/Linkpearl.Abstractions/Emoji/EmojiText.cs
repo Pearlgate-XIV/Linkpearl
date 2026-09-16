@@ -51,7 +51,8 @@ public static class EmojiText
     }
 
     public static void DrawField(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
-        Rect area, string body, string placeholder, Vector4 ink, float padX, bool focused, bool caret)
+        Rect area, string body, string placeholder, Vector4 ink, float padX, float padY, bool focused, bool caret,
+        int caretAt = -1, int selectFrom = 0, int selectTo = 0)
     {
         if (area.Width < 1f || area.Height < 1f)
         {
@@ -63,21 +64,41 @@ public static class EmojiText
         var shown = hint ? placeholder : body;
         var color = hint ? ink with { W = ink.W * 0.42f } : ink;
         var style = new TextStyle(FontRole.Body, color);
-        var inner = MathF.Max(area.Width - padX * 2f, 1f);
-        var wide = MeasureWidth(paint, text, textures, paths, shown, style);
-        var scroll = !empty && wide > inner ? wide - inner : 0f;
         var face = MathF.Max(text.Measure("Ag", style.Role).Y, 1f);
-        var textY = area.Min.Y + MathF.Max(0f, (area.Height - face) * 0.5f);
+        var textY = area.Min.Y + padY;
+        var inner = MathF.Max(area.Width - padX * 2f, 1f);
+        var wide = MeasureWidth(paint, text, textures, paths, shown, style, face);
+        var at = empty ? 0 : EmojiBits.ClampIndex(shown, caretAt < 0 ? shown.Length : caretAt);
+        var caretWide = empty ? 0f : MeasureWidth(paint, text, textures, paths, shown[..at], style, face);
+        var scroll = 0f;
+        if (!empty && wide > inner)
+        {
+            scroll = Math.Clamp(caretWide - inner * 0.82f, 0f, wide - inner);
+        }
+
         var origin = new Vector2(area.Min.X + padX - scroll, textY);
+        paint.PushClip(area);
+        if (!hint && selectTo > selectFrom)
+        {
+            var from = EmojiBits.ClampIndex(shown, selectFrom);
+            var to = EmojiBits.ClampIndex(shown, selectTo);
+            if (to > from)
+            {
+                var left = origin.X + MeasureWidth(paint, text, textures, paths, shown[..from], style, face);
+                var right = origin.X + MeasureWidth(paint, text, textures, paths, shown[..to], style, face);
+                paint.Fill(new Rect(new Vector2(left, textY), new Vector2(right, textY + face)),
+                    new Vector4(0.26f, 0.59f, 0.98f, 0.45f));
+            }
+        }
+
         var height = 0f;
         var used = 0f;
-        paint.PushClip(area);
         Walk(paint, text, textures, paths, shown, MathF.Max(wide, inner), style, true, ref height, ref used, origin,
-            true);
+            true, face);
         if (caret)
         {
             var caretH = MathF.Max(10f, face * 0.82f);
-            var x = Math.Clamp(empty ? origin.X : origin.X + wide + 1f, area.Min.X + 1f, area.Max.X - 2f);
+            var x = Math.Clamp(origin.X + caretWide + (empty ? 0f : 1f), area.Min.X + 1f, area.Max.X - 2f);
             var top = textY + MathF.Max(0f, (face - caretH) * 0.5f);
             paint.Line(new Vector2(x, top), new Vector2(x, top + caretH), ink, 1.2f);
         }
@@ -86,11 +107,11 @@ public static class EmojiText
     }
 
     public static float MeasureWidth(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
-        string body, TextStyle style)
+        string body, TextStyle style, float row = 0f)
     {
         var height = 0f;
         var used = 0f;
-        Walk(paint, text, textures, paths, body, 10_000f, style, false, ref height, ref used, default, true);
+        Walk(paint, text, textures, paths, body, 10_000f, style, false, ref height, ref used, default, true, row);
         return used;
     }
 
@@ -126,9 +147,9 @@ public static class EmojiText
 
     private static void Walk(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         string body, float width, TextStyle style, bool draw, ref float height, ref float used, Vector2 origin,
-        bool oneLine)
+        bool oneLine, float row = 0f)
     {
-        var face = MathF.Max(14f, text.LineHeight(style.Role) * style.Scale);
+        var face = row > 0f ? row : MathF.Max(14f, text.LineHeight(style.Role) * style.Scale);
         var x = 0f;
         var y = 0f;
         var line = face;
