@@ -9,7 +9,6 @@ using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
 using FFXIVClientStructs.FFXIV.Client.UI.Shell;
 using Linkpearl.Chat;
-using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
 using EmoteSheet = Lumina.Excel.Sheets.Emote;
@@ -552,7 +551,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         });
     }
 
-    private static bool NamedFriend(IReadOnlyList<GameFriend> roster, string name, string world)
+    private static bool NamedFriend(GameFriend[] roster, string name, string world)
     {
         var trimmedName = name.Trim();
         var trimmedWorld = world.Trim();
@@ -562,7 +561,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         }
 
         PeelWorld(ref trimmedName, trimmedWorld);
-        for (var index = 0; index < roster.Count; index++)
+        for (var index = 0; index < roster.Length; index++)
         {
             if (!roster[index].Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase))
             {
@@ -864,14 +863,14 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     {
         liveName = string.Empty;
         liveWorld = string.Empty;
-        IReadOnlyList<GameFriend> roster;
+        GameFriend[] roster;
         lock (friendGate)
         {
             roster = friends;
         }
 
         var hits = 0;
-        for (var index = 0; index < roster.Count; index++)
+        for (var index = 0; index < roster.Length; index++)
         {
             if (requireExact
                     ? !roster[index].Name.Equals(name, StringComparison.OrdinalIgnoreCase)

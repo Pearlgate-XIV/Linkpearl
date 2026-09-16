@@ -101,7 +101,7 @@ internal sealed class StudioHunt
                 frame.Paint.Stroke(sheet, gold with { W = 0.40f }, frame.Theme.Metrics.Hairline, frame.Units(12f));
 
                 var inner = sheet.Inset(pad);
-                var stack = new Stack(inner, StackAxis.Vertical, gap);
+                var stack = new LayoutFlow(inner, StackAxis.Vertical, gap);
                 for (var index = 0; index < count; index++)
                 {
                     if (stack.Remaining.Height < rowH * 0.6f)
@@ -123,7 +123,7 @@ internal sealed class StudioHunt
             return;
         }
 
-        var at = frame.Input.Pointer;
+        var at = frame.Input.Cursor;
         if (bar.Contains(at) || (hasSheet && sheet.Contains(at)))
         {
             return;

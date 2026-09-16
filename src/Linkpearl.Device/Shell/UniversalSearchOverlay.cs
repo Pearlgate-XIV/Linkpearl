@@ -42,7 +42,7 @@ public sealed class UniversalSearchOverlay
         }
 
         if (input.EscapePressed() ||
-            (input.PointerReleased() && !screen.Contains(input.Pointer)))
+            (input.PointerReleased() && !screen.Contains(input.Cursor)))
         {
             Close();
             textField.Release();
@@ -95,7 +95,7 @@ public sealed class UniversalSearchOverlay
 
         // Rows already claimed their taps. Eat leftover overlay clicks so the same press
         // cannot land on home tiles, the dock, or Control Center under the dimmer.
-        if (input.ConsumeClick(screen) && !panel.Contains(input.Pointer))
+        if (input.ConsumeClick(screen) && !panel.Contains(input.Cursor))
         {
             Close();
         }

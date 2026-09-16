@@ -144,7 +144,7 @@ internal static class WasapiEndpoint
         }
     }
 
-    private static IWavePlayer OpenWasapi(MMDevice device, int latencyMs)
+    private static WasapiOut OpenWasapi(MMDevice device, int latencyMs)
     {
         try
         {
@@ -156,7 +156,7 @@ internal static class WasapiEndpoint
         }
     }
 
-    private static IWavePlayer? OpenWaveOut(string friendlyName, int latencyMs)
+    private static WaveOutEvent? OpenWaveOut(string friendlyName, int latencyMs)
     {
         if (friendlyName.Length == 0)
         {

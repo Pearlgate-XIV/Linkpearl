@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Painting;
@@ -93,7 +92,7 @@ public static class SoftKeyBar
     }
 
     private static bool Pressed(IInputProbe input, Rect cell) =>
-        input.WasPressed(cell) || (input.IsHeld() && cell.Contains(input.Pointer));
+        input.WasPressed(cell) || (input.IsHeld() && cell.Contains(input.Cursor));
 
     private static Rect KeyBand(Rect screen, float scale)
     {

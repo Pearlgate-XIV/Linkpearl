@@ -3,7 +3,6 @@ using Linkpearl.Applets;
 using Linkpearl.Destinations;
 using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
-using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Talk;
@@ -85,7 +84,7 @@ internal sealed class NoticeBanner
         if (!held && life > 0f && frame.Input.WasPressed(box))
         {
             held = true;
-            grabY = frame.Input.Pointer.Y;
+            grabY = frame.Input.Cursor.Y;
             lift = 0f;
             frame.Input.Claim(box);
             return;
@@ -93,7 +92,7 @@ internal sealed class NoticeBanner
 
         if (held && frame.Input.IsHeld())
         {
-            lift = MathF.Max(0f, grabY - frame.Input.Pointer.Y);
+            lift = MathF.Max(0f, grabY - frame.Input.Cursor.Y);
             frame.Input.Claim(box.Translate(new Vector2(0f, -lift)).Expand(frame.Units(8f)));
             return;
         }

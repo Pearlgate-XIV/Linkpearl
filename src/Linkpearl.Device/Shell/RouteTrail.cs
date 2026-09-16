@@ -25,7 +25,7 @@ public readonly struct RecentTask
 
 // Owns the applet back-stack and the single in-flight transition. Applets never see this type:
 // they see IRouter. Presentation animation lives on the shell layer that draws Current/Motion*.
-public sealed class RouteStack : IRouter
+public sealed class RouteTrail : IRouter
 {
     private const int RecentCap = 12;
 
@@ -40,7 +40,7 @@ public sealed class RouteStack : IRouter
     private float motionProgress;
     private bool recentsWanted;
 
-    public RouteStack(IReadOnlyDictionary<string, IApplet> applets)
+    public RouteTrail(IReadOnlyDictionary<string, IApplet> applets)
     {
         this.applets = applets;
     }

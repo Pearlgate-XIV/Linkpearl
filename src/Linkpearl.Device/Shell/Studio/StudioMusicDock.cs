@@ -164,7 +164,7 @@ internal sealed class StudioMusicDock
         DrawGhost(frame, speaker, StudioMark.Speaker, volumeOpen ? accent : muted);
 
         var onMarks = !volumeOpen && markLane.Width > 4f &&
-                      (frame.Input.IsHovering(markLane) || markLane.Contains(frame.Input.Pointer));
+                      (frame.Input.IsHovering(markLane) || markLane.Contains(frame.Input.Cursor));
         markBusy = onMarks || volumeDrag;
         if (onMarks)
         {
@@ -502,7 +502,7 @@ internal sealed class StudioMusicDock
         frame.Text.DrawWrapped(pane.Inset(new Edges(0f, frame.Units(16f), 0f, 0f)),
             "You must first create an account before using.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
-        if (frame.Input.IsHovering(row) || row.Contains(frame.Input.Pointer))
+        if (frame.Input.IsHovering(row) || row.Contains(frame.Input.Cursor))
         {
             markBusy = true;
         }

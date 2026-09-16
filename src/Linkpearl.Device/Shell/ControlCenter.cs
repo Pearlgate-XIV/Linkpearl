@@ -1,11 +1,9 @@
 using System.Globalization;
-using System.IO;
 using Dalamud.Bindings.ImGui;
 using Linkpearl.Applets;
 using Linkpearl.Destinations;
 using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
-using Linkpearl.Modules;
 using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Net;
@@ -13,7 +11,6 @@ using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
-using Linkpearl.Theming;
 using Linkpearl.Time;
 
 namespace Linkpearl.Device.Shell;
@@ -123,7 +120,7 @@ public sealed class ControlCenter
             // panel. Wait until the slide-in finishes, then consume leftover clicks so that
             // same press cannot also dismiss.
             if (open && reveal > 0.88f && !draggingLight && !draggingVolume && !sheetDrag &&
-                !sheet.Contains(input.Pointer) && input.ConsumeClick(screen))
+                !sheet.Contains(input.Cursor) && input.ConsumeClick(screen))
             {
                 Close();
                 return new ControlCenterResult(false, true, false, false, null, 0, string.Empty);
@@ -131,7 +128,7 @@ public sealed class ControlCenter
 
             var live = open && reveal > 0.88f && !sheetDrag ? input : SilentInput.Instance;
             var inner = sheet.Inset(new Edges(scale * 14f, scale * 4f, scale * 14f, scale * 10f));
-            var stack = new Stack(inner, StackAxis.Vertical, scale * 10f);
+            var stack = new LayoutFlow(inner, StackAxis.Vertical, scale * 10f);
             var pending = new Pending();
 
             DrawClockRow(frame, live, stack.Take(scale * 36f), scale, clock, pending);
@@ -340,7 +337,7 @@ public sealed class ControlCenter
     private void SteerNotice(IInputProbe input, Rect row, in GlassNotice item, float scale, Pending pending,
         IPearlHub pearl)
     {
-        if (row.Contains(input.Pointer))
+        if (row.Contains(input.Cursor))
         {
             input.Claim(row);
         }
@@ -348,7 +345,7 @@ public sealed class ControlCenter
         if (noticeHoldId.Length == 0 && input.WasPressed(row))
         {
             noticeHoldId = item.Id;
-            noticeGrabY = input.Pointer.Y;
+            noticeGrabY = input.Cursor.Y;
             noticeLift = 0f;
             noticeDrag = false;
             input.Claim(row);
@@ -362,7 +359,7 @@ public sealed class ControlCenter
 
         if (input.IsHeld())
         {
-            noticeLift = MathF.Max(0f, noticeGrabY - input.Pointer.Y);
+            noticeLift = MathF.Max(0f, noticeGrabY - input.Cursor.Y);
             noticeDrag = noticeDrag || noticeLift > MathF.Max(10f, 12f * scale);
             input.Claim(row.Translate(new Vector2(0f, -noticeLift)).Expand(scale * 8f));
             return;
@@ -449,7 +446,7 @@ public sealed class ControlCenter
         {
             sheetTrack = true;
             sheetDrag = false;
-            grabY = input.Pointer.Y;
+            grabY = input.Cursor.Y;
             grabReveal = 0f;
         }
 
@@ -460,7 +457,7 @@ public sealed class ControlCenter
 
         if (input.IsHeld())
         {
-            var dy = input.Pointer.Y - grabY;
+            var dy = input.Cursor.Y - grabY;
             if (!sheetDrag && dy > MathF.Max(10f, 12f * scale))
             {
                 sheetDrag = true;
@@ -508,13 +505,13 @@ public sealed class ControlCenter
         {
             sheetTrack = true;
             sheetDrag = false;
-            grabY = input.Pointer.Y;
+            grabY = input.Cursor.Y;
             grabReveal = reveal;
         }
 
         if (sheetTrack && input.IsHeld())
         {
-            var dy = input.Pointer.Y - grabY;
+            var dy = input.Cursor.Y - grabY;
             if (!sheetDrag && dy < -MathF.Max(10f, 12f * scale))
             {
                 sheetDrag = true;

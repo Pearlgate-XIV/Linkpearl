@@ -1,7 +1,4 @@
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
@@ -34,7 +31,7 @@ public sealed partial class MusicApplet
     private void DrawAuthWelcome(in AppletFrame frame, Rect area)
     {
         MusicChrome.Wheel(frame, area, state, frame.Units(800f + book.Seats.Count * 40f));
-        var stack = new Stack(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)).Translate(new Vector2(0f, -state.Scroll)),
+        var stack = new LayoutFlow(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)).Translate(new Vector2(0f, -state.Scroll)),
             StackAxis.Vertical, frame.Units(8f));
         MusicChrome.DiscMark(frame, stack.Take(frame.Units(108f)));
         var title = stack.Take(frame.Units(46f));
@@ -47,7 +44,7 @@ public sealed partial class MusicApplet
 
         var card = stack.Take(frame.Units(80f));
         MusicChrome.Plate(frame, card, frame.Units(14f));
-        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        var rows = new LayoutFlow(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "♪", "Make a handle and password on this handset");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "▷", "Sign out and come back whenever you want");
 
@@ -85,7 +82,7 @@ public sealed partial class MusicApplet
     private void DrawAuthLogin(in AppletFrame frame, Rect area)
     {
         MusicChrome.Wheel(frame, area, state, frame.Units(900f));
-        var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), "Log in"))
         {
             state.AuthNote = string.Empty;
@@ -127,7 +124,7 @@ public sealed partial class MusicApplet
         var dock = area.BottomSlice(frame.Units(state.AuthNote.Length > 0 ? 118f : 84f));
         var body = new Rect(area.Min, new Vector2(area.Max.X, dock.Min.Y - frame.Units(8f)));
         MusicChrome.Wheel(frame, body, state, frame.Units(760f + book.Seats.Count * 52f));
-        var stack = new Stack(body.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(body.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), "Create account"))
         {
             state.AuthNote = string.Empty;
@@ -157,7 +154,7 @@ public sealed partial class MusicApplet
             MusicChrome.FieldWell(frame, stack.Take(frame.Units(44f))), state.JoinAgain, "Confirm password", 64,
             out var submitted, false, true);
 
-        var steps = new Stack(dock, StackAxis.Vertical, frame.Units(6f));
+        var steps = new LayoutFlow(dock, StackAxis.Vertical, frame.Units(6f));
         DrawAuthNote(frame, ref steps);
         var go = steps.Take(frame.Units(44f));
         MusicChrome.Primary(frame, go, "Create account");
@@ -177,7 +174,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawAuthNote(in AppletFrame frame, ref Stack stack)
+    private void DrawAuthNote(in AppletFrame frame, ref LayoutFlow stack)
     {
         if (state.AuthNote.Length == 0)
         {
@@ -292,7 +289,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawHandsetSeats(in AppletFrame frame, ref Stack stack, bool remove)
+    private void DrawHandsetSeats(in AppletFrame frame, ref LayoutFlow stack, bool remove)
     {
         if (book.Seats.Count == 0)
         {
@@ -909,7 +906,7 @@ public sealed partial class MusicApplet
             new Vector2(area.Min.X + frame.Units(16f), area.Center.Y - frame.Units(168f)),
             new Vector2(area.Width - frame.Units(32f), frame.Units(300f)));
         MusicChrome.Plate(frame, card, frame.Units(16f));
-        var stack = new Stack(card.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(card.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(8f));
         MusicChrome.Title(frame, stack.Take(frame.Units(26f)), "Report");
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Select reason",
             new TextStyle(FontRole.Caption, MusicChrome.Mute));
@@ -936,7 +933,7 @@ public sealed partial class MusicApplet
         // same release that opened the sheet so it does not blink shut.
         var dismiss = !state.ReportFresh &&
             (frame.Input.WasClicked(cancel) ||
-             (!card.Contains(frame.Input.Pointer) && frame.Input.WasClicked(area)));
+             (!card.Contains(frame.Input.Cursor) && frame.Input.WasClicked(area)));
         state.ReportFresh = false;
         if (dismiss)
         {
@@ -1094,7 +1091,7 @@ public sealed partial class MusicApplet
         publicRadio.Ensure(state.Genre);
         var stations = publicRadio.Stations(state.Genre);
         var gap = frame.Units(10f);
-        var stack = new Stack(area, StackAxis.Vertical, gap);
+        var stack = new LayoutFlow(area, StackAxis.Vertical, gap);
         if (MusicChrome.Back(frame, stack.Take(frame.Units(28f)), state.Genre))
         {
             state.Back();
@@ -1147,7 +1144,7 @@ public sealed partial class MusicApplet
 
         if (stations.Count == 0)
         {
-            var empty = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+            var empty = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
             DrawHint(frame, ref empty,
                 publicRadio.Busy ? "Loading this genre…" : "No stations in " + state.Genre + " yet.");
             return;
@@ -1187,7 +1184,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawPlaylistShelf(in AppletFrame frame, ref Stack stack)
+    private void DrawPlaylistShelf(in AppletFrame frame, ref LayoutFlow stack)
     {
         var head = stack.Take(frame.Units(22f));
         frame.Text.DrawIn(head, "Playlists", new TextStyle(FontRole.BodyStrong, MusicChrome.Ink));
@@ -1543,9 +1540,9 @@ public sealed partial class MusicApplet
             var fill = Math.Clamp(audio.Volume, 0f, 1f);
             frame.Paint.Fill(vol.LeftSlice(vol.Width * fill), MusicChrome.DockBlue with { W = 0.72f }, frame.Units(10f));
             frame.Text.DrawIn(vol, "Volume", new TextStyle(FontRole.CaptionStrong, MusicChrome.Ink, TextAlign.Center));
-            if (vol.Contains(frame.Input.Pointer) && frame.Input.IsHeld())
+            if (vol.Contains(frame.Input.Cursor) && frame.Input.IsHeld())
             {
-                audio.Volume = Math.Clamp((frame.Input.Pointer.X - vol.Min.X) / MathF.Max(1f, vol.Width), 0f, 1f);
+                audio.Volume = Math.Clamp((frame.Input.Cursor.X - vol.Min.X) / MathF.Max(1f, vol.Width), 0f, 1f);
             }
 
             MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "HOME");
@@ -2053,7 +2050,7 @@ public sealed partial class MusicApplet
             var rest = stack.Remaining;
             var gutter = frame.Units(14f);
             var top = MathF.Max(rest.Min.Y, face.Max.Y + frame.Units(8f));
-            stack = new Stack(
+            stack = new LayoutFlow(
                 new Rect(new Vector2(rest.Min.X + gutter, top),
                     new Vector2(rest.Max.X - gutter, rest.Max.Y)),
                 StackAxis.Vertical,
@@ -2167,7 +2164,7 @@ public sealed partial class MusicApplet
             new TextStyle(FontRole.CaptionStrong, mixOn ? Vector4.One : MusicChrome.Ink, TextAlign.Center));
     }
 
-    private void DrawCreateStation(in AppletFrame frame, ref Stack stack)
+    private void DrawCreateStation(in AppletFrame frame, ref LayoutFlow stack)
     {
         MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "MY LIVE STATION");
         var card = stack.Take(frame.Units(state.StationGenreLine.Length > 0 ? 104f : 88f));
@@ -2220,7 +2217,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawIcecastWire(in AppletFrame frame, ref Stack stack)
+    private void DrawIcecastWire(in AppletFrame frame, ref LayoutFlow stack)
     {
         var host = state.IcecastHost;
         var password = state.IcecastPassword;
@@ -2260,7 +2257,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawAudioSource(in AppletFrame frame, ref Stack stack)
+    private void DrawAudioSource(in AppletFrame frame, ref LayoutFlow stack)
     {
         EnsurePorts();
         MusicChrome.Kicker(frame, stack.Take(frame.Units(14f)), "CAPTURE");
@@ -2301,7 +2298,7 @@ public sealed partial class MusicApplet
         sense.RescanPoints();
     }
 
-    private static void DrawPortMenu(in AppletFrame frame, ref Stack stack, string id, string title,
+    private static void DrawPortMenu(in AppletFrame frame, ref LayoutFlow stack, string id, string title,
         IReadOnlyList<AudioPort> list, string defaultId, string currentId, string defaultLabel, Action<string> set)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), title,

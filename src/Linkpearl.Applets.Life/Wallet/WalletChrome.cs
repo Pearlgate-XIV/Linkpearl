@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Badges;
 using Linkpearl.Geometry;
 using Linkpearl.Media;

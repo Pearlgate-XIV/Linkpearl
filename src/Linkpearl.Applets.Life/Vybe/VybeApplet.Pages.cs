@@ -1,7 +1,4 @@
-using System;
 using System.Globalization;
-using System.Linq;
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Camera;
 using Linkpearl.Chat;
 using Linkpearl.Geometry;
@@ -38,7 +35,7 @@ public sealed partial class VybeApplet
     {
         var tone = VybeChrome.Night;
         VybeChrome.Wheel(frame, area, state, frame.Units(720f + book.Seats.Count * 40f));
-        var stack = new Stack(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)).Translate(new Vector2(0f, -state.Scroll)),
+        var stack = new LayoutFlow(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)).Translate(new Vector2(0f, -state.Scroll)),
             StackAxis.Vertical, frame.Units(8f));
         VybeChrome.LockMark(frame, stack.Take(frame.Units(72f)));
         var title = stack.Take(frame.Units(40f));
@@ -51,7 +48,7 @@ public sealed partial class VybeApplet
 
         var card = stack.Take(frame.Units(80f));
         VybeChrome.Plate(frame, card, frame.Units(14f), true);
-        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        var rows = new LayoutFlow(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "Use your Pearlgate sign-in on this handset");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "No VYBE password. Sign in on Pearlgate first");
 
@@ -90,7 +87,7 @@ public sealed partial class VybeApplet
     {
         var tone = VybeChrome.Night;
         VybeChrome.Wheel(frame, area, state, frame.Units(900f));
-        var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Log in", true))
         {
             state.AuthNote = string.Empty;
@@ -127,7 +124,7 @@ public sealed partial class VybeApplet
         var dock = area.BottomSlice(frame.Units(state.AuthNote.Length > 0 ? 118f : 84f));
         var body = new Rect(area.Min, new Vector2(area.Max.X, dock.Min.Y - frame.Units(8f)));
         VybeChrome.Wheel(frame, body, state, frame.Units(720f + book.Seats.Count * 52f));
-        var stack = new Stack(body.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(body.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Create account", true))
         {
             state.AuthNote = string.Empty;
@@ -150,7 +147,7 @@ public sealed partial class VybeApplet
         state.JoinHandle = frame.TextField.Draw("vybe-join-handle",
             VybeChrome.FieldWell(frame, stack.Take(frame.Units(44f)), true), state.JoinHandle, "@handle");
 
-        var steps = new Stack(dock, StackAxis.Vertical, frame.Units(6f));
+        var steps = new LayoutFlow(dock, StackAxis.Vertical, frame.Units(6f));
         DrawAuthNote(frame, ref steps, tone);
         var go = steps.Take(frame.Units(44f));
         VybeChrome.Primary(frame, go, "Create account", true);
@@ -170,7 +167,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawAuthNote(in AppletFrame frame, ref Stack stack, NightPalette tone)
+    private void DrawAuthNote(in AppletFrame frame, ref LayoutFlow stack, NightPalette tone)
     {
         if (state.AuthNote.Length == 0)
         {
@@ -268,7 +265,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawHandsetSeats(in AppletFrame frame, ref Stack stack, bool remove)
+    private void DrawHandsetSeats(in AppletFrame frame, ref LayoutFlow stack, bool remove)
     {
         if (book.Seats.Count == 0)
         {
@@ -330,7 +327,7 @@ public sealed partial class VybeApplet
             return;
         }
 
-        var stack = new Stack(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)), StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area.Inset(new Edges(0f, frame.Units(8f), 0f, 0f)), StackAxis.Vertical, frame.Units(8f));
         VybeChrome.LockMark(frame, stack.Take(frame.Units(72f)));
 
         var title = stack.Take(frame.Units(40f));
@@ -343,7 +340,7 @@ public sealed partial class VybeApplet
 
         var card = stack.Take(frame.Units(132f));
         VybeChrome.Plate(frame, card, frame.Units(14f), true);
-        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        var rows = new LayoutFlow(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "Opt-in to view and share NSFW content (18+)");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "☺", "Your profile stays the same");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "NSFW content is hidden from SFW users");
@@ -417,7 +414,7 @@ public sealed partial class VybeApplet
     {
         VybeChrome.Wheel(frame, area, state, frame.Units(720f));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
-        var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(shifted, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "VYBE+ Community Rules", true))
         {
             state.Page = NightPage.Gate;
@@ -458,7 +455,7 @@ public sealed partial class VybeApplet
         };
         VybeChrome.Wheel(frame, area, state, frame.Units(wheel));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
-        var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(shifted, StackAxis.Vertical, frame.Units(10f));
         var title = state.Page switch
         {
             NightPage.OnboardIntent => "Choose your interests",
@@ -614,7 +611,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private static void DrawPlusAbout(in AppletFrame frame, ref Stack stack, bool night)
+    private static void DrawPlusAbout(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         var tone = VybeChrome.Tone(night);
         VybeChrome.LockMark(frame, stack.Take(frame.Units(72f)));
@@ -624,7 +621,7 @@ public sealed partial class VybeApplet
             new TextStyle(FontRole.Caption, tone.Mute, TextAlign.Center));
         var card = stack.Take(frame.Units(158f));
         VybeChrome.Plate(frame, card, frame.Units(14f), night);
-        var rows = new Stack(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
+        var rows = new LayoutFlow(card.Inset(frame.Units(10f)), StackAxis.Vertical, frame.Units(4f));
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "♥", "An 18+ space to view and share NSFW content");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "☺", "Your VYBE profile stays the same");
         DrawGateFact(frame, rows.Take(frame.Units(26f)), "◌", "NSFW stays hidden from SFW browsers");
@@ -768,7 +765,7 @@ public sealed partial class VybeApplet
     private void DrawSearch(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Search", night))
         {
             state.Back();
@@ -983,7 +980,7 @@ public sealed partial class VybeApplet
         var plate = area.Inset(new Edges(frame.Units(10f), 0f, frame.Units(10f), frame.Units(10f)))
             .BottomSlice(frame.Units(16f) + frame.Units(44f) * rows);
         VybeChrome.PostSheet(frame, plate);
-        var stack = new Stack(plate.Inset(new Edges(frame.Units(12f), frame.Units(10f))), StackAxis.Vertical,
+        var stack = new LayoutFlow(plate.Inset(new Edges(frame.Units(12f), frame.Units(10f))), StackAxis.Vertical,
             frame.Units(8f));
         if (person.Id >= 0)
         {
@@ -1015,7 +1012,7 @@ public sealed partial class VybeApplet
         var cancel = stack.Take(frame.Units(40f));
         VybeChrome.Ghost(frame, cancel, "Cancel", night);
         if (frame.Input.ConsumeClick(cancel) ||
-            (!plate.Contains(frame.Input.Pointer) && frame.Input.ConsumeClick(area)))
+            (!plate.Contains(frame.Input.Cursor) && frame.Input.ConsumeClick(area)))
         {
             state.StoryMoreOpen = false;
         }
@@ -1101,7 +1098,7 @@ public sealed partial class VybeApplet
         }, BoardPost(state.PostKey));
     }
 
-    private void DrawCommentThread(in AppletFrame frame, Rect sheet, Rect head, IReadOnlyList<PearlComment> lines,
+    private void DrawCommentThread(in AppletFrame frame, Rect sheet, Rect head, List<PearlComment> lines,
         string fieldId, bool night, Action sent, PearlPost? post = null)
     {
         var composer = sheet.BottomSlice(frame.Units(62f));
@@ -1566,7 +1563,7 @@ public sealed partial class VybeApplet
     private void DrawStoryCompose(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Your story", night))
         {
             state.Back();
@@ -1650,7 +1647,7 @@ public sealed partial class VybeApplet
         }
 
         var pad = frame.Units(14f);
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(area.Min.X + pad, hero.InfoTop), new Vector2(area.Max.X - pad, area.Max.Y)),
             StackAxis.Vertical, frame.Units(6f));
         var status = person.Online ? "Online" : "Away";
@@ -1681,7 +1678,7 @@ public sealed partial class VybeApplet
         DrawProfileShelf(frame, ref stack, PersonBoard(person.GateId), own: false, night);
     }
 
-    private void DrawPersonFacts(in AppletFrame frame, ref Stack stack, ScenePerson person, bool night)
+    private void DrawPersonFacts(in AppletFrame frame, ref LayoutFlow stack, ScenePerson person, bool night)
     {
         var gender = person.Gender;
         var sexuality = person.Sexuality;
@@ -1774,7 +1771,7 @@ public sealed partial class VybeApplet
         }
 
         var ready = post.Value;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Post", night))
         {
             state.Back();
@@ -1846,7 +1843,7 @@ public sealed partial class VybeApplet
             ? VybePostTags.WrapHeight(frame, pane, DescriptorSlugs())
             : 0f;
         frame.Paint.PushClip(pane);
-        var stack = new Stack(pane.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(pane.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "WHERE ARE YOU POSTING?", night);
         var dest = stack.Take(frame.Units(56f));
         if (quotingPlus)
@@ -2238,7 +2235,7 @@ public sealed partial class VybeApplet
         }
         else if (state.DraftSheet == ComposeSheet.ConfirmVybe)
         {
-            var stack = new Stack(body, StackAxis.Vertical, gap);
+            var stack = new LayoutFlow(body, StackAxis.Vertical, gap);
             VybeChrome.Note(frame, stack.Take(frame.Units(36f)),
                 "VYBE is a SFW community. Confirm this post has no nudity or explicit content.", night);
             DrawComposeSummary(frame, stack.Take(frame.Units(24f)), false, night);
@@ -2294,7 +2291,7 @@ public sealed partial class VybeApplet
         var night = state.Night;
         VybeChrome.Wheel(frame, area, state, frame.Units(520f));
         var shifted = area.Translate(new Vector2(0f, -state.Scroll));
-        var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(shifted, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Filters", night))
         {
             state.Back();
@@ -2518,7 +2515,7 @@ public sealed partial class VybeApplet
             talkAlbumLock = false;
         }
 
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Gallery", night))
         {
             talkAlbum = false;
@@ -2758,7 +2755,7 @@ public sealed partial class VybeApplet
     {
         if (!marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
         {
-            marks.Offer(TalkId(), key, who, ChatBits.Snippet(body ?? string.Empty), frame.Input.Pointer);
+            marks.Offer(TalkId(), key, who, ChatBits.Snippet(body ?? string.Empty), frame.Input.Cursor);
         }
     }
 
@@ -2780,7 +2777,7 @@ public sealed partial class VybeApplet
         var night = state.Night;
         var tone = VybeChrome.Tone(night);
         frame.Paint.Fill(area, tone.Ground);
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Photo", night))
         {
             talkLook = string.Empty;
@@ -2886,7 +2883,7 @@ public sealed partial class VybeApplet
     private void DrawRequests(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Requests", night))
         {
             state.Back();
@@ -2934,7 +2931,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawPlusSwitch(in AppletFrame frame, ref Stack stack, bool night)
+    private void DrawPlusSwitch(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         if (state.PlusBlocked)
         {
@@ -2974,7 +2971,7 @@ public sealed partial class VybeApplet
             "Turn VYBE+ off in Edit profile.", night);
     }
 
-    private void DrawPlusSettings(in AppletFrame frame, ref Stack stack, bool night)
+    private void DrawPlusSettings(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         if (state.PlusBlocked)
         {
@@ -3019,7 +3016,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawLaneEntry(in AppletFrame frame, ref Stack stack, bool night)
+    private void DrawLaneEntry(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         if (!state.PlusAgreed || state.PlusBlocked)
         {
@@ -3073,7 +3070,7 @@ public sealed partial class VybeApplet
 
         var done = state.LaneAsk >= asks.Length;
         VybeChrome.Wheel(frame, area, state, frame.Units(done ? 720f : 680f));
-        var stack = new Stack(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area.Translate(new Vector2(0f, -state.Scroll)), StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Role survey", night))
         {
             laneHold = 0f;
@@ -3175,7 +3172,7 @@ public sealed partial class VybeApplet
     private void DrawSettings(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Settings", night))
         {
             state.DropConfirm = false;
@@ -3273,7 +3270,7 @@ public sealed partial class VybeApplet
     private void DrawGallery(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Gallery", night))
         {
             state.Back();
@@ -3298,7 +3295,7 @@ public sealed partial class VybeApplet
     private void DrawLikes(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Likes", night))
         {
             state.Back();
@@ -3326,7 +3323,7 @@ public sealed partial class VybeApplet
     private void DrawSaves(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Saves", night))
         {
             state.Back();
@@ -3367,7 +3364,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private void DrawKeptShotGrid(in AppletFrame frame, Stack stack, bool night)
+    private void DrawKeptShotGrid(in AppletFrame frame, LayoutFlow stack, bool night)
     {
         var shots = new List<(string Url, string PostId)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -3419,7 +3416,7 @@ public sealed partial class VybeApplet
     private void DrawPhotoPick(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), PhotoPickTitle(), night))
         {
             state.PickingClubFace = false;
@@ -3908,8 +3905,8 @@ public sealed partial class VybeApplet
                 var before = viewZoom;
                 viewZoom = Math.Clamp(viewZoom * (1f + frame.Input.ScrollDelta * 0.18f), 1f, 4.5f);
                 var local = new Vector2(
-                    Math.Clamp((frame.Input.Pointer.X - dest.Min.X) / dest.Width, 0f, 1f),
-                    Math.Clamp((frame.Input.Pointer.Y - dest.Min.Y) / dest.Height, 0f, 1f));
+                    Math.Clamp((frame.Input.Cursor.X - dest.Min.X) / dest.Width, 0f, 1f),
+                    Math.Clamp((frame.Input.Cursor.Y - dest.Min.Y) / dest.Height, 0f, 1f));
                 var oldSpan = 1f / before;
                 var img = viewFocus + (local - new Vector2(0.5f, 0.5f)) * oldSpan;
                 var span = 1f / viewZoom;
@@ -3992,7 +3989,7 @@ public sealed partial class VybeApplet
             return;
         }
 
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(area.Min.X, dest.Max.Y + gap), area.Max),
             StackAxis.Vertical, frame.Units(4f));
         var bar = stack.Take(frame.Units(32f)).Inset(new Edges(pad, 0f, pad, 0f));
@@ -4032,7 +4029,7 @@ public sealed partial class VybeApplet
     private void DrawShareSend(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Send", night))
         {
             state.SharePostId = string.Empty;
@@ -4077,7 +4074,7 @@ public sealed partial class VybeApplet
     private void DrawBlocked(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "Blocked", night))
         {
             state.Back();
@@ -4115,7 +4112,7 @@ public sealed partial class VybeApplet
     private void DrawPeopleList(in AppletFrame frame, Rect area, string title, bool connected)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), title, night))
         {
             state.Back();

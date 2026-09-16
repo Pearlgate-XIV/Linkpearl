@@ -2,7 +2,6 @@ using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
-using Linkpearl.Preferences;
 
 namespace Linkpearl.Destinations.Profile;
 
@@ -45,7 +44,7 @@ public sealed class InkPicker
 
         if (dragPlate && frame.Input.IsHeld())
         {
-            SamplePlate(plate, frame.Input.Pointer, out sat, out val);
+            SamplePlate(plate, frame.Input.Cursor, out sat, out val);
             HsvToRgb(hue, sat, val, out red, out green, out blue);
             set(new Vector4(red, green, blue, 1f));
         }
@@ -61,7 +60,7 @@ public sealed class InkPicker
 
         if (dragHue && frame.Input.IsHeld())
         {
-            hue = Math.Clamp((frame.Input.Pointer.Y - bar.Min.Y) / MathF.Max(bar.Height, 1f), 0f, 1f);
+            hue = Math.Clamp((frame.Input.Cursor.Y - bar.Min.Y) / MathF.Max(bar.Height, 1f), 0f, 1f);
             HsvToRgb(hue, sat, val, out red, out green, out blue);
             set(new Vector4(red, green, blue, 1f));
         }

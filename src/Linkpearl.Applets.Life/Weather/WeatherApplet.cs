@@ -1,8 +1,6 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
-using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 using Linkpearl.Time;

@@ -1,6 +1,5 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Painting;
 
 namespace Linkpearl.Destinations.Home;
 

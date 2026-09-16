@@ -12,13 +12,13 @@ public enum StackAxis : byte
 // remaining space and advances past the gap. Take always reserves the requested length, even when
 // that walks past the original box, so later cells stack instead of collapsing on the last pixel.
 // Remaining.Height (or Width) can go negative; Compose uses that to report the true content size.
-public struct Stack
+public struct LayoutFlow
 {
     private Rect remaining;
     private readonly StackAxis axis;
     private readonly float gap;
 
-    public Stack(Rect area, StackAxis axis, float gap)
+    public LayoutFlow(Rect area, StackAxis axis, float gap)
     {
         remaining = area;
         this.axis = axis;

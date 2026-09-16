@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Linq;
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Venues;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
@@ -135,7 +133,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         sense.RefreshPoints();
         if (state.CaptureId.Length > 0)
         {
-            sense.Select(state.CaptureId);
+            sense.Choose(state.CaptureId);
         }
 
         publicRadio.Ensure(state.Genre);
@@ -517,7 +515,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         display.Landscape = false;
         if (!community.Broadcasting)
         {
-            sense.Stop();
+            sense.Halt();
         }
 
         state.Save(paths);
@@ -795,7 +793,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
                 return;
             }
 
-            if (more.Count == 0)
+            if (more.Length == 0)
             {
                 DrawHint(frame, ref stack,
                     publicRadio.Busy
@@ -838,12 +836,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawCoverShelf(in AppletFrame frame, Rect area, IReadOnlyList<PublicStation> stations)
+    private void DrawCoverShelf(in AppletFrame frame, Rect area, PublicStation[] stations)
     {
         var gap = frame.Units(8f);
         var cards = 3;
         var w = (area.Width - gap * (cards - 1)) / cards;
-        var count = Math.Min(stations.Count, cards);
+        var count = Math.Min(stations.Length, cards);
         for (var index = 0; index < count; index++)
         {
             var card = Rect.FromSize(new Vector2(area.Min.X + (w + gap) * index, area.Min.Y),
@@ -873,7 +871,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawLikeGrid(in AppletFrame frame, Rect area, IReadOnlyList<PublicStation> likes)
+    private void DrawLikeGrid(in AppletFrame frame, Rect area, List<PublicStation> likes)
     {
         var gap = frame.Units(8f);
         var cellW = (area.Width - gap) * 0.5f;
@@ -904,12 +902,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawFollowShelf(in AppletFrame frame, Rect area, IReadOnlyList<CommunityStation> stations, bool compact)
+    private void DrawFollowShelf(in AppletFrame frame, Rect area, CommunityStation[] stations, bool compact)
     {
         var gap = frame.Units(8f);
         var cards = compact ? 3 : 4;
         var w = compact ? (area.Width - gap * (cards - 1)) / cards : area.Width * 0.42f;
-        var count = Math.Min(stations.Count, cards);
+        var count = Math.Min(stations.Length, cards);
         for (var index = 0; index < count; index++)
         {
             var card = Rect.FromSize(new Vector2(area.Min.X + (w + gap) * index, area.Min.Y),
@@ -1122,7 +1120,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         return rows.ToArray();
     }
 
-    private IReadOnlyList<PublicStation> LikedStations()
+    private List<PublicStation> LikedStations()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rows = new List<PublicStation>();
@@ -1153,7 +1151,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         return rows;
     }
 
-    private IReadOnlyList<PublicStation> SavedRadioStations()
+    private List<PublicStation> SavedRadioStations()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rows = new List<PublicStation>();
@@ -1229,7 +1227,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         return cached;
     }
 
-    private IReadOnlyList<PublicStation> MoreLikeStations()
+    private PublicStation[] MoreLikeStations()
     {
         var known = new HashSet<string>(state.Favorites, StringComparer.OrdinalIgnoreCase);
         var genres = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1588,7 +1586,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawFeedRadio(in AppletFrame frame, ref Stack stack)
+    private void DrawFeedRadio(in AppletFrame frame, ref LayoutFlow stack)
     {
         publicRadio.Ensure(state.Genre);
         var stations = publicRadio.Stations(state.Genre);
@@ -1650,7 +1648,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawFeedLive(in AppletFrame frame, ref Stack stack)
+    private void DrawFeedLive(in AppletFrame frame, ref LayoutFlow stack)
     {
         var board = BroadcastBoard();
         var liveN = 0;
@@ -1687,7 +1685,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawFeedTwitch(in AppletFrame frame, ref Stack stack)
+    private void DrawFeedTwitch(in AppletFrame frame, ref LayoutFlow stack)
     {
         var live = TwitchBoard();
         frame.Text.DrawIn(stack.Take(frame.Units(16f)),
@@ -1716,7 +1714,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         DrawRolladeckCredit(frame, stack.Take(frame.Units(22f)));
     }
 
-    private void DrawFeedFollowing(in AppletFrame frame, ref Stack stack)
+    private void DrawFeedFollowing(in AppletFrame frame, ref LayoutFlow stack)
     {
         var board = FollowedBoard();
         if (board.Length == 0)
@@ -2194,8 +2192,8 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
                     }
                 }
 
-                MusicChrome.Kicker(frame, stack.Take(frame.Units(18f)), hits.Count + " stations");
-                DrawPublicRows(frame, ref stack, hits, Math.Min(hits.Count, 16));
+                MusicChrome.Kicker(frame, stack.Take(frame.Units(18f)), hits.Length + " stations");
+                DrawPublicRows(frame, ref stack, hits, Math.Min(hits.Length, 16));
             }
             else
             {
@@ -2215,7 +2213,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private void DrawDiscoverLive(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         var board = MergedBoard();
         var live = board.Where(static row => row.Live).ToArray();
         var dark = board.Where(static row => !row.Live).ToArray();
@@ -2332,7 +2330,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawLiveBoard(in AppletFrame frame, Rect area, IReadOnlyList<CommunityStation> live)
+    private void DrawLiveBoard(in AppletFrame frame, Rect area, CommunityStation[] live)
     {
         if (area.IsEmpty)
         {
@@ -2342,12 +2340,12 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         var rowH = frame.Units(56f);
         var gap = frame.Units(8f);
         var stride = rowH + gap;
-        var content = live.Count * stride;
+        var content = live.Length * stride;
         MusicChrome.Wheel(frame, area, state, content);
         frame.Paint.PushClip(area);
         try
         {
-            for (var index = 0; index < live.Count; index++)
+            for (var index = 0; index < live.Length; index++)
             {
                 var y = area.Min.Y - state.Scroll + index * stride;
                 var row = Rect.FromSize(new Vector2(area.Min.X, y), new Vector2(area.Width, rowH));
@@ -2543,7 +2541,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
             .ToArray();
     }
 
-    private IReadOnlyList<PublicStation> SearchHits(string query) =>
+    private PublicStation[] SearchHits(string query) =>
         MusicState.Genres
             .SelectMany(publicRadio.Stations)
             .Where(row =>
@@ -2569,7 +2567,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         var list = area.Inset(new Edges(0f, 0f, step + frame.Units(4f), 0f));
         if (stations.Count == 0)
         {
-            var empty = new Stack(list, StackAxis.Vertical, gap);
+            var empty = new LayoutFlow(list, StackAxis.Vertical, gap);
             DrawHint(frame, ref empty,
                 publicRadio.Busy ? "Loading stations…" : "No stations in this genre yet.");
             return;
@@ -2647,7 +2645,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawPublicRows(in AppletFrame frame, ref Stack stack, IReadOnlyList<PublicStation> stations, int max,
+    private void DrawPublicRows(in AppletFrame frame, ref LayoutFlow stack, IReadOnlyList<PublicStation> stations, int max,
         bool openPlayer = false)
     {
         var count = Math.Min(stations.Count, max);
@@ -2776,7 +2774,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private void DrawCommunityRow(in AppletFrame frame, ref Stack stack, CommunityStation station) =>
+    private void DrawCommunityRow(in AppletFrame frame, ref LayoutFlow stack, CommunityStation station) =>
         DrawCommunityRow(frame, stack.Take(frame.Units(52f)), station);
 
     private void DrawCommunityRow(in AppletFrame frame, Rect row, CommunityStation station)
@@ -2830,7 +2828,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         }
     }
 
-    private static void DrawHint(in AppletFrame frame, ref Stack stack, string copy)
+    private static void DrawHint(in AppletFrame frame, ref LayoutFlow stack, string copy)
     {
         if (copy.Length == 0)
         {
@@ -3034,7 +3032,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
         {
             if (audio.Now.StreamUrl.Length > 0)
             {
-                audio.Resume();
+                audio.Unpause();
                 return;
             }
 
@@ -3118,14 +3116,14 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
         if (!community.Broadcasting)
         {
-            push.Stop();
+            push.Halt();
         }
 
         if (!WantsCapture())
         {
             if (sense.Listening)
             {
-                sense.Stop();
+                sense.Halt();
             }
 
             return;
@@ -3138,7 +3136,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
                 sense.StopMonitor();
             }
 
-            sense.Select(IBroadcastSense.DefaultMixId);
+            sense.Choose(IBroadcastSense.DefaultMixId);
             sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
             var boothNow = Environment.TickCount64;
             if (!sense.Listening && boothNow - lastCaptureTry > 1500)
@@ -3168,7 +3166,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
         state.CaptureApp = "sound";
 
-        sense.Select(tapId);
+        sense.Choose(tapId);
         sense.RoutePhone(display.SpeakerId, display.MicrophoneId);
         if (state.CaptureName.Length == 0 && sense.SelectedName.Length > 0)
         {
@@ -3311,7 +3309,7 @@ public sealed partial class MusicApplet : IApplet, IHandsetProfileSink, IStation
 
     private void PickCapture(string id, string app)
     {
-        sense.Select(id);
+        sense.Choose(id);
         lastCaptureTry = 0;
         state.CaptureId = id;
         state.CaptureName = sense.SelectedName;

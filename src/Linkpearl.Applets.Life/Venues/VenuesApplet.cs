@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
@@ -138,7 +137,7 @@ public sealed class VenuesApplet : IApplet
 
     private float DrawChrome(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         DrawTitle(frame, stack.Take(frame.Units(34f)));
         DrawSearch(frame, stack.Take(frame.Units(40f)));
         DrawLanes(frame, stack.Take(frame.Units(34f)));
@@ -245,7 +244,7 @@ public sealed class VenuesApplet : IApplet
         VenuesChrome.Sheet(frame, sheet);
         var body = new Rect(new Vector2(area.Min.X, hero.Max.Y - frame.Units(18f)), area.Max)
             .Inset(new Edges(frame.Units(16f), frame.Units(16f), frame.Units(16f), frame.Units(12f)));
-        var stack = new Stack(body, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(body, StackAxis.Vertical, frame.Units(10f));
         if (spot is null)
         {
             frame.Text.DrawIn(stack.Take(frame.Units(36f)), "That venue is no longer on the list.",
@@ -613,13 +612,13 @@ public sealed class VenuesApplet : IApplet
         return 0;
     }
 
-    private float Flow(in AppletFrame frame, Rect area, IReadOnlyList<string> labels, int selected, bool paint)
+    private float Flow(in AppletFrame frame, Rect area, string[] labels, int selected, bool paint)
     {
         var x = 0f;
         var y = 0f;
         var height = frame.Units(26f);
         var gap = frame.Units(6f);
-        for (var index = 0; index < labels.Count; index++)
+        for (var index = 0; index < labels.Length; index++)
         {
             var label = labels[index];
             var width = MathF.Min(area.Width,
@@ -714,7 +713,7 @@ public sealed class VenuesApplet : IApplet
         }
 
         var copy = row.Inset(new Edges(pad, 0f, pad, pad)).BottomSlice(frame.Units(58f));
-        var stack = new Stack(copy, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(copy, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(22f)), spot.Name,
             new TextStyle(FontRole.BodyStrong, Vector4.One));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(15f)), PlaceLine(spot),
@@ -743,7 +742,7 @@ public sealed class VenuesApplet : IApplet
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
     }
 
-    private void DrawLocation(in AppletFrame frame, ref Stack stack, float width, VenueSpot spot)
+    private void DrawLocation(in AppletFrame frame, ref LayoutFlow stack, float width, VenueSpot spot)
     {
         var address = spot.Address.Length > 0 ? spot.Address : PlaceLine(spot);
         if (address.Length == 0 && !spot.CanTeleport)
@@ -772,7 +771,7 @@ public sealed class VenuesApplet : IApplet
         }
     }
 
-    private void DrawPlans(in AppletFrame frame, ref Stack stack, float width, VenueSpot spot)
+    private void DrawPlans(in AppletFrame frame, ref LayoutFlow stack, float width, VenueSpot spot)
     {
         var canNotify = !spot.OpenNow && (spot.NextOpen is not null || spot.Week.Count > 0);
         var canSchedule = spot.Week.Count > 0 || spot.NextOpen is not null;
@@ -820,7 +819,7 @@ public sealed class VenuesApplet : IApplet
         }
     }
 
-    private void DrawLinks(in AppletFrame frame, ref Stack stack, float width, VenueSpot spot)
+    private void DrawLinks(in AppletFrame frame, ref LayoutFlow stack, float width, VenueSpot spot)
     {
         var saved = book.Holds(spot.Id);
         var gap = frame.Units(8f);

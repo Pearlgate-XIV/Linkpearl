@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Clock;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;

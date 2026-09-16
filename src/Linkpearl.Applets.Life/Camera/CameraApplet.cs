@@ -1,6 +1,4 @@
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
 using Linkpearl.Platform;

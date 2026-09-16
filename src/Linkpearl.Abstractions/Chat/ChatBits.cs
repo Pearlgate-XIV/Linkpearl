@@ -1,4 +1,3 @@
-using System.IO;
 using Linkpearl.Applets;
 using Linkpearl.Emoji;
 using Linkpearl.Geometry;

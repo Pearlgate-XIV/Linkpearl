@@ -29,7 +29,7 @@ public sealed class HandsetWindow : Window
     private readonly HandsetShell shell;
     private readonly HandsetFontService fonts;
     private readonly ITheme theme;
-    private readonly RouteStack router;
+    private readonly RouteTrail router;
     private readonly HandsetShapePreference shapePreference;
     private readonly ScreenField screenField;
     private readonly ITextField textField;
@@ -66,7 +66,7 @@ public sealed class HandsetWindow : Window
     private float lastGripScale = 1f;
     private float volumeCue;
 
-    public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteStack router,
+    public HandsetWindow(HandsetShell shell, HandsetFontService fonts, ITheme theme, RouteTrail router,
         HandsetShapePreference shapePreference, ScreenField screenField, ITextField textField,
         DisplayPreferences display, IGameSession game, ITextureSource textures, HostPaths paths,         Action persistShape,
         Action<bool> persistOpen, Action<bool> persistMinimized, HandsetPlacement placement, Action persistPlacement,
@@ -421,7 +421,7 @@ public sealed class HandsetWindow : Window
             var showLock = !asleep && shapePreference.ShowLockTab;
             var lockArea = LockButton.Area(windowRect, screen, scale);
             var lockHit = showLock ? LockButton.HitArea(windowRect, screen, scale) : Rect.Empty;
-            var pointer = input.Pointer;
+            var pointer = input.Cursor;
             windowGrab.WasFocused = ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !blocked;
             if (windowGrab.ShouldDrop(IsOpen))
             {
@@ -1089,7 +1089,7 @@ public sealed class HandsetWindow : Window
         return ImGui.IsItemClicked() || ChromeClicked(area);
     }
 
-    private void DrawVolumeCue(IPaintSurface paint, Rect screen, float scale)
+    private void DrawVolumeCue(DalamudPaintSurface paint, Rect screen, float scale)
     {
         if (volumeCue <= 0f)
         {

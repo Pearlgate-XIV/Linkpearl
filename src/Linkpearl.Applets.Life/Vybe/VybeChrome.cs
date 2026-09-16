@@ -1,5 +1,3 @@
-using System.IO;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -739,7 +737,7 @@ internal static class VybeChrome
         return frame.Input.ConsumeClick(area);
     }
 
-    public static void FlowMany(in AppletFrame frame, ref Stack stack, string[] options, List<string> selected,
+    public static void FlowMany(in AppletFrame frame, ref LayoutFlow stack, string[] options, List<string> selected,
         bool night)
     {
         var area = stack.Take(FlowHeight(frame, stack.Remaining.Width, options));
@@ -758,7 +756,7 @@ internal static class VybeChrome
         }
     }
 
-    public static void FlowOne(in AppletFrame frame, ref Stack stack, string[] options, string current,
+    public static void FlowOne(in AppletFrame frame, ref LayoutFlow stack, string[] options, string current,
         Action<string> pick, bool night)
     {
         var area = stack.Take(FlowHeight(frame, stack.Remaining.Width, options));

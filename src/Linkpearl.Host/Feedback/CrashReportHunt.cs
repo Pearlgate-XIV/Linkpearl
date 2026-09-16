@@ -153,7 +153,7 @@ internal static class CrashReportHunt
         return string.Empty;
     }
 
-    private static string Label(IReadOnlyList<string> files)
+    private static string Label(string[] files)
     {
         var name = Path.GetFileName(files[0]);
         if (name.StartsWith("dalamud_appcrash_", StringComparison.OrdinalIgnoreCase))

@@ -4,7 +4,6 @@ using Linkpearl.Device.Chassis;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
-using Linkpearl.Theming;
 
 namespace Linkpearl.Device.Shell;
 

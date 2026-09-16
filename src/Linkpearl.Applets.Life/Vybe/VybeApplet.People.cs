@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Numerics;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
@@ -19,7 +15,7 @@ public sealed partial class VybeApplet
 
     private PeopleCard[] findDeck = [];
 
-    private void DrawPeopleDiscovery(in AppletFrame frame, ref Stack stack, bool night)
+    private void DrawPeopleDiscovery(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         var find = state.PeopleFind;
         var mine = PeopleFindBook.Mine(state);
@@ -73,7 +69,7 @@ public sealed partial class VybeApplet
         MathF.Max(frame.Units(15f), frame.Text.LineHeight(FontRole.Caption)) * 6f +
         frame.Units(10f);
 
-    private void DrawAppliedFilters(in AppletFrame frame, ref Stack stack, PeopleFindState find, bool night)
+    private void DrawAppliedFilters(in AppletFrame frame, ref LayoutFlow stack, PeopleFindState find, bool night)
     {
         var tags = find.Applied();
         if (tags.Count == 0)
@@ -190,7 +186,7 @@ public sealed partial class VybeApplet
         var copy = area.Inset(new Edges(frame.Units(8f), photo.Height + frame.Units(8f), frame.Units(8f),
             frame.Units(6f)));
         frame.Paint.Fill(new Rect(new Vector2(area.Min.X, photo.Max.Y), area.Max), FindLift);
-        var lines = new Stack(copy, StackAxis.Vertical, frame.Units(2f));
+        var lines = new LayoutFlow(copy, StackAxis.Vertical, frame.Units(2f));
         var nameH = MathF.Max(frame.Units(18f), frame.Text.LineHeight(FontRole.BodyStrong));
         var nameRow = lines.Take(nameH);
         if (card.PlusMember || card.PlusOnly)
@@ -249,7 +245,7 @@ public sealed partial class VybeApplet
         }
     }
 
-    private static void DrawPeopleFact(in AppletFrame frame, ref Stack stack, string label, string value,
+    private static void DrawPeopleFact(in AppletFrame frame, ref LayoutFlow stack, string label, string value,
         Vector4 mute, Vector4 ink)
     {
         var shown = (value ?? string.Empty).Trim();
@@ -292,7 +288,7 @@ public sealed partial class VybeApplet
         frame.Paint.FillCircle(live, frame.Units(3.8f),
             card.Online ? VybeChrome.Online : new Vector4(0.52f, 0.52f, 0.56f, 1f));
         var body = area.Inset(new Edges(frame.Units(12f), frame.Units(180f), frame.Units(12f), frame.Units(8f)));
-        var stack = new Stack(body, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(body, StackAxis.Vertical, frame.Units(3f));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(20f)), card.Name,
             new TextStyle(FontRole.Title, FindInk));
         var zone = card.TimeZoneId.Length > 0 ? card.TimeZoneId : WorldZones.PickFor(card.GateId);
@@ -378,7 +374,7 @@ public sealed partial class VybeApplet
         var night = state.Night;
         var tone = VybeChrome.Tone(night);
         var find = state.PeopleFind;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         var head = stack.Take(frame.Units(28f));
         if (VybeChrome.Back(frame, head.LeftSlice(frame.Units(72f)), "Filters", night))
         {
@@ -507,7 +503,7 @@ public sealed partial class VybeApplet
         DrawFilterFoot(frame, stack.Take(frame.Units(36f)), find, night);
     }
 
-    private void DrawLanePriorities(in AppletFrame frame, ref Stack stack, PeopleFindState find, bool night)
+    private void DrawLanePriorities(in AppletFrame frame, ref LayoutFlow stack, PeopleFindState find, bool night)
     {
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), "SEARCH PRIORITIES", night);
         VybeChrome.Mute(frame, stack.Take(frame.Units(32f)),
@@ -540,7 +536,7 @@ public sealed partial class VybeApplet
         _ = find;
     }
 
-    private void DrawChipBlock(in AppletFrame frame, ref Stack stack, string title, string[] options,
+    private void DrawChipBlock(in AppletFrame frame, ref LayoutFlow stack, string title, string[] options,
         List<string> picked, bool night)
     {
         VybeChrome.Kicker(frame, stack.Take(frame.Units(14f)), title.ToUpperInvariant(), night);

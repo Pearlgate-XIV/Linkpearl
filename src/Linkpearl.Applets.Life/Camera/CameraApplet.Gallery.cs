@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
@@ -280,7 +279,7 @@ public sealed partial class CameraApplet
 
     private void DrawUploadSource(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(10f));
         frame.Text.DrawWrapped(stack.Take(frame.Units(52f)),
             "Upload a Win+Shift+S screenshot from the clipboard, or pick files.",
             new TextStyle(FontRole.Body, PhotosChrome.Ink, TextAlign.Center));
@@ -623,7 +622,7 @@ public sealed partial class CameraApplet
         if (frame.Input.ConsumeClick(tile, PointerButton.Secondary))
         {
             menuShotId = shot.Id;
-            menuAt = frame.Input.Pointer;
+            menuAt = frame.Input.Cursor;
             return;
         }
 
@@ -679,7 +678,7 @@ public sealed partial class CameraApplet
 
     private void DrawMakeFolder(in AppletFrame frame)
     {
-        var stack = new Stack(frame.Content.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(frame.Content.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(10f));
         var rename = place.StartsWith("f:", StringComparison.Ordinal);
         frame.Text.DrawIn(stack.Take(frame.Units(24f)), rename ? "Rename album" : "New album",
             new TextStyle(FontRole.Title, PhotosChrome.Ink));
@@ -772,7 +771,7 @@ public sealed partial class CameraApplet
         if (frame.Input.ConsumeClick(stage, PointerButton.Secondary))
         {
             menuShotId = shot.Id;
-            menuAt = frame.Input.Pointer;
+            menuAt = frame.Input.Cursor;
         }
 
         LandscapeHold.Draw(frame, display);
@@ -892,7 +891,7 @@ public sealed partial class CameraApplet
 
     private void TickCrop(in AppletFrame frame, Rect dest, Rect box)
     {
-        var at = frame.Input.Pointer;
+        var at = frame.Input.Cursor;
         var held = frame.Input.IsHeld();
         if (!held)
         {
@@ -1025,7 +1024,7 @@ public sealed partial class CameraApplet
             return;
         }
 
-        var stack = new Stack(frame.Content.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(frame.Content.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(24f)), "Move to album",
             new TextStyle(FontRole.Title, PhotosChrome.Ink));
         var dates = stack.Take(frame.Units(40f));
@@ -1067,7 +1066,7 @@ public sealed partial class CameraApplet
 
     private static void DrawConfirm(in AppletFrame frame, Rect area, string copy, Action yes, Action no)
     {
-        var stack = new Stack(area.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area.Inset(frame.Units(12f)), StackAxis.Vertical, frame.Units(10f));
         frame.Text.DrawWrapped(stack.Take(frame.Units(56f)), copy,
             new TextStyle(FontRole.Body, PhotosChrome.Ink, TextAlign.Center));
         var row = stack.Take(frame.Units(36f));

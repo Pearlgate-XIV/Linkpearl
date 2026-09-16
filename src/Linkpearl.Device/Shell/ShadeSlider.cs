@@ -97,7 +97,7 @@ internal static class ShadeSlider
     private static bool Slide(IInputProbe input, Rect row, Rect track, float value, ref bool dragging,
         Action<float> set, bool horizontal)
     {
-        if (input.WasPressed(row) || (input.IsHeld() && row.Contains(input.Pointer) && !dragging))
+        if (input.WasPressed(row) || (input.IsHeld() && row.Contains(input.Cursor) && !dragging))
         {
             dragging = true;
         }
@@ -105,8 +105,8 @@ internal static class ShadeSlider
         if (dragging && input.IsHeld())
         {
             var next = horizontal
-                ? (input.Pointer.X - track.Min.X) / MathF.Max(track.Width, 1f)
-                : (track.Max.Y - input.Pointer.Y) / MathF.Max(track.Height, 1f);
+                ? (input.Cursor.X - track.Min.X) / MathF.Max(track.Width, 1f)
+                : (track.Max.Y - input.Cursor.Y) / MathF.Max(track.Height, 1f);
             next = Math.Clamp(next, 0f, 1f);
             if (MathF.Abs(next - value) > 0.0001f)
             {

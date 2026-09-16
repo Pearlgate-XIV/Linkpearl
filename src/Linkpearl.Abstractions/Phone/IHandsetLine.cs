@@ -56,7 +56,7 @@ public interface IHandsetLine
 
     void Paste(string raw);
 
-    bool Call(string? number = null);
+    bool PlaceCall(string? number = null);
 
     void HangUp();
 

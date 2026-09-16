@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Linq;
-using Linkpearl.Applets;
 using Linkpearl.Badges;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
@@ -130,7 +128,7 @@ public sealed class WalletApplet : IApplet
     private float DrawHome(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         WalletChrome.Hero(frame, stack.Take(frame.Units(112f)), pearls.Balance, pearls.LifetimeEarned,
             pearls.LifetimeSpent);
 
@@ -233,7 +231,7 @@ public sealed class WalletApplet : IApplet
     private float DrawEarn(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(26f)), "Earn", Page.Home);
         DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         var tabs = stack.Take(frame.Units(28f));
@@ -290,7 +288,7 @@ public sealed class WalletApplet : IApplet
     private float DrawDaily(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(26f)), "Check-in", Page.Earn);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)),
             pearls.Streak.ToString(CultureInfo.InvariantCulture) + " DAY STREAK",
@@ -321,7 +319,7 @@ public sealed class WalletApplet : IApplet
     private float DrawShop(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "Shop");
         DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         pearls.TryClaim(25, "Shop window", "You opened the Pearl Shop.", "app-shop");
@@ -399,7 +397,7 @@ public sealed class WalletApplet : IApplet
         }
 
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(26f)), spec.Name, Page.Shop);
         var face = stack.Take(frame.Units(120f));
         CardChrome.DrawGold(frame, face);
@@ -451,7 +449,7 @@ public sealed class WalletApplet : IApplet
     private float DrawRewards(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "Items");
         DrawTabs(frame, stack.Take(frame.Units(30f)), ["Earned", "Collection"], ref rewardTab);
         var earned = 0;
@@ -536,7 +534,7 @@ public sealed class WalletApplet : IApplet
     private float DrawHistory(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         WalletChrome.Title(frame, stack.Take(frame.Units(28f)), "History");
         DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         DrawTabs(frame, stack.Take(frame.Units(30f)), ["All", "Earned", "Spent", "Gifts"], ref historyTab);
@@ -567,7 +565,7 @@ public sealed class WalletApplet : IApplet
     private float DrawSpin(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(26f)), "Pearl Spin", Page.Home);
         DrawBalanceStrip(frame, stack.Take(frame.Units(40f)));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)),
@@ -626,7 +624,7 @@ public sealed class WalletApplet : IApplet
     private float DrawShells(in AppletFrame frame, Rect area)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(26f)), "Lucky Shell", Page.Spin);
         DrawBalanceStrip(frame, stack.Take(frame.Units(36f)));
         frame.Text.DrawIn(stack.Take(frame.Units(18f)),

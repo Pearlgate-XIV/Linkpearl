@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Feedback;
 using Linkpearl.Geometry;
@@ -89,7 +88,7 @@ public sealed class FeedbackApplet : IApplet
 
         ScrollSlider.Apply(frame, bodyArea, ref scroll, used);
         frame.Paint.PushClip(bodyArea);
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(bodyArea.Min.X, bodyArea.Min.Y - scroll),
                 new Vector2(bodyArea.Max.X, bodyArea.Min.Y - scroll + MathF.Max(used, bodyArea.Height))),
             StackAxis.Vertical, gap);

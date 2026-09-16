@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -114,7 +113,7 @@ public sealed class MarketApplet : IApplet
 
     private float DrawBrowse(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         MarketChrome.Title(frame, stack.Take(frame.Units(26f)), "Market");
         DrawSearch(frame, stack.Take(frame.Units(40f)));
         DrawScope(frame, stack.Take(frame.Units(30f)), reloadItem: false);
@@ -158,7 +157,7 @@ public sealed class MarketApplet : IApplet
     private float DrawItem(in AppletFrame frame, Rect area)
     {
         var board = market.Board;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawItemBar(frame, stack.Take(frame.Units(24f)));
 
         var head = stack.Take(frame.Units(72f));
@@ -278,7 +277,7 @@ public sealed class MarketApplet : IApplet
         }
     }
 
-    private void DrawHits(in AppletFrame frame, ref Stack stack, IReadOnlyList<GameMarketItem> list)
+    private void DrawHits(in AppletFrame frame, ref LayoutFlow stack, IReadOnlyList<GameMarketItem> list)
     {
         var floors = market.Floors;
         for (var index = 0; index < list.Count; index++)
@@ -312,7 +311,7 @@ public sealed class MarketApplet : IApplet
         }
     }
 
-    private static void DrawStats(in AppletFrame frame, ref Stack stack, MarketBoard board)
+    private static void DrawStats(in AppletFrame frame, ref LayoutFlow stack, MarketBoard board)
     {
         var gap = frame.Units(8f);
         var row = stack.Take(frame.Units(52f));
@@ -582,7 +581,7 @@ public sealed class MarketApplet : IApplet
 
     private bool Fits(bool hq) => quality == 0 || (quality == 2 ? hq : !hq);
 
-    private int Cheapest(MarketBoard board, IReadOnlyList<MarketListing> shown)
+    private int Cheapest(MarketBoard board, List<MarketListing> shown)
     {
         var floor = 0;
         for (var index = 0; index < shown.Count; index++)

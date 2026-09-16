@@ -231,9 +231,9 @@ public sealed class VenuesBook
         Persist();
     }
 
-    private static int IndexOf(IReadOnlyList<string> ids, string id)
+    private static int IndexOf(string[] ids, string id)
     {
-        for (var index = 0; index < ids.Count; index++)
+        for (var index = 0; index < ids.Length; index++)
         {
             if (string.Equals(ids[index], id, StringComparison.Ordinal))
             {

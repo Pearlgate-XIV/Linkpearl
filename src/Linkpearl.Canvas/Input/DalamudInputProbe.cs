@@ -18,7 +18,7 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public bool Live { get; set; } = true;
 
-    public Vector2 Pointer => ImGui.GetMousePos();
+    public Vector2 Cursor => ImGui.GetMousePos();
 
     public Vector2 PointerDelta => ImGui.GetIO().MouseDelta;
 
@@ -78,7 +78,7 @@ public sealed class DalamudInputProbe : IInputProbe
 
     public bool PressedInside(Rect area, PointerButton button = PointerButton.Primary)
     {
-        if (area.Width < 1f || area.Height < 1f || PointerOnClaim() || !area.Contains(Pointer))
+        if (area.Width < 1f || area.Height < 1f || PointerOnClaim() || !area.Contains(Cursor))
         {
             return false;
         }
@@ -129,7 +129,7 @@ public sealed class DalamudInputProbe : IInputProbe
 
     private bool PointerOnClaim()
     {
-        var pointer = Pointer;
+        var pointer = Cursor;
         foreach (var (min, max) in claimed)
         {
             if (pointer.X >= min.X && pointer.X < max.X && pointer.Y >= min.Y && pointer.Y < max.Y)

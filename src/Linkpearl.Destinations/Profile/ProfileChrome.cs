@@ -437,7 +437,7 @@ public sealed class ProfileChrome
         var snapshot = pearl.Current;
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         var head = stack.Take(frame.Units(28f));
         frame.Text.DrawIn(head.LeftSlice(frame.Units(28f)), "‹",
             new TextStyle(FontRole.Title, frame.Theme.Palette.WarmAccent, TextAlign.Center));
@@ -485,7 +485,7 @@ public sealed class ProfileChrome
         synced = true;
     }
 
-    private void DrawNameControls(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawNameControls(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         var patron = GlassName.IsPatron(book, snapshot, display, development);
         if (development)
@@ -577,7 +577,7 @@ public sealed class ProfileChrome
         }
     }
 
-    private void DrawColorDoor(in AppletFrame frame, ref Stack stack, string label, float r, float g, float b,
+    private void DrawColorDoor(in AppletFrame frame, ref LayoutFlow stack, string label, float r, float g, float b,
         ColorWell well, Action<Vector4> set)
     {
         var row = stack.Take(frame.Units(40f));
@@ -655,7 +655,7 @@ public sealed class ProfileChrome
         }
     }
 
-    private static void DrawSelect(in AppletFrame frame, ref Stack stack, string label, string[] options, int selected,
+    private static void DrawSelect(in AppletFrame frame, ref LayoutFlow stack, string label, string[] options, int selected,
         Action<int> pick)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), label,
@@ -896,7 +896,7 @@ public sealed class ProfileChrome
         }
     }
 
-    private void DrawGateRows(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawGateRows(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         var inGame = ShownName.Linked(game.Character.Name, snapshot.MeName);
         DrawStat(frame, stack.Take(frame.Units(40f)), "In game", inGame.Length > 0 ? inGame : "—");
@@ -981,7 +981,7 @@ public sealed class ProfileChrome
     {
         CardChrome.DrawGold(frame, row);
         var pad = row.Inset(new Edges(frame.Units(14f), frame.Units(8f)));
-        var stack = new Stack(pad, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(pad, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "XIVAuth code",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), snapshot.ChallengeCode,

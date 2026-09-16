@@ -115,7 +115,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         var inset = frame.Units(18f);
         var gap = frame.Units(11f);
         var content = frame.Content.Inset(new Edges(inset, frame.Units(8f), inset, frame.Units(6f)));
-        var stack = new Stack(content, StackAxis.Vertical, gap);
+        var stack = new LayoutFlow(content, StackAxis.Vertical, gap);
         var snapshot = pearl.Current;
         badges.Sync(snapshot.SignedIn && snapshot.FounderSeat > 0 && snapshot.FounderSeat <= FounderFaces.SeatLimit,
             game.JobName, development, GlassName.IsPatron(badges, snapshot, display, development));
@@ -310,7 +310,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             hub.Open(DestinationTab.Social, SocialPane.Messages);
         }
 
-        var stack = new Stack(body, StackAxis.Vertical, frame.Units(5f));
+        var stack = new LayoutFlow(body, StackAxis.Vertical, frame.Units(5f));
         var rowH = PreviewRowHeight(frame);
         for (var index = 0; index < received.Count && stack.Remaining.Height >= rowH; index++)
         {
@@ -457,7 +457,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
             hub.Open(DestinationTab.Social, SocialPane.People);
         }
 
-        var stack = new Stack(body, StackAxis.Vertical, frame.Units(5f));
+        var stack = new LayoutFlow(body, StackAxis.Vertical, frame.Units(5f));
         var rowH = PreviewRowHeight(frame);
         for (var index = 0; index < online.Count && stack.Remaining.Height >= rowH; index++)
         {
@@ -485,7 +485,7 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         var gold = frame.Theme.Palette.WarmAccent;
         var inset = area.Inset(new Edges(frame.Units(10f), frame.Units(7f), frame.Units(10f), frame.Units(7f)));
         var headerH = MathF.Max(frame.Text.LineHeight(FontRole.CaptionStrong), frame.Units(13f));
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(5f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(5f));
         var header = stack.Take(headerH);
         HomeMarks.Draw(frame, header.LeftSlice(frame.Units(14f)), mark, gold);
         HomeMarks.Draw(frame.Paint, header.RightSlice(frame.Units(11f)), HomeMark.Chevron, gold with { W = 0.65f });

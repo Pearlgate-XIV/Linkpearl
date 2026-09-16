@@ -22,7 +22,7 @@ internal sealed class PhonePad
 
     public void Compose(in AppletFrame frame, ITalk talk, MessagesSurface messages)
     {
-        var stack = new Stack(frame.Content, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(frame.Content, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Dial a tell, or match a saved number.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
 

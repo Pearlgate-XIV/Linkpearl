@@ -1,7 +1,5 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Layout;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
 using Linkpearl.Platform;

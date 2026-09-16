@@ -42,7 +42,7 @@ public static class WeatherChrome
         SkyChrome.Paint(frame, area, condition, night, radius);
 
         var inset = area.Inset(new Edges(frame.Units(14f), frame.Units(10f), frame.Units(14f), frame.Units(8f)));
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         DrawPlace(frame, stack.Take(frame.Units(16f)), place, ink, false);
         var hero = stack.Take(MathF.Max(frame.Units(36f), inset.Height * 0.34f));
         SkyChrome.Hero(frame, hero.RightSlice(MathF.Min(hero.Height + frame.Units(8f), hero.Width * 0.42f)), condition,
@@ -64,7 +64,7 @@ public static class WeatherChrome
         var night = SkyChrome.IsNight(bells);
         var ink = Ink(night);
         var hush = Hush(night);
-        var stack = new Stack(page, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(page, StackAxis.Vertical, frame.Units(8f));
         DrawBack(frame, stack.Take(frame.Units(22f)), ink);
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), place,
             new TextStyle(FontRole.Title, ink, TextAlign.Center));
@@ -89,7 +89,7 @@ public static class WeatherChrome
     {
         var ink = Ink(night);
         var hush = Hush(night);
-        var stack = new Stack(page, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(page, StackAxis.Vertical, frame.Units(10f));
         DrawBack(frame, stack.Take(frame.Units(22f)), ink);
         DrawTimeCard(frame, stack.Take(frame.Units(148f)), bells, sky, night, ink, hush);
         DrawWeatherGrid(frame, stack.Take(WeatherGridHeight(frame, choices.Count + 1)), choices, sky, night, ink,
@@ -151,7 +151,7 @@ public static class WeatherChrome
     {
         Glass(frame, card, night);
         var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(10f)));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(6f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(6f));
         frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.near"),
             new TextStyle(FontRole.CaptionStrong, hush));
         var strip = stack.TakeRemaining();
@@ -187,7 +187,7 @@ public static class WeatherChrome
     {
         Glass(frame, card, night);
         var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
-        var stack = new Stack(inner, StackAxis.Vertical, 0f);
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, 0f);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("weather.forecast.list"),
             new TextStyle(FontRole.CaptionStrong, hush));
         var show = Math.Min(runs.Count, 5);
@@ -219,7 +219,7 @@ public static class WeatherChrome
     {
         Glass(frame, card, night);
         var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(10f)));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(6f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(6f));
         frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.time"),
             new TextStyle(FontRole.CaptionStrong, hush));
         var shown = sky.TimeLocked
@@ -253,9 +253,9 @@ public static class WeatherChrome
         var knob = new Vector2(track.Min.X + track.Width * t, track.Center.Y);
         frame.Paint.FillCircle(knob, frame.Units(8f), ink);
         var hit = track.Inset(new Edges(0f, -frame.Units(8f)));
-        if (frame.Input.PressedInside(hit) || (frame.Input.IsHeld() && hit.Contains(frame.Input.Pointer)))
+        if (frame.Input.PressedInside(hit) || (frame.Input.IsHeld() && hit.Contains(frame.Input.Cursor)))
         {
-            var next = (int)MathF.Round(Math.Clamp((frame.Input.Pointer.X - track.Min.X) / MathF.Max(1f, track.Width),
+            var next = (int)MathF.Round(Math.Clamp((frame.Input.Cursor.X - track.Min.X) / MathF.Max(1f, track.Width),
                 0f, 1f) * 1439f);
             sky.TryLockTime(next);
         }
@@ -291,7 +291,7 @@ public static class WeatherChrome
     private static void DrawWeatherGrid(in AppletFrame frame, Rect area, IReadOnlyList<SkyChoice> choices,
         ISkyDesk sky, bool night, Vector4 ink, Vector4 hush)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(14f)), PhoneLanguages.T("weather.sky"),
             new TextStyle(FontRole.CaptionStrong, hush));
         var grid = stack.TakeRemaining();
@@ -480,7 +480,7 @@ public static class WeatherChrome
     {
         Glass(frame, card, night);
         var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(4f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(4f));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Hourly forecast",
             new TextStyle(FontRole.CaptionStrong, hush));
         DrawStrip(frame, stack.TakeRemaining(), hours, bells, ink, hush, compact: false);
@@ -522,7 +522,7 @@ public static class WeatherChrome
     {
         Glass(frame, card, night);
         var inner = card.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
-        var stack = new Stack(inner, StackAxis.Vertical, 0f);
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, 0f);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "10-day forecast",
             new TextStyle(FontRole.CaptionStrong, hush));
         var show = Math.Min(runs.Count, 6);
@@ -585,7 +585,7 @@ public static class WeatherChrome
     {
         Glass(frame, area, night);
         var inner = area.Inset(frame.Units(12f));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(4f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(4f));
         frame.Text.DrawIn(stack.Take(frame.Units(14f)), title.ToUpperInvariant(),
             new TextStyle(FontRole.CaptionStrong, hush, scale: 0.86f));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(22f)), value, new TextStyle(FontRole.BodyStrong, ink));

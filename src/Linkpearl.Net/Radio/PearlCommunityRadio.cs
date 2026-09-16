@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Linkpearl.Audio;
 using Linkpearl.Modules;
-using Linkpearl.Net;
 
 namespace Linkpearl.Net.Radio;
 

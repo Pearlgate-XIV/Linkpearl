@@ -44,7 +44,7 @@ public static class AnnouncementChrome
         var hush = Hush(night);
         var accent = Accent(night);
         var inset = area.Inset(new Edges(frame.Units(12f), frame.Units(10f), frame.Units(12f), frame.Units(8f)));
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         DrawSource(frame, stack.Take(frame.Units(18f)), more, hush, accent);
         var footH = frame.Units(14f);
         var room = MathF.Max(frame.Units(22f), stack.Remaining.Height - footH - frame.Units(3f));
@@ -131,7 +131,7 @@ public static class AnnouncementChrome
         var ink = Ink(night);
         var hush = Hush(night);
         var accent = Accent(night);
-        var stack = new Stack(page, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(page, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "LinkPearl Announcements",
             new TextStyle(FontRole.CaptionStrong, accent));
         var titleH = Math.Clamp(frame.Text.MeasureWrapped(title, FontRole.Title, page.Width).Y,

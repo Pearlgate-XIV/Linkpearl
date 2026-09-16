@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Music;
 using Linkpearl.Audio;
 using Linkpearl.Modules;

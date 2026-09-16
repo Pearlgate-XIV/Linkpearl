@@ -86,7 +86,7 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
     {
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         var snapshot = pearl.Current;
 
         if (stories.OverlayOpen && selectedSection == 0)
@@ -147,7 +147,7 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
         }
     }
 
-    private void DrawPlaces(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawPlaces(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         if (!snapshot.SignedIn)
         {
@@ -185,7 +185,7 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
 
     private void DrawWatch(in AppletFrame frame, Rect inset, PearlMarketWatch watch)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         var header = stack.Take(frame.Units(22f));
         var title = MarketTitle(watch);
         frame.Text.DrawEllipsized(header.LeftSlice(header.Width - frame.Units(64f)), title,
@@ -242,7 +242,7 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
 
     private static void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Player", frame.Theme.Palette.WarmAccent);
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), person.DisplayName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));

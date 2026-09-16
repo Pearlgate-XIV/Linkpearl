@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
@@ -218,7 +215,7 @@ internal static class VybeLaneMap
         return weight == 0 ? 0 : Math.Clamp(fit / weight, 0, 100);
     }
 
-    public static void DrawBars(in AppletFrame frame, ref Stack stack, int[]? marks, bool night)
+    public static void DrawBars(in AppletFrame frame, ref LayoutFlow stack, int[]? marks, bool night)
     {
         var rows = Ranked(marks);
         if (rows.Length == 0)
@@ -234,7 +231,7 @@ internal static class VybeLaneMap
         }
     }
 
-    public static bool DrawFold(in AppletFrame frame, ref Stack stack, int[]? marks, bool night, bool open)
+    public static bool DrawFold(in AppletFrame frame, ref LayoutFlow stack, int[]? marks, bool night, bool open)
     {
         var rows = Ranked(marks);
         if (rows.Length == 0)
@@ -302,7 +299,7 @@ internal static class VybeLaneMap
 
         if (nextDrag == name && frame.Input.IsHeld())
         {
-            set((int)Math.Clamp(MathF.Round(100f * (frame.Input.Pointer.X - track.Min.X) / MathF.Max(track.Width, 1f)),
+            set((int)Math.Clamp(MathF.Round(100f * (frame.Input.Cursor.X - track.Min.X) / MathF.Max(track.Width, 1f)),
                 0f, 100f));
             return true;
         }

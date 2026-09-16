@@ -78,7 +78,7 @@ internal sealed class AnnouncementShelf
     {
         var inset = frame.Units(16f);
         var content = frame.Content.Inset(new Edges(inset, frame.Units(8f), inset, frame.Units(10f)));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(8f));
         AnnouncementChrome.Toolbar(frame, stack.Take(frame.Units(36f)), "Announcements", string.Empty, night, Close,
             null);
 
@@ -106,7 +106,7 @@ internal sealed class AnnouncementShelf
     {
         var inset = frame.Units(16f);
         var content = frame.Content.Inset(new Edges(inset, frame.Units(8f), inset, frame.Units(10f)));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         AnnouncementChrome.Toolbar(frame, stack.Take(frame.Units(36f)), "Story", string.Empty, night,
             () => selectedId = string.Empty, null);
         AnnouncementChrome.Article(frame, stack.TakeRemaining(), notice.Title,

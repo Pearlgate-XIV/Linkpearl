@@ -235,13 +235,13 @@ public sealed class AppsDock
         {
             tracking = true;
             dragging = false;
-            grabOrigin = input.Pointer;
+            grabOrigin = input.Cursor;
             grabSlide = slide;
         }
 
         if (tracking && input.IsHeld())
         {
-            var delta = input.Pointer - grabOrigin;
+            var delta = input.Cursor - grabOrigin;
             if (!dragging && MathF.Abs(delta.X) >= threshold && MathF.Abs(delta.X) > MathF.Abs(delta.Y) * 1.15f)
             {
                 dragging = true;

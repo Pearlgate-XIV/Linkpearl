@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
@@ -13,7 +11,7 @@ public sealed partial class MusicApplet
         MusicRoster.Directory(state, pearl.Current, MergedLive(), community.Mine, community.Directory,
             community.Broadcasting, MarkedName(), display.OwnTimeZoneId);
 
-    private void DrawPersonSection(in AppletFrame frame, ref Stack stack, string title, IReadOnlyList<MusicPerson> rows)
+    private void DrawPersonSection(in AppletFrame frame, ref LayoutFlow stack, string title, IReadOnlyList<MusicPerson> rows)
     {
         if (rows.Count == 0)
         {
@@ -146,7 +144,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private IReadOnlyList<MusicPerson> FollowingProfiles()
+    private List<MusicPerson> FollowingProfiles()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rows = new List<MusicPerson>();
@@ -181,7 +179,7 @@ public sealed partial class MusicApplet
         return rows;
     }
 
-    private IReadOnlyList<MusicPerson> FollowerProfiles()
+    private List<MusicPerson> FollowerProfiles()
     {
         var mine = MusicRoster.SelfId(pearl.Current);
         var rows = new List<MusicPerson>();
@@ -200,7 +198,7 @@ public sealed partial class MusicApplet
         return rows;
     }
 
-    private IReadOnlyList<MusicPerson> OtherFollowerProfiles(string ownerId)
+    private List<MusicPerson> OtherFollowerProfiles(string ownerId)
     {
         var people = Roster();
         var owner = MusicRoster.Find(people, ownerId);
@@ -216,7 +214,7 @@ public sealed partial class MusicApplet
         return rows;
     }
 
-    private IReadOnlyList<MusicPerson> OtherFollowingProfiles(string ownerId)
+    private List<MusicPerson> OtherFollowingProfiles(string ownerId)
     {
         var people = Roster();
         var rows = new List<MusicPerson>();

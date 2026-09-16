@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Media;
 using Linkpearl.Net;

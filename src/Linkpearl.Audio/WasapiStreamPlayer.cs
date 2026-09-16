@@ -1,4 +1,3 @@
-using System.Net.Http;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
@@ -209,7 +208,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         }
     }
 
-    public void Resume()
+    public void Unpause()
     {
         HandsetTune tune;
         lock (gate)
@@ -231,7 +230,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         PlayLocal(tune);
     }
 
-    public void Stop()
+    public void Halt()
     {
         lock (gate)
         {
@@ -252,7 +251,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
 
         if (Phase == HandsetAudioPhase.Paused)
         {
-            Resume();
+            Unpause();
             return;
         }
 
@@ -269,7 +268,7 @@ public sealed class WasapiStreamPlayer : IHandsetAudio
         }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose() => Halt();
 
     private void Open(HandsetTune tune, int ticket)
     {

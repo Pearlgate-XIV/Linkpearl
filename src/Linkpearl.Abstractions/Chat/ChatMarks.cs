@@ -344,7 +344,7 @@ public sealed class ChatMarks
             Remember(menuKey, glyph);
             faceOn = false;
         });
-        if (frame.Input.ConsumeClick(bounds) && !sheet.Contains(frame.Input.Pointer))
+        if (frame.Input.ConsumeClick(bounds) && !sheet.Contains(frame.Input.Cursor))
         {
             faceOn = false;
         }

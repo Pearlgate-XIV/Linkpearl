@@ -1,4 +1,3 @@
-using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Feedback;
 using Linkpearl.Cards;
@@ -182,7 +181,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         var snapshot = pearl.Current;
 
         DrawHeading(frame, stack.Take(frame.Units(30f)));
@@ -209,7 +208,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
     {
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         DrawHeading(frame, stack.Take(frame.Units(30f)));
         DrawSectionTabs(frame, stack.Take(frame.Units(32f)));
         StoriesSurface.DrawRail(frame, stack.Take(frame.Units(72f)), pearl.Current,
@@ -229,7 +228,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         DrawHeading(frame, stack.Take(frame.Units(30f)));
         DrawSectionTabs(frame, stack.Take(frame.Units(32f)));
         var restArea = stack.TakeRemaining();
@@ -284,14 +283,14 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         thread is { Kind: TalkKind.Party or TalkKind.Alliance or TalkKind.Linkshell or TalkKind.CrossWorldLinkshell
             or TalkKind.FreeCompany or TalkKind.Novice };
 
-    private float DrawPhone(in AppletFrame frame, Stack stack, Rect content, float inset)
+    private float DrawPhone(in AppletFrame frame, LayoutFlow stack, Rect content, float inset)
     {
         var rest = stack.TakeRemaining();
         phone.Compose(frame.WithContent(rest), talk, messages);
         return content.Height + inset * 2f;
     }
 
-    private void DrawPeople(in AppletFrame frame, Stack stack, PearlSnapshot snapshot)
+    private void DrawPeople(in AppletFrame frame, LayoutFlow stack, PearlSnapshot snapshot)
     {
         if (snapshot.SignedIn)
         {
@@ -313,7 +312,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var shifted = body.Translate(new Vector2(0f, -peopleScroll));
         var plane = Math.Max(body.Height + 1f,
             frame.Units(80f) * (friends.Count + peers.Count + hints.Count + snapshot.People.Length + 8));
-        var list = new Stack(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
+        var list = new LayoutFlow(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
             frame.Units(10f));
         frame.Paint.PushClip(body);
 
@@ -341,7 +340,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         DrawFriendMenu(frame, body);
     }
 
-    private void DrawFindFriends(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawFindFriends(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         if (snapshot.MyNumber.Length > 0)
         {
@@ -491,7 +490,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
             on ? new Vector4(0.96f, 0.90f, 0.78f, 1f) : frame.Theme.Palette.InkMuted);
     }
 
-    private int DrawEorzeaFriends(in AppletFrame frame, ref Stack stack, IReadOnlyList<GameFriend> friends,
+    private int DrawEorzeaFriends(in AppletFrame frame, ref LayoutFlow stack, IReadOnlyList<GameFriend> friends,
         string query)
     {
         var matched = new List<GameFriend>(friends.Count);
@@ -569,7 +568,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return name != 0 ? name : string.Compare(left.World, right.World, StringComparison.OrdinalIgnoreCase);
     }
 
-    private int DrawFriendGroup(in AppletFrame frame, ref Stack stack, string title, List<GameFriend> group)
+    private int DrawFriendGroup(in AppletFrame frame, ref LayoutFlow stack, string title, List<GameFriend> group)
     {
         if (group.Count == 0)
         {
@@ -586,7 +585,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return group.Count;
     }
 
-    private void DrawFriendCard(in AppletFrame frame, ref Stack stack, GameFriend friend)
+    private void DrawFriendCard(in AppletFrame frame, ref LayoutFlow stack, GameFriend friend)
     {
         var gate = FindGatePerson(friend.Name);
         var row = stack.Take(frame.Units(gate is null ? 56f : 72f));
@@ -623,7 +622,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         frame.Text.DrawIn(area, "★", new TextStyle(FontRole.Title, ink, TextAlign.Center));
     }
 
-    private int DrawTalkedPeers(in AppletFrame frame, ref Stack stack, IReadOnlyList<TalkPeer> peers,
+    private int DrawTalkedPeers(in AppletFrame frame, ref LayoutFlow stack, IReadOnlyList<TalkPeer> peers,
         IReadOnlyList<GameFriend> friends, string query)
     {
         var shown = 0;
@@ -658,7 +657,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return shown;
     }
 
-    private int DrawNearbyHints(in AppletFrame frame, ref Stack stack, IReadOnlyList<GamePeerHint> hints,
+    private int DrawNearbyHints(in AppletFrame frame, ref LayoutFlow stack, IReadOnlyList<GamePeerHint> hints,
         IReadOnlyList<TalkPeer> peers, IReadOnlyList<GameFriend> friends, string query)
     {
         var shown = 0;
@@ -694,7 +693,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         return shown;
     }
 
-    private int DrawGateFriends(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot,
+    private int DrawGateFriends(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot,
         IReadOnlyList<TalkPeer> peers, IReadOnlyList<GameFriend> friends, string query)
     {
         var shown = 0;
@@ -761,7 +760,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
         if (frame.Input.ConsumeClick(row, PointerButton.Secondary))
         {
-            menu = new FriendMenu(name, world, ContactId(name), frame.Input.Pointer);
+            menu = new FriendMenu(name, world, ContactId(name), frame.Input.Cursor);
             return;
         }
 
@@ -941,7 +940,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private static void DrawGameFriend(in AppletFrame frame, Rect inset, GameFriend friend, PearlPerson? gate)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), friend.Name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var status = friend.Online ? "Online" : "Offline";
@@ -972,7 +971,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private void DrawPeer(in AppletFrame frame, Rect inset, TalkPeer peer)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), peer.Name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var gate = peer.OnPearlgate ? "Pearlgate" : "Tell";
@@ -1007,7 +1006,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private static void DrawHint(in AppletFrame frame, Rect inset, GamePeerHint hint)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), hint.Name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var detail = hint.World.Length > 0 ? hint.Reason + " · " + hint.World : hint.Reason;
@@ -1017,7 +1016,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), person.DisplayName,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var gate = GateLine(person.Handle, person.PhoneNumber);

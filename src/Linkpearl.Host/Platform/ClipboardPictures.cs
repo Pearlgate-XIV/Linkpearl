@@ -1,8 +1,6 @@
 using System.Collections.Specialized;
-using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
 namespace Linkpearl.Host.Platform;
 
@@ -61,7 +59,7 @@ internal static class ClipboardPictures
         }
     }
 
-    private static IReadOnlyList<string> Export()
+    private static List<string> Export()
     {
         try
         {

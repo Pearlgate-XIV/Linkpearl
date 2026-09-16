@@ -1,7 +1,5 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Input;
 using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Painting;
@@ -275,7 +273,7 @@ internal static class MusicChrome
         frame.Text.DrawEllipsized(area, label, new TextStyle(FontRole.BodyStrong, Ink));
     }
 
-    public static void FitCopy(in AppletFrame frame, ref Stack stack, string text, Vector4 color,
+    public static void FitCopy(in AppletFrame frame, ref LayoutFlow stack, string text, Vector4 color,
         FontRole role = FontRole.Caption)
     {
         if (text.Length == 0)
@@ -424,17 +422,17 @@ internal static class MusicChrome
         return frame.Input.ConsumeClick(row.LeftSlice(frame.Units(90f)));
     }
 
-    public static Stack BeginSheet(in AppletFrame frame, Rect view, MusicState state, float gap)
+    public static LayoutFlow BeginSheet(in AppletFrame frame, Rect view, MusicState state, float gap)
     {
         var content = MathF.Max(view.Height + frame.Units(8f), state.SheetHeight);
         Wheel(frame, view, state, content);
         var sheet = Rect.FromSize(new Vector2(view.Min.X, view.Min.Y - state.Scroll),
             new Vector2(view.Width, content));
         frame.Paint.PushClip(view);
-        return new Stack(sheet, StackAxis.Vertical, gap);
+        return new LayoutFlow(sheet, StackAxis.Vertical, gap);
     }
 
-    public static void EndSheet(in AppletFrame frame, Rect view, MusicState state, ref Stack stack)
+    public static void EndSheet(in AppletFrame frame, Rect view, MusicState state, ref LayoutFlow stack)
     {
         var used = stack.Remaining.Min.Y - (view.Min.Y - state.Scroll);
         state.SheetHeight = MathF.Max(used + frame.Units(16f), view.Height);
@@ -576,14 +574,14 @@ internal static class MusicChrome
         DockNote(frame.Paint, left, amount > 0.12f ? markOn : markOff);
         DockSpeaker(frame.Paint, right, amount > 0.88f ? markOn : markOff);
         var input = frame.Input;
-        if (input.WasPressed(row) || (input.IsHeld() && row.Contains(input.Pointer) && !dragging))
+        if (input.WasPressed(row) || (input.IsHeld() && row.Contains(input.Cursor) && !dragging))
         {
             dragging = true;
         }
 
         if (dragging && input.IsHeld())
         {
-            var next = Math.Clamp((input.Pointer.X - row.Min.X) / MathF.Max(row.Width, 1f), 0f, 1f);
+            var next = Math.Clamp((input.Cursor.X - row.Min.X) / MathF.Max(row.Width, 1f), 0f, 1f);
             set(next);
             input.Claim(row);
             input.ConsumeClick(row);
@@ -672,7 +670,7 @@ internal static class MusicChrome
         if (input.WasPressed(track) || (dragging && input.IsHeld()))
         {
             dragging = true;
-            var t = travel <= 0f ? 0f : (input.Pointer.Y - track.Min.Y - thumbH * 0.5f) / travel;
+            var t = travel <= 0f ? 0f : (input.Cursor.Y - track.Min.Y - thumbH * 0.5f) / travel;
             offset = Math.Clamp(t, 0f, 1f) * max;
             input.Claim(track);
             input.ConsumeClick(track);
@@ -715,14 +713,14 @@ internal static class MusicChrome
             ((int)MathF.Round(amount * 100f)).ToString(CultureInfo.InvariantCulture) + "%",
             new TextStyle(FontRole.Caption, Mute, TextAlign.Center));
         var input = frame.Input;
-        if (input.WasPressed(area) || input.IsHeld() && area.Contains(input.Pointer) && !dragging)
+        if (input.WasPressed(area) || input.IsHeld() && area.Contains(input.Cursor) && !dragging)
         {
             dragging = true;
         }
 
         if (dragging && input.IsHeld())
         {
-            var next = Math.Clamp((bar.Max.Y - input.Pointer.Y) / MathF.Max(bar.Height, 1f), 0f, 1f);
+            var next = Math.Clamp((bar.Max.Y - input.Cursor.Y) / MathF.Max(bar.Height, 1f), 0f, 1f);
             var changed = Math.Abs(next - amount) > 0.001f;
             if (changed)
             {

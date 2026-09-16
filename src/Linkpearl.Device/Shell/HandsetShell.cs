@@ -1,4 +1,3 @@
-using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
@@ -18,7 +17,6 @@ using Linkpearl.Painting;
 using Linkpearl.Persistence;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
-using Linkpearl.Theming;
 using Linkpearl.Time;
 
 namespace Linkpearl.Device.Shell;
@@ -35,10 +33,10 @@ public sealed class HandsetShell
     private readonly ITalk talk;
     private readonly IWifeSync wife;
     private readonly DestinationHub hub;
-    private readonly RouteStack router;
+    private readonly RouteTrail router;
     private bool pocketRequest;
     private bool powerOffRequest;
-    private readonly IReadOnlyList<IApplet> apps;
+    private readonly List<IApplet> apps;
     private readonly GlassEdit glass = new();
     private readonly AppsDrawer appsDrawer;
     private readonly QuickAppsTray quickApps = new();
@@ -56,7 +54,7 @@ public sealed class HandsetShell
     private DestinationTab currentTab = DestinationTab.Home;
 
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
-        DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteStack router,
+        DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteTrail router,
         ITalk talk, IReadOnlyList<IApplet> applets, IWifeSync wife, NoticeLedger notices, IWeatherOracle weather,
         ISkyDesk sky, bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks,
         ISettings<SearchScratch> searchDraft)
@@ -176,8 +174,8 @@ public sealed class HandsetShell
         var showPager = !appletOpen && !destLane && !search.IsOpen && !dock.IsOpen && !control.IsOpen &&
                         !recents.IsOpen && !quickApps.IsOpen;
         var canSwipe = showPager && !awayFromHomeDash &&
-                       !studio.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld()) &&
-                       !appsDrawer.BlocksPager(outerFrame.Input.Pointer, outerFrame.Input.IsHeld()) &&
+                       !studio.BlocksPager(outerFrame.Input.Cursor, outerFrame.Input.IsHeld()) &&
+                       !appsDrawer.BlocksPager(outerFrame.Input.Cursor, outerFrame.Input.IsHeld()) &&
                        !banner.BlocksPager;
         var swiped = appsDock.CaptureSwipe(outerFrame.Input, swipe, scale, canSwipe);
         var handleTapped = showPager && appsDock.ConsumeHandle(outerFrame.Input, screen, scale);
@@ -780,7 +778,7 @@ public sealed class HandsetShell
         return null;
     }
 
-    private static IReadOnlyList<IApplet> LifeApps(IReadOnlyList<IApplet> applets)
+    private static List<IApplet> LifeApps(IReadOnlyList<IApplet> applets)
     {
         var list = new List<IApplet>();
         for (var index = 0; index < applets.Count; index++)

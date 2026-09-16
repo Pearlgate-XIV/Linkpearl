@@ -36,7 +36,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         drawList.AddRect(area.Min, area.Max, ImGui.GetColorU32(color), radius, ToDrawFlags(corners), thickness);
     }
 
-    public void FillGradient(Rect area, Vector4 from, Vector4 stop, GradientAxis axis)
+    public void FillGradient(Rect area, Vector4 from, Vector4 last, GradientAxis axis)
     {
         if (area.IsEmpty)
         {
@@ -44,7 +44,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         }
 
         var fromColor = ImGui.GetColorU32(from);
-        var toColor = ImGui.GetColorU32(stop);
+        var toColor = ImGui.GetColorU32(last);
         if (axis == GradientAxis.Vertical)
         {
             drawList.AddRectFilledMultiColor(area.Min, area.Max, fromColor, fromColor, toColor, toColor);
@@ -183,7 +183,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         drawList.PathFillConvex(ImGui.GetColorU32(color));
     }
 
-    public void FillAppTile(Rect area, Vector4 from, Vector4 stop)
+    public void FillAppTile(Rect area, Vector4 from, Vector4 last)
     {
         if (area.IsEmpty)
         {
@@ -191,7 +191,7 @@ public sealed class DalamudPaintSurface : IPaintSurface
         }
 
         var top = new Vector4(from.X, from.Y, from.Z, 1f);
-        var bottom = new Vector4(stop.X, stop.Y, stop.Z, 1f);
+        var bottom = new Vector4(last.X, last.Y, last.Z, 1f);
         FillAppTile(area, Mix(top, bottom, 0.55f));
 
         const int slices = 40;

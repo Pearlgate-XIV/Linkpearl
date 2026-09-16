@@ -6,7 +6,6 @@ using HousingAddress =
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
 using Dalamud.Plugin.Services;
-using Linkpearl.Platform;
 using AetheryteSheet = Lumina.Excel.Sheets.Aetheryte;
 
 namespace Linkpearl.Platform.Ffxiv;

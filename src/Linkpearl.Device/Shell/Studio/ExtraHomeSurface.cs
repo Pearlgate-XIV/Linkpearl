@@ -18,7 +18,7 @@ internal static class ExtraHomeSurface
 
         var inset = area.Inset(new Edges(frame.Units(28f), frame.Units(44f), frame.Units(28f), frame.Units(28f)));
         var inner = inset.Inset(new Edges(frame.Units(14f), frame.Units(16f), frame.Units(14f), frame.Units(16f)));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(10f));
         var gold = frame.Theme.Palette.WarmAccent;
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "SCREEN " + (index + 2).ToString(CultureInfo.InvariantCulture),
             new TextStyle(FontRole.CaptionStrong, gold));

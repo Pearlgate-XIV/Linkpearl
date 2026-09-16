@@ -2,7 +2,6 @@ using Linkpearl.Applets;
 using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
-using Linkpearl.Layout;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
 using Linkpearl.Shell;
@@ -198,7 +197,7 @@ public sealed class AppsDrawer
         var body = new Rect(new Vector2(inner.Min.X, cursor), inner.Max);
         var scrolled = body.Translate(new Vector2(0f, -scroll.Offset));
         var dragging = dragId is not null;
-        var live = !menuOpen && (body.Contains(frame.Input.Pointer) || dragging);
+        var live = !menuOpen && (body.Contains(frame.Input.Cursor) || dragging);
         var list = live ? frame : frame.WithInput(SilentInput.Instance);
         frame.Paint.PushClip(body);
         var height = page == Page.Manage
@@ -212,7 +211,7 @@ public sealed class AppsDrawer
             frame.Input.ConsumeClick(inner, PointerButton.Secondary))
         {
             menuOpen = true;
-            menuAt = frame.Input.Pointer;
+            menuAt = frame.Input.Cursor;
             var hit = HitId(menuAt);
             menuFolder = hit is not null && display.TryFolder(hit, out _, out _) ? hit : null;
         }
@@ -392,7 +391,7 @@ public sealed class AppsDrawer
         {
             if (dragId is not null)
             {
-                ResolveDrop(frame.Input.Pointer);
+                ResolveDrop(frame.Input.Cursor);
             }
 
             pressId = null;
@@ -403,7 +402,7 @@ public sealed class AppsDrawer
         else if (interact && pressId is { } holding)
         {
             var elapsed = Environment.TickCount64 - pressAt;
-            var travel = (frame.Input.Pointer - pressPoint).Length();
+            var travel = (frame.Input.Cursor - pressPoint).Length();
             if (glass.Active && travel > frame.Units(6f))
             {
                 dragId = holding;
@@ -442,7 +441,7 @@ public sealed class AppsDrawer
             WatchEdge(frame, body);
         }
 
-        var hoverDrop = dragId is not null ? HitFolderTarget(frame.Input.Pointer) : null;
+        var hoverDrop = dragId is not null ? HitFolderTarget(frame.Input.Cursor) : null;
         for (var index = 0; index < visible.Count; index++)
         {
             var col = index % columns;
@@ -470,7 +469,7 @@ public sealed class AppsDrawer
         if (interact && dragId is { } flying)
         {
             var size = new Vector2(area.Width / columns, cell);
-            var floatTile = Rect.FromSize(frame.Input.Pointer - size * 0.5f, size);
+            var floatTile = Rect.FromSize(frame.Input.Cursor - size * 0.5f, size);
             DrawHomeTile(frame, floatTile, flying, hush, false);
         }
 
@@ -548,7 +547,7 @@ public sealed class AppsDrawer
         {
             pressId = id;
             pressAt = Environment.TickCount64;
-            pressPoint = frame.Input.Pointer;
+            pressPoint = frame.Input.Cursor;
         }
 
         if (!frame.Input.ConsumeClick(cell))
@@ -693,7 +692,7 @@ public sealed class AppsDrawer
     private void WatchEdge(in AppletFrame frame, Rect body)
     {
         var edge = frame.Units(28f);
-        var at = frame.Input.Pointer;
+        var at = frame.Input.Cursor;
         var side = 0;
         if (at.X >= body.Max.X - edge)
         {
@@ -783,14 +782,14 @@ public sealed class AppsDrawer
         frame.Input.ConsumeClick(box);
         frame.Input.ConsumeClick(box, PointerButton.Secondary);
         frame.Input.Claim(box);
-        if (box.Contains(frame.Input.Pointer))
+        if (box.Contains(frame.Input.Cursor))
         {
             return;
         }
 
         if (frame.Input.ConsumeClick(inner, PointerButton.Secondary))
         {
-            menuAt = frame.Input.Pointer;
+            menuAt = frame.Input.Cursor;
             var hit = HitId(menuAt);
             menuFolder = hit is not null && display.TryFolder(hit, out _, out _) ? hit : null;
             return;

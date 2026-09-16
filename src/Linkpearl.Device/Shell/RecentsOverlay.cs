@@ -48,7 +48,7 @@ public sealed class RecentsOverlay
         tossing = false;
     }
 
-    public void Draw(in AppletFrame frame, Rect screen, RouteStack router, IReadOnlyList<IApplet> apps,
+    public void Draw(in AppletFrame frame, Rect screen, RouteTrail router, IReadOnlyList<IApplet> apps,
         DisplayPreferences display, IClock clock, Action<string> resume)
     {
         if (!open)
@@ -187,7 +187,7 @@ public sealed class RecentsOverlay
             return;
         }
 
-        if (!tossing && !swept && !appsBand.Contains(input.Pointer) && input.ConsumeClick(screen))
+        if (!tossing && !swept && !appsBand.Contains(input.Cursor) && input.ConsumeClick(screen))
         {
             open = false;
         }
@@ -262,13 +262,13 @@ public sealed class RecentsOverlay
             tracking = true;
             dragging = false;
             swept = false;
-            grab = input.Pointer;
+            grab = input.Cursor;
             grabSlide = slide;
         }
 
         if (tracking && input.IsHeld())
         {
-            var delta = input.Pointer - grab;
+            var delta = input.Cursor - grab;
             if (!dragging && MathF.Abs(delta.X) >= threshold)
             {
                 dragging = true;

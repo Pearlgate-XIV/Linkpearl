@@ -48,7 +48,7 @@ public sealed class ResizeGrip
             return ResizeCorner.None;
         }
 
-        var pointer = input.Pointer;
+        var pointer = input.Cursor;
         var board = shell.IsEmpty ? window : shell;
         var hovered = HitCorner(board, GripUnits * scale, caseRadius, roundCorners, pointer);
         if (!dragging && OnGlass(glass, pointer))

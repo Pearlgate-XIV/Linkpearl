@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Feedback;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;

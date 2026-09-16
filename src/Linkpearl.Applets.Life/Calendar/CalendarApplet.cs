@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Venues;
 using Linkpearl.Calendar;
 using Linkpearl.Cards;
@@ -224,7 +223,7 @@ public sealed class CalendarApplet : IApplet, IDisposable
 
     private void DrawEditor(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         var heading = draftKind == CalendarKind.Reminder ? "Reminder" : "Event";
         frame.Text.DrawIn(stack.Take(frame.Units(28f)), heading,
             new TextStyle(FontRole.Title, CalendarChrome.Ink(true)));
@@ -319,7 +318,7 @@ public sealed class CalendarApplet : IApplet, IDisposable
         });
     }
 
-    private static IReadOnlyList<CalendarDayLine> ToChrome(IReadOnlyList<CalendarAgendaLine> lines)
+    private static CalendarDayLine[] ToChrome(IReadOnlyList<CalendarAgendaLine> lines)
     {
         if (lines.Count == 0)
         {

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -97,7 +96,7 @@ public sealed class DiscordFeedbackDesk : IFeedbackDesk, IDisposable
     public void Dispose() => http.Dispose();
 
     private async Task Post(string category, string body, string who, string world, string version,
-        IReadOnlyList<string> files)
+        List<string> files)
     {
         var skipped = new List<string>();
         var streams = new List<FileStream>();

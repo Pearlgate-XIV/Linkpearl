@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using Linkpearl.Modules;
 using Linkpearl.Net;
-using Linkpearl.Painting;
 using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Vybe;

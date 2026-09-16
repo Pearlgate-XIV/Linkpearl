@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using System.Text;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Net;
 using Linkpearl.Painting;

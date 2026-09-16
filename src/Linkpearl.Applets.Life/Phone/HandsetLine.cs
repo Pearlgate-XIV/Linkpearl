@@ -196,7 +196,7 @@ public sealed class HandsetLine : IHandsetLine
         }
     }
 
-    public bool Call(string? number = null)
+    public bool PlaceCall(string? number = null)
     {
         var target = LineOf(number ?? dial);
         if (target.Length == 0 || state != LineState.Idle)
@@ -239,7 +239,7 @@ public sealed class HandsetLine : IHandsetLine
             ringFor = 0f;
         }
 
-        sense.Stop();
+        sense.Halt();
         sense.StopMonitor();
     }
 
@@ -418,21 +418,21 @@ public sealed class HandsetLine : IHandsetLine
         sense.MicGain = display.MicVolume * 2f;
         if (state == LineState.Idle)
         {
-            sense.Stop();
+            sense.Halt();
             sense.StopMonitor();
             return;
         }
 
         if (micMuted)
         {
-            sense.Stop();
+            sense.Halt();
         }
         else
         {
             var mic = display.ActiveCallMicrophone;
             if (mic.Length > 0)
             {
-                sense.Select(mic.StartsWith("in:", StringComparison.Ordinal) ||
+                sense.Choose(mic.StartsWith("in:", StringComparison.Ordinal) ||
                              mic.StartsWith("wavein:", StringComparison.Ordinal)
                     ? mic
                     : "in:" + mic);

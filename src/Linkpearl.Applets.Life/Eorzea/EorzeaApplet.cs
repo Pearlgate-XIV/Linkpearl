@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Destinations;
 using Linkpearl.Geometry;
@@ -111,7 +110,7 @@ public sealed class EorzeaApplet : IApplet
         var body = page.Inset(new Edges(0f, tabH + gap, 0f, 0f));
         frame.Paint.PushClip(body);
         var shifted = body.Translate(new Vector2(0f, -scroll));
-        var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(6f));
+        var stack = new LayoutFlow(shifted, StackAxis.Vertical, frame.Units(6f));
         if (section == 1)
         {
             DrawSocial(frame, ref stack, body);
@@ -156,7 +155,7 @@ public sealed class EorzeaApplet : IApplet
         }
     }
 
-    private void DrawCharacter(in AppletFrame frame, ref Stack stack, Rect clip)
+    private void DrawCharacter(in AppletFrame frame, ref LayoutFlow stack, Rect clip)
     {
         var job = game.JobName.Length > 0 ? game.JobName : "Not logged in";
         var zone = game.ZoneName.Length > 0 ? game.ZoneName : string.Empty;
@@ -181,7 +180,7 @@ public sealed class EorzeaApplet : IApplet
         JumpHub(frame, ref stack, clip, "Retainers", RetainerLine(), DestinationTab.You, 0);
     }
 
-    private void DrawSocial(in AppletFrame frame, ref Stack stack, Rect clip)
+    private void DrawSocial(in AppletFrame frame, ref LayoutFlow stack, Rect clip)
     {
         JumpHub(frame, ref stack, clip, "Friends", FriendLine(), DestinationTab.Social, SocialPane.People);
         Menu(frame, ref stack, clip, "Friend List", string.Empty, "In-game list", GameMenu.FriendList);
@@ -196,7 +195,7 @@ public sealed class EorzeaApplet : IApplet
         Menu(frame, ref stack, clip, "Player Search", string.Empty, string.Empty, GameMenu.PlayerSearch);
     }
 
-    private void DrawDuty(in AppletFrame frame, ref Stack stack, Rect clip)
+    private void DrawDuty(in AppletFrame frame, ref LayoutFlow stack, Rect clip)
     {
         var duty = game.IsInDuty ? "In a duty" : "Not in a duty";
         Menu(frame, ref stack, clip, "Duty Finder", duty, PartyLine(), GameMenu.DutyFinder);
@@ -206,7 +205,7 @@ public sealed class EorzeaApplet : IApplet
         Menu(frame, ref stack, clip, "Novice Network", string.Empty, string.Empty, GameMenu.NoviceNetwork);
     }
 
-    private void OpenPurse(in AppletFrame frame, ref Stack stack, Rect clip)
+    private void OpenPurse(in AppletFrame frame, ref LayoutFlow stack, Rect clip)
     {
         var row = TakeRow(frame, ref stack, "Currency", GilLine());
         if (Hit(frame, clip, row))
@@ -235,7 +234,7 @@ public sealed class EorzeaApplet : IApplet
         var body = page.Inset(new Edges(0f, frame.Units(36f), 0f, 0f));
         frame.Paint.PushClip(body);
         var shifted = body.Translate(new Vector2(0f, -scroll));
-        var stack = new Stack(shifted, StackAxis.Vertical, frame.Units(4f));
+        var stack = new LayoutFlow(shifted, StackAxis.Vertical, frame.Units(4f));
         var rows = game.Currencies;
         var group = "\u0000";
         for (var index = 0; index < rows.Count; index++)
@@ -315,7 +314,7 @@ public sealed class EorzeaApplet : IApplet
             currency.WeeklyCap.ToString("N0", CultureInfo.CurrentCulture) + ")";
     }
 
-    private void Menu(in AppletFrame frame, ref Stack stack, Rect clip, string title, string detail, string kicker,
+    private void Menu(in AppletFrame frame, ref LayoutFlow stack, Rect clip, string title, string detail, string kicker,
         GameMenu menu)
     {
         var row = TakeRow(frame, ref stack, title, Line(detail, kicker));
@@ -325,7 +324,7 @@ public sealed class EorzeaApplet : IApplet
         }
     }
 
-    private void JumpHub(in AppletFrame frame, ref Stack stack, Rect clip, string title, string detail,
+    private void JumpHub(in AppletFrame frame, ref LayoutFlow stack, Rect clip, string title, string detail,
         DestinationTab tab, int pane)
     {
         var row = TakeRow(frame, ref stack, title, Line(detail, "On the phone"));
@@ -335,7 +334,7 @@ public sealed class EorzeaApplet : IApplet
         }
     }
 
-    private static void JumpPhone(in AppletFrame frame, ref Stack stack, Rect clip, string title, string detail,
+    private static void JumpPhone(in AppletFrame frame, ref LayoutFlow stack, Rect clip, string title, string detail,
         string appletId)
     {
         var row = TakeRow(frame, ref stack, title, Line(detail, "On the phone"));
@@ -345,7 +344,7 @@ public sealed class EorzeaApplet : IApplet
         }
     }
 
-    private static Rect TakeRow(in AppletFrame frame, ref Stack stack, string title, string line)
+    private static Rect TakeRow(in AppletFrame frame, ref LayoutFlow stack, string title, string line)
     {
         var row = stack.Take(line.Length == 0 ? frame.Units(44f) : frame.Units(52f));
         CardChrome.DrawGold(frame, row);
@@ -388,7 +387,7 @@ public sealed class EorzeaApplet : IApplet
             return;
         }
 
-        var lines = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var lines = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawEllipsized(lines.Take(frame.Units(18f)), title,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         frame.Text.DrawEllipsized(lines.Take(frame.Units(16f)), line,

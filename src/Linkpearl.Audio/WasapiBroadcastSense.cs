@@ -190,7 +190,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
                 nextMic.StartsWith("in:", StringComparison.Ordinal)
                 ? nextMic
                 : "in:" + nextMic;
-            Select(tapId);
+            Choose(tapId);
         }
 
         if (remonitor)
@@ -362,7 +362,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         }
     }
 
-    public void Select(string id)
+    public void Choose(string id)
     {
         if (id.Length == 0)
         {
@@ -400,7 +400,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         if (restart)
         {
             var keepMonitor = Monitoring;
-            Stop();
+            Halt();
             Start();
             if (keepMonitor)
             {
@@ -448,7 +448,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         catch (Exception error)
         {
             ReleaseHeldDevice();
-            IDeviceTap? fallback = null;
+            WaveInTap? fallback = null;
             try
             {
                 fallback = WaveInTap.OpenNamed(CableName.SourceHint(name)) ??
@@ -485,7 +485,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         }
     }
 
-    public void Stop()
+    public void Halt()
     {
         StopMonitor();
         IDeviceTap? capture;
@@ -620,7 +620,7 @@ public sealed class WasapiBroadcastSense : IBroadcastSense
         });
     }
 
-    public void Dispose() => Stop();
+    public void Dispose() => Halt();
 
     private string ResolveCableId(string id)
     {

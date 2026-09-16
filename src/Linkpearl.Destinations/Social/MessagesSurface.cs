@@ -1,9 +1,7 @@
 using System.Globalization;
-using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Chat;
-using Linkpearl.Destinations;
 using Linkpearl.Emoji;
 using Linkpearl.Feedback;
 using Linkpearl.Geometry;
@@ -239,7 +237,7 @@ internal sealed class MessagesSurface
     private float DrawInbox(in AppletFrame frame)
     {
         var content = frame.Content;
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(12f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(12f));
         var threads = talk.Inbox();
 
         var searchRow = stack.Take(frame.Units(44f));
@@ -303,7 +301,7 @@ internal sealed class MessagesSurface
         var plane = Math.Max(body.Height + 1f,
             frame.Units(84f) * (listed + nearby.Count + 4));
         var shifted = body.Translate(new Vector2(0f, -inboxScroll));
-        var list = new Stack(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
+        var list = new LayoutFlow(Rect.FromSize(shifted.Min, new Vector2(body.Width, plane)), StackAxis.Vertical,
             frame.Units(12f));
         var listHeight = 0f;
         var clipped = false;
@@ -400,7 +398,7 @@ internal sealed class MessagesSurface
 
         if (frame.Input.ConsumeClick(row, PointerButton.Secondary))
         {
-            inboxMenu = new InboxMenu(thread.Id, thread.Title, frame.Input.Pointer);
+            inboxMenu = new InboxMenu(thread.Id, thread.Title, frame.Input.Cursor);
             return;
         }
 
@@ -854,7 +852,7 @@ internal sealed class MessagesSurface
         var peer = talk.FindPeer(profileId);
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
 
         var header = stack.Take(frame.Units(36f));
         var back = header.LeftSlice(frame.Units(28f));
@@ -1019,7 +1017,7 @@ internal sealed class MessagesSurface
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private bool TryDrawGateProfile(in AppletFrame frame, ref Stack stack, string peerId)
+    private bool TryDrawGateProfile(in AppletFrame frame, ref LayoutFlow stack, string peerId)
     {
         if (!TalkIds.TryParsePerson(peerId, out var userId))
         {
@@ -1427,7 +1425,7 @@ internal sealed class MessagesSurface
 
         if (!marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
         {
-            marks.Offer(openId, key, who, line.Body ?? string.Empty, frame.Input.Pointer);
+            marks.Offer(openId, key, who, line.Body ?? string.Empty, frame.Input.Cursor);
         }
     }
 
@@ -1608,7 +1606,7 @@ internal sealed class MessagesSurface
 
     private static void DrawNearbyRow(in AppletFrame frame, Rect inset, GamePeerHint hint)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), hint.Name,
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
         var detail = hint.World.Length > 0 ? hint.Reason + " · " + hint.World : hint.Reason;

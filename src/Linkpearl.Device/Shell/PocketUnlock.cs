@@ -62,24 +62,24 @@ public sealed class PocketUnlock
         var travel = MathF.Max(maxY - minY, 1f);
         var hit = HitOn(screen, dip, notice, face);
 
-        if (allowSlide && !dragging && hit.Contains(input.Pointer) &&
+        if (allowSlide && !dragging && hit.Contains(input.Cursor) &&
             ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             dragging = true;
-            pressAt = input.Pointer;
-            var y = Scalar.Clamp(input.Pointer.Y, minY, maxY);
+            pressAt = input.Cursor;
+            var y = Scalar.Clamp(input.Cursor.Y, minY, maxY);
             amount = (maxY - y) / travel;
-            grab = input.Pointer.Y - ThumbY(minY, maxY);
+            grab = input.Cursor.Y - ThumbY(minY, maxY);
         }
 
         if (dragging && input.IsHeld())
         {
-            var y = Scalar.Clamp(input.Pointer.Y - grab, minY, maxY);
+            var y = Scalar.Clamp(input.Cursor.Y - grab, minY, maxY);
             amount = (maxY - y) / travel;
         }
         else if (dragging)
         {
-            var tap = (input.Pointer - pressAt).LengthSquared() <= 36f;
+            var tap = (input.Cursor - pressAt).LengthSquared() <= 36f;
             dragging = false;
             if (amount >= Commit || tap)
             {

@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using Dalamud.Interface.Textures;
@@ -363,7 +362,7 @@ public sealed class DalamudTextureSource : ITextureSource
         return FromSharedFile(path);
     }
 
-    private ITextureHandle? FromSharedFile(string path)
+    private FrameTexture? FromSharedFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || failed.Contains(path) || missing.Contains(path))
         {
@@ -402,7 +401,7 @@ public sealed class DalamudTextureSource : ITextureSource
         return frame.IsReady ? frame : null;
     }
 
-    private ITextureHandle? FromMip(string path, Vector2 destPixels)
+    private FrameTexture? FromMip(string path, Vector2 destPixels)
     {
         if (string.IsNullOrWhiteSpace(path) || mipFailed.Contains(path) || missing.Contains(path))
         {

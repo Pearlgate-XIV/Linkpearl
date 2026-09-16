@@ -1,4 +1,3 @@
-using Linkpearl.Painting;
 
 namespace Linkpearl.Preferences;
 

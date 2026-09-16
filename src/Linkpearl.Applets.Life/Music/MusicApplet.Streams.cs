@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Linq;
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Venues;
 using Linkpearl.Audio;
 using Linkpearl.Geometry;
@@ -272,7 +270,7 @@ public sealed partial class MusicApplet
     private static float StationAudienceWidth(in AppletFrame frame, CommunityStation station, bool compact) =>
         MusicChrome.AudienceWidth(frame, Math.Max(0, station.Listeners), Math.Max(0, station.Viewers), compact);
 
-    private void DrawConnectedServices(in AppletFrame frame, ref Stack stack)
+    private void DrawConnectedServices(in AppletFrame frame, ref LayoutFlow stack)
     {
         MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "CONNECTED SERVICES");
         var own = streams.Own;
@@ -433,7 +431,7 @@ public sealed partial class MusicApplet
         }
     }
 
-    private void DrawCommunitySchedule(in AppletFrame frame, ref Stack stack)
+    private void DrawCommunitySchedule(in AppletFrame frame, ref LayoutFlow stack)
     {
         MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "Community schedule");
         var rows = UpcomingSchedule();

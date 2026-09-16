@@ -8,7 +8,7 @@ internal sealed class ForwardMp3Stream : WaveStream
 {
     private readonly Stream source;
     private readonly byte[] pcm = new byte[32_768];
-    private IMp3FrameDecompressor? decoder;
+    private Mp3FrameDecompressor? decoder;
     private WaveFormat format = new WaveFormat(44100, 16, 2);
     private int pcmCount;
     private int pcmOffset;

@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Modules;
@@ -43,7 +42,7 @@ public sealed class SettingsApplet : IApplet
     public void Compose(in AppletFrame frame)
     {
         var content = frame.Content.Inset(frame.Units(16f));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(2f));
 
         DrawSectionHeader(frame, stack.Take(frame.Units(28f)), "Display");
         DrawToggleRow(frame, stack.Take(frame.Units(48f)), "24-hour clock", preferences.Use24HourClock,

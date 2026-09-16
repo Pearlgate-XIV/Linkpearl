@@ -39,9 +39,9 @@ public interface IHandsetAudio : IDisposable
 
     void Pause();
 
-    void Resume();
+    void Unpause();
 
-    void Stop();
+    void Halt();
 
     void Toggle();
 }

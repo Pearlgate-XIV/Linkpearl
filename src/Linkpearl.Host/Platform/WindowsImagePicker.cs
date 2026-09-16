@@ -1,4 +1,3 @@
-using System.Windows.Forms;
 using Linkpearl.Host.Windows;
 using Linkpearl.Platform;
 

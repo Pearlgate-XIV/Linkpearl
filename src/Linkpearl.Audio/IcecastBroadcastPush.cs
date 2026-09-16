@@ -65,7 +65,7 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
             }
         }
 
-        Stop();
+        Halt();
         int ticket;
         lock (gate)
         {
@@ -112,7 +112,7 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
         });
     }
 
-    public void Stop()
+    public void Halt()
     {
         lock (gate)
         {
@@ -190,7 +190,7 @@ public sealed class IcecastBroadcastPush : IBroadcastPush
         }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose() => Halt();
 
     private void Open(int ticket)
     {

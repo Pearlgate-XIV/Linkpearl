@@ -3,7 +3,6 @@ using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
 using Linkpearl.Preferences;
-using Linkpearl.Shell;
 using Linkpearl.Talk;
 
 namespace Linkpearl.Device.Shell;
@@ -51,7 +50,7 @@ public sealed class QuickAppsTray
         frame.Paint.Fill(panel, frame.Theme.Palette.SurfaceRaised with { W = 0.94f * t }, frame.Units(14f));
         frame.Paint.Stroke(panel, gold with { W = 0.40f * t }, frame.Theme.Metrics.Hairline, frame.Units(14f));
 
-        if (open && !panel.Contains(frame.Input.Pointer) && !home.Contains(frame.Input.Pointer) &&
+        if (open && !panel.Contains(frame.Input.Cursor) && !home.Contains(frame.Input.Cursor) &&
             frame.Input.ConsumeClick(screen))
         {
             Close();

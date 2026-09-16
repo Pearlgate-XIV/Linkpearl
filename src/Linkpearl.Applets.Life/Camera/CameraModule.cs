@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Camera;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
@@ -23,7 +22,7 @@ public sealed partial class ClockApplet
             frame.Units(268f) + extra + state.Cities.Count * frame.Units(64f) + frame.Units(80f));
         ScrollSlider.Apply(frame, area, ref state.Scroll, content);
         frame.Paint.PushClip(area);
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(area.Min.X, area.Min.Y - state.Scroll),
                 new Vector2(area.Max.X, area.Min.Y - state.Scroll + content)),
             StackAxis.Vertical, frame.Units(10f));
@@ -129,7 +128,7 @@ public sealed partial class ClockApplet
             frame.Units(72f) + Math.Max(1, state.Bells.Count) * frame.Units(92f) + frame.Units(88f));
         ScrollSlider.Apply(frame, area, ref state.Scroll, content);
         frame.Paint.PushClip(area);
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(area.Min.X, area.Min.Y - state.Scroll),
                 new Vector2(area.Max.X, area.Min.Y - state.Scroll + content)),
             StackAxis.Vertical, frame.Units(10f));
@@ -201,7 +200,7 @@ public sealed partial class ClockApplet
         var content = MathF.Max(area.Height + frame.Units(24f), frame.Units(520f));
         ScrollSlider.Apply(frame, area, ref state.Scroll, content);
         frame.Paint.PushClip(area);
-        var stack = new Stack(
+        var stack = new LayoutFlow(
             new Rect(new Vector2(area.Min.X, area.Min.Y - state.Scroll),
                 new Vector2(area.Max.X, area.Min.Y - state.Scroll + content)),
             StackAxis.Vertical, frame.Units(10f));
@@ -407,7 +406,7 @@ public sealed partial class ClockApplet
             new TextStyle(FontRole.Display, frame.Theme.Palette.Ink, TextAlign.Center, scale: 0.82f));
 
         var rest = new Rect(new Vector2(inner.Min.X, ringBox.Max.Y + frame.Units(8f)), inner.Max);
-        var stack = new Stack(rest, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(rest, StackAxis.Vertical, frame.Units(10f));
         if (!running && !state.TimerDone)
         {
             var presets = stack.Take(frame.Units(36f));
@@ -491,7 +490,7 @@ public sealed partial class ClockApplet
             new TextStyle(FontRole.Display, frame.Theme.Palette.Ink, TextAlign.Center, scale: 0.72f));
 
         var rest = new Rect(new Vector2(inner.Min.X, ringBox.Max.Y + frame.Units(4f)), inner.Max);
-        var stack = new Stack(rest, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(rest, StackAxis.Vertical, frame.Units(8f));
         var actions = stack.Take(frame.Units(72f));
         var third = actions.Width / 3f;
         if (ClockChrome.RoundAction(frame, Rect.FromSize(actions.Min, new Vector2(third, actions.Height)), "Lap",

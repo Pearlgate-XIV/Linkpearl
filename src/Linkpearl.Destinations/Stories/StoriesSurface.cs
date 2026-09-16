@@ -1,4 +1,3 @@
-using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
@@ -83,7 +82,7 @@ internal sealed class StoriesSurface
     {
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         var snapshot = pearl.Current;
         if (composing)
         {
@@ -95,7 +94,7 @@ internal sealed class StoriesSurface
         return content.Height + inset * 2f;
     }
 
-    public void DrawList(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    public void DrawList(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         TakePickedPhoto();
         if (!snapshot.SignedIn)
@@ -193,7 +192,7 @@ internal sealed class StoriesSurface
             return;
         }
 
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Your story", frame.Theme.Palette.WarmAccent);
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), "Add to stories",
             new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
@@ -209,7 +208,7 @@ internal sealed class StoriesSurface
 
     private static void DrawRing(in AppletFrame frame, Rect inset, PearlStory story, Action open)
     {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, frame.Units(3f));
         CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)),
             story.HasUnseen ? "Unseen" : "Story", frame.Theme.Palette.WarmAccent);
         frame.Text.DrawIn(stack.Take(frame.Units(22f)),
@@ -228,7 +227,7 @@ internal sealed class StoriesSurface
         }
     }
 
-    private void DrawViewer(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawViewer(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         var ring = Find(snapshot.Stories, selectedAuthor);
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), ring?.AuthorName ?? "Story",
@@ -289,7 +288,7 @@ internal sealed class StoriesSurface
         }
     }
 
-    private void DrawCompose(in AppletFrame frame, ref Stack stack, PearlSnapshot snapshot)
+    private void DrawCompose(in AppletFrame frame, ref LayoutFlow stack, PearlSnapshot snapshot)
     {
         TakePickedPhoto();
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), "New story",

@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Alarms;
 using Linkpearl.Modules;
 using Microsoft.Extensions.DependencyInjection;

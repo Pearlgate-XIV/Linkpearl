@@ -30,7 +30,7 @@ public interface IPaintSurface
 
     void Stroke(Rect area, Vector4 color, float thickness, float radius = 0f, Corner corners = Corner.All);
 
-    void FillGradient(Rect area, Vector4 from, Vector4 stop, GradientAxis axis);
+    void FillGradient(Rect area, Vector4 from, Vector4 last, GradientAxis axis);
 
     void FillCorners(Rect area, Vector4 topLeft, Vector4 topRight, Vector4 bottomRight, Vector4 bottomLeft);
 
@@ -47,7 +47,7 @@ public interface IPaintSurface
 
     void FillAppTile(Rect area, Vector4 color);
 
-    void FillAppTile(Rect area, Vector4 from, Vector4 stop);
+    void FillAppTile(Rect area, Vector4 from, Vector4 last);
 
     void StrokeAppTile(Rect area, Vector4 color, float thickness);
 

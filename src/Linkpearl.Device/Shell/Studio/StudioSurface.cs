@@ -1,8 +1,5 @@
-using System.Globalization;
-using System.Text;
 using Linkpearl.Applets;
 using Linkpearl.Calendar;
-using Linkpearl.Device.Shell;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Destinations;
@@ -184,7 +181,7 @@ internal sealed class StudioSurface
         var inset = content.Inset(new Edges(frame.Units(28f), frame.Units(44f), frame.Units(28f),
             dockH + dockLift + frame.Units(8f)));
         var gap = frame.Units(10f);
-        var stack = new Stack(inset, StackAxis.Vertical, gap);
+        var stack = new LayoutFlow(inset, StackAxis.Vertical, gap);
         if (extraIndex >= 0)
         {
             LayoutWidgets(frame, stack, gap);
@@ -215,7 +212,7 @@ internal sealed class StudioSurface
             display.Hushed(game.IsInDuty || game.IsInCutscene),
             () => openApplet("phone", content.BottomSlice(dockH + dockLift)),
             () => openApplet("camera", content.BottomSlice(dockH + dockLift)));
-        var at = frame.Input.Pointer;
+        var at = frame.Input.Cursor;
         var onChrome = huntBar.Contains(at) || settings.Contains(at) || dock.Contains(at);
         if (!hunting && (appsEdit || pickSlot >= 0) && !skipOpen && !appsDockArea.Contains(at) &&
             frame.Input.ConsumeClick(content))
@@ -244,7 +241,7 @@ internal sealed class StudioSurface
         {
             if (dragId is not null)
             {
-                ResolveDrop(frame.Input.Pointer);
+                ResolveDrop(frame.Input.Cursor);
             }
 
             pressId = null;
@@ -268,7 +265,7 @@ internal sealed class StudioSurface
             return;
         }
 
-        var travel = (frame.Input.Pointer - pressPoint).Length();
+        var travel = (frame.Input.Cursor - pressPoint).Length();
         var armed = Environment.TickCount64 - pressAt >= 480;
         var appsHold = string.Equals(holding, "w:apps", StringComparison.Ordinal);
         if (appsHold && appsEdit)
@@ -581,7 +578,7 @@ internal sealed class StudioSurface
         return WidgetDrop.Below;
     }
 
-    private void LayoutWidgets(in AppletFrame frame, Stack stack, float gap)
+    private void LayoutWidgets(in AppletFrame frame, LayoutFlow stack, float gap)
     {
         var order = new List<string>(display.StudioWidgets.Count);
         for (var index = 0; index < display.StudioWidgets.Count; index++)
@@ -683,12 +680,12 @@ internal sealed class StudioSurface
         else if (glass.Active && dragId is { Length: > 2 } flying &&
                  flying.StartsWith("w:", StringComparison.Ordinal) &&
                  !string.Equals(flying, key, StringComparison.Ordinal) &&
-                 area.Contains(frame.Input.Pointer))
+                 area.Contains(frame.Input.Cursor))
         {
             var gold = frame.Theme.Palette.WarmAccent with { W = 0.20f };
             var side = string.Equals(id, "apps", StringComparison.Ordinal)
-                ? AppsDropSide(widgetHits, key, frame.Input.Pointer, DropSideOf(area, frame.Input.Pointer))
-                : DropSideOf(area, frame.Input.Pointer);
+                ? AppsDropSide(widgetHits, key, frame.Input.Cursor, DropSideOf(area, frame.Input.Cursor))
+                : DropSideOf(area, frame.Input.Cursor);
             if (side == WidgetDrop.Left)
             {
                 frame.Paint.Fill(area.LeftSlice(area.Width * 0.5f), gold, frame.Units(10f));
@@ -757,7 +754,7 @@ internal sealed class StudioSurface
                 }
             }
 
-            DrawWidget(frame, flying[2..], Rect.FromSize(frame.Input.Pointer - size * 0.5f, size), false);
+            DrawWidget(frame, flying[2..], Rect.FromSize(frame.Input.Cursor - size * 0.5f, size), false);
             return;
         }
 
@@ -776,7 +773,7 @@ internal sealed class StudioSurface
             }
         }
 
-        DrawApp(frame, Rect.FromSize(frame.Input.Pointer - tile * 0.5f, tile), flying[2..], TitleOf(flying[2..]),
+        DrawApp(frame, Rect.FromSize(frame.Input.Cursor - tile * 0.5f, tile), flying[2..], TitleOf(flying[2..]),
             0, static () => { }, false);
     }
 
@@ -786,7 +783,7 @@ internal sealed class StudioSurface
         {
             pressId = id;
             pressAt = Environment.TickCount64;
-            pressPoint = frame.Input.Pointer;
+            pressPoint = frame.Input.Cursor;
         }
     }
 
@@ -814,7 +811,7 @@ internal sealed class StudioSurface
     private void WatchEdge(in AppletFrame frame, Rect body)
     {
         var edge = frame.Units(28f);
-        var at = frame.Input.Pointer;
+        var at = frame.Input.Cursor;
         var side = 0;
         if (at.X >= body.Max.X - edge)
         {
@@ -845,9 +842,9 @@ internal sealed class StudioSurface
         edgeAt = Environment.TickCount64;
     }
 
-    private static bool ContainsId(IReadOnlyList<string> ids, string id)
+    private static bool ContainsId(string[] ids, string id)
     {
-        for (var index = 0; index < ids.Count; index++)
+        for (var index = 0; index < ids.Length; index++)
         {
             if (string.Equals(ids[index], id, StringComparison.Ordinal))
             {
@@ -1214,7 +1211,7 @@ internal sealed class StudioSurface
 
         var drawn = appsEdit ? cell.Translate(EditSway(jiggle, cell.Min.X + cell.Min.Y, frame.Units(0.35f))) : cell;
         var dropLit = dragId is { Length: > 2 } && dragId.StartsWith("a:", StringComparison.Ordinal) &&
-                      cell.Contains(frame.Input.Pointer);
+                      cell.Contains(frame.Input.Cursor);
         DrawApp(frame, drawn, appletId, TitleOf(appletId),
             display.Hushed(game.IsInDuty || game.IsInCutscene) ? 0 : notices.AppBadge(appletId, talk),
             () => OpenHomeApp(appletId, cell), open);

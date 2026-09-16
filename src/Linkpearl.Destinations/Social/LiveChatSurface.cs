@@ -445,7 +445,7 @@ internal sealed class LiveChatSurface
 
         if (menu is null && !marks.Busy && frame.Input.ConsumeClick(bubble, PointerButton.Secondary))
         {
-            menu = new FeedMenu(line.Sender, line.World, frame.Input.Pointer, key, line.Body ?? string.Empty, line.Mine);
+            menu = new FeedMenu(line.Sender, line.World, frame.Input.Cursor, key, line.Body ?? string.Empty, line.Mine);
         }
     }
 

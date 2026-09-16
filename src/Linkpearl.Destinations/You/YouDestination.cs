@@ -2,12 +2,9 @@ using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Badges;
 using Linkpearl.Destinations.Profile;
-using Linkpearl.Geometry;
 using Linkpearl.Layout;
-using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
-using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
 
@@ -66,7 +63,7 @@ public sealed class YouDestination : IDestinationScreen, ISectionedDestination
 
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
 
         var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
         var name = GlassName.ProfileName(display, linked,

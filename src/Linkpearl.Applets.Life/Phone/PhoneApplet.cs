@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Numerics;
-using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Chat;
 using Linkpearl.Emoji;
@@ -298,12 +296,12 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawKeypad(in AppletFrame frame, Rect area)
     {
-        var page = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var page = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawLineCard(frame, page.Take(frame.Units(52f)));
         var rest = page.TakeRemaining();
         var cluster = frame.Units(348f);
         var lift = MathF.Max(frame.Units(8f), (rest.Height - cluster) * 0.42f);
-        var stack = new Stack(rest.Inset(new Edges(0f, lift, 0f, 0f)), StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(rest.Inset(new Edges(0f, lift, 0f, 0f)), StackAxis.Vertical, frame.Units(10f));
         var dial = stack.Take(frame.Units(52f));
         frame.Paint.Fill(dial, Pill, dial.Height * 0.42f);
         frame.Paint.Stroke(dial, Chip, frame.Units(1.2f), dial.Height * 0.42f);
@@ -327,7 +325,7 @@ public sealed class PhoneApplet : IApplet
         if (frame.Input.ConsumeClick(Rect.FromSize(callRow.Center - new Vector2(radius, radius),
                 new Vector2(radius * 2f, radius * 2f))))
         {
-            line.Call();
+            line.PlaceCall();
         }
     }
 
@@ -440,7 +438,7 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawCall(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         var live = line.State == LineState.Live;
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), live ? "On a call" : "Calling…",
             new TextStyle(FontRole.CaptionStrong, Green, TextAlign.Center));
@@ -479,7 +477,7 @@ public sealed class PhoneApplet : IApplet
         }
     }
 
-    private void DrawDevicePick(in AppletFrame frame, ref Stack stack, string id, string title, bool speakers)
+    private void DrawDevicePick(in AppletFrame frame, ref LayoutFlow stack, string id, string title, bool speakers)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), title,
             new TextStyle(FontRole.CaptionStrong, Muted));
@@ -552,7 +550,7 @@ public sealed class PhoneApplet : IApplet
             return;
         }
 
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(6f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(6f));
         DrawChrome(frame, stack.Take(frame.Units(32f)), "Messages", search: true, add: false);
         if (showSearch)
         {
@@ -561,7 +559,7 @@ public sealed class PhoneApplet : IApplet
 
         var list = stack.TakeRemaining();
         var threads = line.Threads;
-        var cursor = new Stack(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
+        var cursor = new LayoutFlow(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
         frame.Paint.PushClip(list);
         var shown = 0;
         for (var index = 0; index < threads.Count; index++)
@@ -623,7 +621,7 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawComposePick(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         var header = stack.Take(frame.Units(32f));
         frame.Text.DrawIn(header.LeftSlice(frame.Units(28f)), "‹",
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));
@@ -656,7 +654,7 @@ public sealed class PhoneApplet : IApplet
             new TextStyle(FontRole.CaptionStrong, Muted));
         var list = stack.TakeRemaining();
         var contacts = line.Contacts;
-        var cursor = new Stack(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
+        var cursor = new LayoutFlow(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
         frame.Paint.PushClip(list);
         var shown = 0;
         for (var index = 0; index < contacts.Count; index++)
@@ -706,7 +704,7 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawThread(in AppletFrame frame, Rect area, string number)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         var header = stack.Take(frame.Units(36f));
         frame.Text.DrawIn(header.LeftSlice(frame.Units(28f)), "‹",
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));
@@ -796,7 +794,7 @@ public sealed class PhoneApplet : IApplet
             return;
         }
 
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(6f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(6f));
         DrawChrome(frame, stack.Take(frame.Units(32f)), "Phone", search: true, add: true);
         if (showSearch)
         {
@@ -805,7 +803,7 @@ public sealed class PhoneApplet : IApplet
 
         var list = stack.TakeRemaining();
         var contacts = line.Contacts;
-        var cursor = new Stack(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
+        var cursor = new LayoutFlow(list.Translate(new Vector2(0f, -listScroll)), StackAxis.Vertical, 0f);
         frame.Paint.PushClip(list);
         var shown = 0;
         for (var index = 0; index < contacts.Count; index++)
@@ -861,7 +859,7 @@ public sealed class PhoneApplet : IApplet
 
     private void DrawContactForm(in AppletFrame frame, Rect area)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         var header = stack.Take(frame.Units(32f));
         frame.Text.DrawIn(header.LeftSlice(frame.Units(28f)), "‹",
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));

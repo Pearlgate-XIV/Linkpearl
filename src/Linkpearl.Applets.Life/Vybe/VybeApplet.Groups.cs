@@ -1,7 +1,4 @@
 using System.Globalization;
-using System.IO;
-using Linkpearl.Applets;
-using Linkpearl.Applets.Life.Calendar;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
@@ -15,7 +12,7 @@ public sealed partial class VybeApplet
     private static readonly Vector4 GroupViolet = new(0.56f, 0.18f, 0.92f, 1f);
     private static readonly Vector4 GroupPill = new(0.12f, 0.12f, 0.14f, 1f);
 
-    private void DrawGroups(in AppletFrame frame, ref Stack stack, bool night)
+    private void DrawGroups(in AppletFrame frame, ref LayoutFlow stack, bool night)
     {
         VybeGroups.Seed(state);
         var tone = VybeChrome.Tone(night);
@@ -176,7 +173,7 @@ public sealed partial class VybeApplet
 
         var owned = VybeClubs.Owns(state, id);
         var tone = VybeChrome.Tone(night);
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), group.Name, night))
         {
             if (state.Page == NightPage.Club)
@@ -318,7 +315,7 @@ public sealed partial class VybeApplet
             likes, "likes", night);
     }
 
-    private void DrawClubEvents(in AppletFrame frame, ref Stack stack, string clubId, bool owned, bool night)
+    private void DrawClubEvents(in AppletFrame frame, ref LayoutFlow stack, string clubId, bool owned, bool night)
     {
         var events = VybeClubs.Events(calendar, clubId);
         if (owned && VybeChrome.Chip(frame, stack.Take(frame.Units(34f)), "Create event", true, night))
@@ -352,7 +349,7 @@ public sealed partial class VybeApplet
     private void DrawClubCreate(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "New group", night))
         {
             state.Back();
@@ -427,7 +424,7 @@ public sealed partial class VybeApplet
     private void DrawClubEvent(in AppletFrame frame, Rect area)
     {
         var night = state.Night;
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         if (VybeChrome.Back(frame, stack.Take(frame.Units(28f)), "New event", night))
         {
             state.Back();

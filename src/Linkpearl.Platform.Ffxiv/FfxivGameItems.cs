@@ -1,5 +1,4 @@
 using Dalamud.Plugin.Services;
-using Linkpearl.Platform;
 using ItemSheet = Lumina.Excel.Sheets.Item;
 
 namespace Linkpearl.Platform.Ffxiv;

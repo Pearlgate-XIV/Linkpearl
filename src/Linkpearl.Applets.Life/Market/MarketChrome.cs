@@ -1,8 +1,6 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
-using Linkpearl.Layout;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Applets.Life.Market;

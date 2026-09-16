@@ -8,7 +8,7 @@ public interface IBroadcastPush : IDisposable
 
     void Start(string ingestUrl, string stationName, string genre);
 
-    void Stop();
+    void Halt();
 
     void WritePcm(byte[] pcm16Stereo, int bytes, int sampleRate);
 }

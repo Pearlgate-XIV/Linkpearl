@@ -50,7 +50,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private bool flipped;
     private string bannerError = string.Empty;
     private string hoverHint = string.Empty;
-    private delegate void SheetDraw(AppletFrame frame, ref Stack stack);
+    private delegate void SheetDraw(AppletFrame frame, ref LayoutFlow stack);
 
     private readonly HashSet<string> unfolded = new(StringComparer.Ordinal);
     private string listQuery = string.Empty;
@@ -185,7 +185,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         DrawHead(frame, stack.Take(frame.Units(36f)));
         if (creditsOpen)
         {
@@ -228,7 +228,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
     }
 
-    private void DrawBook(AppletFrame frame, ref Stack stack)
+    private void DrawBook(AppletFrame frame, ref LayoutFlow stack)
     {
         DrawPatreonSupport(frame, stack.Take(frame.Units(52f)));
         DrawSearch(frame, stack.Take(frame.Units(32f)));
@@ -264,7 +264,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawCreditsLink(frame, stack.Take(OptionHeight(frame)));
     }
 
-    private void DrawAppearancePage(AppletFrame frame, ref Stack stack)
+    private void DrawAppearancePage(AppletFrame frame, ref LayoutFlow stack)
     {
         DrawTopic(frame, ref stack, "Themes", PhoneLanguages.T("set.themes.blurb"),
             "theme color accent text default", InkGroupHeight(frame), DrawInkControls);
@@ -282,7 +282,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             "tuner touch preview", TunerInnerHeight(frame), DrawTouch);
     }
 
-    private void DrawGeneralPage(AppletFrame frame, ref Stack stack)
+    private void DrawGeneralPage(AppletFrame frame, ref LayoutFlow stack)
     {
         DrawPinControls(frame, ref stack);
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.motion"), display.ReduceMotion,
@@ -295,14 +295,14 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             () => display.Fight = FightPresence.Vanish, PhoneLanguages.T("set.fight.hide.hint"));
     }
 
-    private void DrawDisplayPage(AppletFrame frame, ref Stack stack)
+    private void DrawDisplayPage(AppletFrame frame, ref LayoutFlow stack)
     {
         DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.brightness"), display.Brightness,
             value => display.Brightness = value);
         DrawBodyControls(frame, ref stack);
     }
 
-    private void DrawFeedPage(AppletFrame frame, ref Stack stack)
+    private void DrawFeedPage(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.feed.say"), display.FeedShowSay,
             value => display.FeedShowSay = value, PhoneLanguages.T("set.feed.say.hint"));
@@ -314,7 +314,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.FeedShowParty = value, PhoneLanguages.T("set.feed.party.hint"));
     }
 
-    private void DrawNotificationsPage(AppletFrame frame, ref Stack stack)
+    private void DrawNotificationsPage(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.quiet"), display.Quiet,
             value => display.Quiet = value, PhoneLanguages.T("set.quiet.hint"));
@@ -324,7 +324,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.ShowMarks = value, PhoneLanguages.T("set.badges.hint"));
     }
 
-    private void DrawPhonePage(AppletFrame frame, ref Stack stack)
+    private void DrawPhonePage(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.wake.calls"), display.WakeInPocket,
             value => display.WakeInPocket = value, PhoneLanguages.T("set.wake.calls.hint"));
@@ -337,7 +337,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.ChatE2E = value, PhoneLanguages.T("set.chat.e2e.hint"));
     }
 
-    private void DrawLanguagesPage(AppletFrame frame, ref Stack stack)
+    private void DrawLanguagesPage(AppletFrame frame, ref LayoutFlow stack)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), PhoneLanguages.T("set.app.language"),
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
@@ -368,7 +368,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             () => display.ClockFace = ClockFace.Both, PhoneLanguages.T("set.clock.both.hint"));
     }
 
-    private void DrawSoundsPage(AppletFrame frame, ref Stack stack)
+    private void DrawSoundsPage(AppletFrame frame, ref LayoutFlow stack)
     {
         RefreshPorts();
         DrawSliderRow(frame, ref stack, PhoneLanguages.T("set.vol.listen"), display.Volume, value => display.Volume = value);
@@ -395,7 +395,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             audioPorts.DefaultMicrophoneId, display.MicrophoneId, value => display.MicrophoneId = value);
     }
 
-    private void DrawTosPage(AppletFrame frame, ref Stack stack)
+    private void DrawTosPage(AppletFrame frame, ref LayoutFlow stack)
     {
         frame.Text.DrawWrapped(stack.Take(frame.Units(220f)),
             "Linkpearl is a communicator for play in Final Fantasy XIV. Use it in good faith. " +
@@ -406,7 +406,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.Ink));
     }
 
-    private void DrawSliderRow(AppletFrame frame, ref Stack stack, string label, float value, Action<float> set)
+    private void DrawSliderRow(AppletFrame frame, ref LayoutFlow stack, string label, float value, Action<float> set)
     {
         var row = stack.Take(frame.Units(56f));
         var gold = frame.Theme.Palette.WarmAccent;
@@ -426,7 +426,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
         if (sliderDrag == label && frame.Input.IsHeld())
         {
-            set((frame.Input.Pointer.X - track.Min.X) / MathF.Max(track.Width, 1f));
+            set((frame.Input.Cursor.X - track.Min.X) / MathF.Max(track.Width, 1f));
         }
 
         if (!frame.Input.IsHeld())
@@ -465,7 +465,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawChassis(frame, ChassisRect(preview, ChassisCatalog.For(shape.Form, shape.Case, shape.Finish), fill: true),
             Part.None);
         var copy = inner.Inset(new Edges(preview.Width + frame.Units(12f), frame.Units(6f), 0f, 0f));
-        var lines = new Stack(copy, StackAxis.Vertical, frame.Units(4f));
+        var lines = new LayoutFlow(copy, StackAxis.Vertical, frame.Units(4f));
         frame.Text.DrawIn(lines.Take(frame.Units(16f)), "Live look",
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
         frame.Text.DrawEllipsized(lines.Take(frame.Units(20f)), PlateLabel(),
@@ -480,7 +480,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private void DrawTouch(AppletFrame frame, ref Stack stack)
+    private void DrawTouch(AppletFrame frame, ref LayoutFlow stack)
     {
         var flip = stack.Take(frame.Units(32f));
         PairRow(frame, flip.RightSlice(frame.Units(108f)), "Front", !flipped, () =>
@@ -684,7 +684,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private void DrawTouchSheet(AppletFrame frame, ref Stack stack)
+    private void DrawTouchSheet(AppletFrame frame, ref LayoutFlow stack)
     {
         if (part == Part.None)
         {
@@ -860,7 +860,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     {
         CardChrome.DrawGold(frame, body);
         var inner = body.Inset(frame.Units(14f));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawWrapped(stack.Take(frame.Units(28f)), "The back of the pearl. How it sits in the world.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         DrawPresenceControls(frame, ref stack);
@@ -922,7 +922,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawBoxedLink(frame, row, PhoneLanguages.T("set.credits"), () => creditsOpen = true);
     }
 
-    private void DrawCreditsPanel(in AppletFrame frame, ref Stack stack)
+    private void DrawCreditsPanel(in AppletFrame frame, ref LayoutFlow stack)
     {
         var credits = CreditBook.Resolve(pearl.Current, game.Character.Name);
         if (creditLook.Length > 0)
@@ -972,7 +972,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private void DrawCreditProfile(in AppletFrame frame, ref Stack stack, ShownCredit credit)
+    private void DrawCreditProfile(in AppletFrame frame, ref LayoutFlow stack, ShownCredit credit)
     {
         var bar = stack.Take(frame.Units(36f));
         Chip(frame, bar.LeftSlice(frame.Units(72f)), "Back", false, () => creditLook = string.Empty);
@@ -1024,7 +1024,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private static void DrawCreditSite(in AppletFrame frame, ref Stack stack, string label, string url)
+    private static void DrawCreditSite(in AppletFrame frame, ref LayoutFlow stack, string label, string url)
     {
         if (url.Length == 0)
         {
@@ -1123,7 +1123,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         return true;
     }
 
-    private void DrawInkControls(AppletFrame frame, ref Stack stack)
+    private void DrawInkControls(AppletFrame frame, ref LayoutFlow stack)
     {
         display.Colorway = ColorwayId.Night;
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Default theme",
@@ -1144,7 +1144,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var gap = frame.Units(6f);
         var count = CoreId.All.Length;
         var cell = (row.Width - gap * (count - 1)) / count;
-        var run = new Stack(row, StackAxis.Horizontal, gap);
+        var run = new LayoutFlow(row, StackAxis.Horizontal, gap);
         for (var index = 0; index < count; index++)
         {
             var id = CoreId.All[index];
@@ -1222,7 +1222,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var gap = frame.Units(6f);
         var count = labels.Length;
         var cell = (row.Width - gap * (count - 1)) / count;
-        var run = new Stack(row, StackAxis.Horizontal, gap);
+        var run = new LayoutFlow(row, StackAxis.Horizontal, gap);
         for (var index = 0; index < count; index++)
         {
             var area = run.Take(cell);
@@ -1248,7 +1248,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private void DrawPlateControls(AppletFrame frame, ref Stack stack)
+    private void DrawPlateControls(AppletFrame frame, ref LayoutFlow stack)
     {
         for (var index = 0; index < WallpaperCatalog.All.Count; index++)
         {
@@ -1269,7 +1269,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
-    private void DrawDimControls(AppletFrame frame, ref Stack stack)
+    private void DrawDimControls(AppletFrame frame, ref LayoutFlow stack)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Dim",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
@@ -1277,7 +1277,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             (int)display.Shade, index => display.Shade = (ShadeLevel)index);
     }
 
-    private void DrawBannerControls(AppletFrame frame, ref Stack stack)
+    private void DrawBannerControls(AppletFrame frame, ref LayoutFlow stack)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Behind Home.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
@@ -1373,7 +1373,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         bannerError = "Could not use that picture.";
     }
 
-    private void DrawCasePicker(in AppletFrame frame, ref Stack stack)
+    private void DrawCasePicker(in AppletFrame frame, ref LayoutFlow stack)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Case",
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.WarmAccent));
@@ -1413,7 +1413,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
     }
 
-    private void DrawBodyControls(AppletFrame frame, ref Stack stack)
+    private void DrawBodyControls(AppletFrame frame, ref LayoutFlow stack)
     {
         DrawCasePicker(frame, ref stack);
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Finish",
@@ -1447,7 +1447,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawPocketSizeRow(frame, stack.Take(frame.Units(36f)));
     }
 
-    private void DrawStripControls(AppletFrame frame, ref Stack stack)
+    private void DrawStripControls(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.world"), display.ShowWorld,
             value => display.ShowWorld = value, PhoneLanguages.T("set.world.hint"));
@@ -1455,7 +1455,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.ShowMarks = value, PhoneLanguages.T("set.icons.hint"));
     }
 
-    private void DrawPinControls(AppletFrame frame, ref Stack stack)
+    private void DrawPinControls(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.lock.pos"), shape.PositionLocked,
             value => shape.PositionLocked = value, PhoneLanguages.T("set.lock.pos.hint"));
@@ -1463,7 +1463,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => shape.ShowLockTab = value, PhoneLanguages.T("set.lock.tab.hint"));
     }
 
-    private void DrawPresenceControls(AppletFrame frame, ref Stack stack)
+    private void DrawPresenceControls(AppletFrame frame, ref LayoutFlow stack)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.wake.mini"), display.WakeInPocket,
             value => display.WakeInPocket = value, PhoneLanguages.T("set.wake.mini.hint"));
@@ -1540,7 +1540,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         return total;
     }
 
-    private void DrawTopic(AppletFrame frame, ref Stack stack, string title, string blurb, string haystack,
+    private void DrawTopic(AppletFrame frame, ref LayoutFlow stack, string title, string blurb, string haystack,
         float innerHeight, SheetDraw draw)
     {
         if (!Matches(title, blurb, haystack))
@@ -1552,13 +1552,13 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             open: TopicOpen(title), canToggle: listQuery.Trim().Length == 0);
     }
 
-    private void DrawOpenSheet(AppletFrame frame, ref Stack stack, string title, string blurb, float innerHeight,
+    private void DrawOpenSheet(AppletFrame frame, ref LayoutFlow stack, string title, string blurb, float innerHeight,
         SheetDraw draw)
     {
         DrawSquareCategory(frame, ref stack, title, blurb, innerHeight, draw, open: true, canToggle: false);
     }
 
-    private void DrawSquareCategory(AppletFrame frame, ref Stack stack, string title, string blurb, float innerHeight,
+    private void DrawSquareCategory(AppletFrame frame, ref LayoutFlow stack, string title, string blurb, float innerHeight,
         SheetDraw draw, bool open, bool canToggle)
     {
         var gold = frame.Theme.Palette.WarmAccent;
@@ -1601,7 +1601,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             new Vector2(card.Max.X - frame.Units(12f), head.Max.Y + frame.Theme.Metrics.Hairline));
         frame.Paint.Fill(rule, gold with { W = 0.18f });
         var body = card.Inset(new Edges(pad, headH + frame.Units(2f), pad, pad));
-        var rows = new Stack(body, StackAxis.Vertical, frame.Units(8f));
+        var rows = new LayoutFlow(body, StackAxis.Vertical, frame.Units(8f));
         draw(frame, ref rows);
     }
 
@@ -1656,7 +1656,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             return;
         }
 
-        var pointer = frame.Input.Pointer;
+        var pointer = frame.Input.Cursor;
         var width = MathF.Min(frame.Content.Width * 0.82f, frame.Text.Measure(hoverHint, FontRole.Caption).X +
             frame.Units(16f));
         var height = frame.Units(28f);
@@ -1688,7 +1688,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         Chip(frame, row.RightSlice(row.Width * 0.48f), right, rightOn, rightTap, rightHint);
     }
 
-    private static void DrawPortCombo(AppletFrame frame, ref Stack stack, string id, string title,
+    private static void DrawPortCombo(AppletFrame frame, ref LayoutFlow stack, string id, string title,
         IReadOnlyList<AudioPort> ports, string defaultId, string currentId, Action<string> set)
     {
         frame.Text.DrawIn(stack.Take(frame.Units(22f)), title,
@@ -1721,7 +1721,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         set(picked == 0 ? string.Empty : ports[picked - 1].Id);
     }
 
-    private void ExclusiveRow(AppletFrame frame, ref Stack stack, string label, bool on, Action activate,
+    private void ExclusiveRow(AppletFrame frame, ref LayoutFlow stack, string label, bool on, Action activate,
         string blurb)
     {
         ToggleRow(frame, stack.Take(OptionHeight(frame)), label, on, value =>
@@ -1733,7 +1733,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }, blurb);
     }
 
-    private void ActionRow(AppletFrame frame, ref Stack stack, string label, string blurb, Action tap)
+    private void ActionRow(AppletFrame frame, ref LayoutFlow stack, string label, string blurb, Action tap)
     {
         var row = stack.Take(OptionHeight(frame));
         var gold = frame.Theme.Palette.WarmAccent;

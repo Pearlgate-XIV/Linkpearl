@@ -1,5 +1,4 @@
 using System.Globalization;
-using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
@@ -47,7 +46,7 @@ public sealed class StopwatchApplet : IApplet
     {
         var elapsed = Elapsed();
         var content = frame.Content.Inset(frame.Units(16f));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(10f));
         frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Stopwatch",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
 

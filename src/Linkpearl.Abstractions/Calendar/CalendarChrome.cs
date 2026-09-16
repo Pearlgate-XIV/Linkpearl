@@ -72,7 +72,7 @@ public static class CalendarChrome
         var ink = Ink(night);
         var hush = Hush(night);
         var accent = Accent(night);
-        var stack = new Stack(page, StackAxis.Vertical, frame.Units(10f));
+        var stack = new LayoutFlow(page, StackAxis.Vertical, frame.Units(10f));
         var monthStep = 0;
         var jumpToday = false;
         DrawToolbar(frame, stack.Take(frame.Units(36f)), month, now, ink, accent, ref monthStep, ref jumpToday);
@@ -133,7 +133,7 @@ public static class CalendarChrome
     private static void DrawHero(in AppletFrame frame, Rect area, DateTimeOffset now, Vector4 ink, Vector4 hush,
         Vector4 accent, bool dock)
     {
-        var stack = new Stack(area, StackAxis.Vertical, frame.Units(2f));
+        var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(2f));
         frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)),
             now.ToString("dddd", CultureInfo.CurrentCulture),
             new TextStyle(FontRole.CaptionStrong, hush, dock ? TextAlign.Left : TextAlign.Center));
@@ -222,7 +222,7 @@ public static class CalendarChrome
             var label = day.ToString("ddd", CultureInfo.CurrentCulture);
             var mark = label.Length > 0 ? label[..1] : "?";
             var marks = index < dayDots.Count ? Math.Min(4, (int)dayDots[index]) : 0;
-            var stack = new Stack(cell, StackAxis.Vertical, 0f);
+            var stack = new LayoutFlow(cell, StackAxis.Vertical, 0f);
             frame.Text.DrawIn(stack.Take(frame.Units(10f)), mark,
                 new TextStyle(FontRole.Caption, hush, TextAlign.Center, 1f, 0.78f));
             var number = stack.Take(MathF.Max(frame.Units(14f), cell.Height - frame.Units(16f)));

@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Linkpearl.Modules;
 using Linkpearl.Net;
-using Linkpearl.Painting;
 using Linkpearl.Time;
 
 namespace Linkpearl.Applets.Life.Vybe;
@@ -1004,7 +1000,7 @@ internal static class PeopleFindBook
         return OverlapsLoose([needle.Trim().TrimStart('#')], marks);
     }
 
-    private static bool OverlapsLoose(List<string> need, IReadOnlyList<string> have)
+    private static bool OverlapsLoose(List<string> need, string[] have)
     {
         if (need.Count == 0)
         {
@@ -1019,7 +1015,7 @@ internal static class PeopleFindBook
                 continue;
             }
 
-            for (var inner = 0; inner < have.Count; inner++)
+            for (var inner = 0; inner < have.Length; inner++)
             {
                 var got = VybePostTags.Normalize(have[inner]);
                 if (got.Length > 0 &&

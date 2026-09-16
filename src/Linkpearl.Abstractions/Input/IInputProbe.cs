@@ -11,7 +11,7 @@ public enum PointerButton : byte
 
 public interface IInputProbe
 {
-    Vector2 Pointer { get; }
+    Vector2 Cursor { get; }
 
     Vector2 PointerDelta { get; }
 

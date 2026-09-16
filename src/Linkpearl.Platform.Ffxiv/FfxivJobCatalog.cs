@@ -1,5 +1,4 @@
 using Dalamud.Plugin.Services;
-using Linkpearl.Platform;
 using ClassJobSheet = Lumina.Excel.Sheets.ClassJob;
 
 namespace Linkpearl.Platform.Ffxiv;

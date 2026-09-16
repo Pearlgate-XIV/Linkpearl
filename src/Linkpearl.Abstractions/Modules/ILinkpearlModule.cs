@@ -1,4 +1,3 @@
-using Linkpearl.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Linkpearl.Modules;

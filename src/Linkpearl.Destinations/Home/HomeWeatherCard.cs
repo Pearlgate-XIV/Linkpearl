@@ -1,6 +1,5 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
-using Linkpearl.Painting;
 using Linkpearl.Platform;
 using Linkpearl.Weather;
 

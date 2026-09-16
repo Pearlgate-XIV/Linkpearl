@@ -34,11 +34,11 @@ public interface IBroadcastSense : IDisposable
 
     void RescanPoints();
 
-    void Select(string id);
+    void Choose(string id);
 
     void Start();
 
-    void Stop();
+    void Halt();
 
     void StartMonitor();
 

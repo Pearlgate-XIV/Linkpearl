@@ -71,7 +71,7 @@ public sealed class DestinationDock
             }
         }
 
-        if (interactive && input.WasClicked(screen) && !drawer.Contains(input.Pointer))
+        if (interactive && input.WasClicked(screen) && !drawer.Contains(input.Cursor))
         {
             expanded = false;
         }

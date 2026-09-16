@@ -30,7 +30,7 @@ public interface IAppletBackground
 {
     string AppletId { get; }
 
-    void Resume();
+    void Unsuspend();
 
     void Suspend();
 }

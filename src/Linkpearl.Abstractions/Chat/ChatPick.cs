@@ -1,7 +1,6 @@
 using Linkpearl.Applets;
 using Linkpearl.Emoji;
 using Linkpearl.Geometry;
-using Linkpearl.Input;
 using Linkpearl.Painting;
 
 namespace Linkpearl.Chat;
@@ -131,8 +130,8 @@ public sealed class ChatPick
         if (frame.Input.WasPressed(area))
         {
             pressKey = lineKey;
-            pressAt = frame.Input.Pointer;
-            Hit(frame.Input.Pointer, out pressIndex, out pressLen);
+            pressAt = frame.Input.Cursor;
+            Hit(frame.Input.Cursor, out pressIndex, out pressLen);
             hold = 0f;
             Busy = false;
             blocked = false;
@@ -149,7 +148,7 @@ public sealed class ChatPick
         if (frame.Input.IsHeld())
         {
             hold += frame.DeltaSeconds;
-            var delta = frame.Input.Pointer - pressAt;
+            var delta = frame.Input.Cursor - pressAt;
             if (!Busy && !blocked)
             {
                 if (MathF.Abs(delta.Y) > 8f && MathF.Abs(delta.Y) > MathF.Abs(delta.X) * 1.15f)
@@ -167,7 +166,7 @@ public sealed class ChatPick
 
             if (Busy)
             {
-                Hit(frame.Input.Pointer, out var hit, out var hitLen);
+                Hit(frame.Input.Cursor, out var hit, out var hitLen);
                 Span(pressIndex, pressLen, hit, hitLen);
                 body = text;
                 key = lineKey;
@@ -187,7 +186,7 @@ public sealed class ChatPick
             return;
         }
 
-        Hit(frame.Input.Pointer, out var index, out _);
+        Hit(frame.Input.Cursor, out var index, out _);
         if (ChatLinks.At(text, index, links, out var link))
         {
             ChatWeb.Open(link.Href);

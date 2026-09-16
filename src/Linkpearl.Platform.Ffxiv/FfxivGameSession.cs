@@ -10,7 +10,6 @@ using NativeObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
-using Linkpearl.Platform;
 using ClassJobSheet = Lumina.Excel.Sheets.ClassJob;
 using ItemSheet = Lumina.Excel.Sheets.Item;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
@@ -213,7 +212,7 @@ public sealed class FfxivGameSession : IGameSession, IDisposable
         return inventory is null ? 0u : inventory->GetGil();
     }
 
-    private unsafe IReadOnlyList<GameCurrency> ReadCurrencies()
+    private unsafe List<GameCurrency> ReadCurrencies()
     {
         if (!clientState.IsLoggedIn)
         {

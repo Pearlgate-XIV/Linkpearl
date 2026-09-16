@@ -1,7 +1,6 @@
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Painting;
-using Linkpearl.Theming;
 
 namespace Linkpearl.Cards;
 

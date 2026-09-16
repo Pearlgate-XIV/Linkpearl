@@ -1,4 +1,3 @@
-using System.Linq;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -38,7 +37,6 @@ using Linkpearl.Platform;
 using Linkpearl.Platform.Ffxiv;
 using Linkpearl.Preferences;
 using Linkpearl.Talk;
-using Linkpearl.Theming;
 using Linkpearl.Time;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -67,14 +65,14 @@ public sealed class HandsetHost : IDisposable
     private readonly IKeyState keys;
     private readonly DalamudTextField textField;
     private readonly TalkPopoutBoard popouts;
-    private readonly RouteStack router;
-    private readonly IHandsetAudio audio;
+    private readonly RouteTrail router;
+    private readonly WasapiStreamPlayer audio;
     private readonly UsGenreRadio publicRadio;
     private readonly PearlCommunityRadio communityRadio;
     private readonly WasapiBroadcastSense broadcastSense;
     private readonly IcecastBroadcastPush broadcastPush;
     private readonly EchoMixBoothHost echoMix;
-    private readonly IStreamDesk streamDesk;
+    private readonly StreamDesk streamDesk;
     private readonly bool isDevelopment;
     private int lastUnread;
     private bool poweringOff;
@@ -217,7 +215,7 @@ public sealed class HandsetHost : IDisposable
         popouts.Restore(config.PopoutTalkIds, config.PopoutTalkPlaces);
 
         // Clock and Calculator are reached from the apps drawer (left-edge grid handle). Settings
-        // stays a destination. RouteStack is the back-stack for those applets.
+        // stays a destination. RouteTrail is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
             provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>(),
             provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>(), hub);
@@ -225,7 +223,7 @@ public sealed class HandsetHost : IDisposable
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));
         var appletById = apps.ToDictionary(applet => applet.Manifest.Id, applet => applet, StringComparer.Ordinal);
-        router = new RouteStack(appletById);
+        router = new RouteTrail(appletById);
         router.Restore(config.RecentAppIds, config.RecentAppPlaces);
         router.RecentsChanged += RememberRecents;
 

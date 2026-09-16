@@ -1,10 +1,8 @@
-using System.Numerics;
 using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
 using Linkpearl.Painting;
-using Linkpearl.Theming;
 
 namespace Linkpearl.Feedback;
 
@@ -26,7 +24,7 @@ public static class HandsetReportSheet
             new Vector2(area.Width - frame.Units(20f), frame.Units(300f)));
         var radius = frame.Units(16f);
         frame.Paint.Fill(card, frame.Theme.Palette.SurfaceRaised, radius);
-        var stack = new Stack(card.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(card.Inset(frame.Units(14f)), StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(26f)), heading,
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Select reason",
@@ -54,7 +52,7 @@ public static class HandsetReportSheet
                 ready ? frame.Theme.Palette.AccentInk : frame.Theme.Palette.InkMuted, TextAlign.Center));
         var dismiss = !fresh &&
             (frame.Input.WasClicked(cancel) ||
-             (!card.Contains(frame.Input.Pointer) && frame.Input.WasClicked(area)));
+             (!card.Contains(frame.Input.Cursor) && frame.Input.WasClicked(area)));
         fresh = false;
         if (dismiss)
         {

@@ -166,7 +166,7 @@ public sealed class EmojiPick
         }
 
         var shown = ShownGlyph(mark);
-        var live = clip.Contains(frame.Input.Pointer);
+        var live = clip.Contains(frame.Input.Cursor);
         if (live && frame.Input.IsHovering(area))
         {
             frame.Paint.Fill(area, accent with { W = 0.16f }, frame.Units(8f));
@@ -244,7 +244,7 @@ public sealed class EmojiPick
             }
         }
 
-        if (frame.Input.ConsumeClick(bounds) && !box.Contains(frame.Input.Pointer))
+        if (frame.Input.ConsumeClick(bounds) && !box.Contains(frame.Input.Cursor))
         {
             variantOf = null;
         }

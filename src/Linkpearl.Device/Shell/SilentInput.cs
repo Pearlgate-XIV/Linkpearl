@@ -7,7 +7,7 @@ internal sealed class SilentInput : IInputProbe
 {
     public static SilentInput Instance { get; } = new();
 
-    public Vector2 Pointer => Vector2.Zero;
+    public Vector2 Cursor => Vector2.Zero;
 
     public Vector2 PointerDelta => Vector2.Zero;
 

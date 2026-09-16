@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Cards;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
@@ -45,7 +44,7 @@ public sealed class NotesApplet : IApplet
     public void Compose(in AppletFrame frame)
     {
         var content = frame.Content.Inset(frame.Units(16f));
-        var stack = new Stack(content, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(content, StackAxis.Vertical, frame.Units(8f));
         frame.Text.DrawIn(stack.Take(frame.Units(28f)), "Notes",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
         frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Kept on this phone.",

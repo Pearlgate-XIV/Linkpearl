@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Linkpearl.Net;
 
 namespace Linkpearl.Net.Market;
 

@@ -27,7 +27,7 @@ public static class ScrollSlider
 
         if (frame.Input.PointerClaimed() ||
             (!frame.Input.IsHovering(viewport) &&
-             !(frame.Input.IsHeld() && viewport.Contains(frame.Input.Pointer))))
+             !(frame.Input.IsHeld() && viewport.Contains(frame.Input.Cursor))))
         {
             return;
         }

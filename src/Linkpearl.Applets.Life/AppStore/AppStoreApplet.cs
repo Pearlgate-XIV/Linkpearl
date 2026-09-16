@@ -1,4 +1,3 @@
-using Linkpearl.Applets;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Painting;
@@ -54,7 +53,7 @@ public sealed class AppStoreApplet : IApplet
     {
         var inner = frame.Content.Inset(new Edges(frame.Units(14f), frame.Units(8f), frame.Units(14f),
             frame.Units(6f)));
-        var stack = new Stack(inner, StackAxis.Vertical, frame.Units(8f));
+        var stack = new LayoutFlow(inner, StackAxis.Vertical, frame.Units(8f));
         DrawHeader(frame, stack.Take(frame.Units(40f)));
         DrawSearch(frame, stack.Take(frame.Units(34f)));
         DrawCategories(frame, stack.Take(frame.Units(28f)));
@@ -112,7 +111,7 @@ public sealed class AppStoreApplet : IApplet
         FillVisible();
         var rowH = frame.Units(64f);
         var gap = frame.Units(8f);
-        var cursor = new Stack(body.Translate(new Vector2(0f, -scroll)), StackAxis.Vertical, gap);
+        var cursor = new LayoutFlow(body.Translate(new Vector2(0f, -scroll)), StackAxis.Vertical, gap);
         frame.Paint.PushClip(body);
         for (var index = 0; index < visible.Count; index++)
         {
