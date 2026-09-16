@@ -167,6 +167,11 @@ public sealed partial class PearlHub
     {
         if (!Current.SignedIn)
         {
+            Replace(Current with
+            {
+                Notice = "Sign in from You to post a story.",
+                Generation = NextGeneration(),
+            });
             return;
         }
 
@@ -175,8 +180,26 @@ public sealed partial class PearlHub
             return;
         }
 
+        var text = body.Trim();
         var files = File.Exists(mediaPath) ? new[] { mediaPath } : [];
-        Enqueue(new SocialWrite(SocialKind.Story, string.Empty, body.Trim(), true, files, string.Empty));
+        if (text.Length == 0 && files.Length == 0)
+        {
+            return;
+        }
+
+        Enqueue(new SocialWrite(SocialKind.Story, string.Empty, text, true, files, string.Empty));
+    }
+
+    public void WatchStory(string authorId)
+    {
+        var id = authorId.Trim();
+        if (id.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        watchedStory = id;
+        storyFetchQueued = true;
     }
 
     private bool BlockMuted()
@@ -560,6 +583,142 @@ public sealed partial class PearlHub
         return await client.PostAsync("/posts", GateClient.JsonBody(body, GateJson.Default.PostBodyDto), token)
             .ConfigureAwait(false);
     }
+
+    private async Task RunWatchStoryAsync(string authorId, CancellationToken token)
+    {
+        if (authorId.Length == 0 || !Current.SignedIn)
+        {
+            return;
+        }
+
+        try
+        {
+            var ring = await LoadStoryRingAsync(authorId, token).ConfigureAwait(false);
+            if (ring is null)
+            {
+                return;
+            }
+
+            var mapped = MapRing(ring, Current.Stories);
+            KeepStorySlides([mapped]);
+            Replace(Current with
+            {
+                Stories = ReplaceRing(Current.Stories, mapped),
+                StoriesLive = true,
+                Generation = NextGeneration(),
+            });
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log.Write(LogSeverity.Warning, failure, "Pearlgate story watch failed");
+        }
+    }
+
+    private async Task<StoryRingDto?> LoadStoryRingAsync(string authorId, CancellationToken token)
+    {
+        var escaped = Uri.EscapeDataString(authorId);
+        var (ring, status) = await client
+            .GetAsync("/stories/" + escaped, GateJson.Default.StoryRingDto, token)
+            .ConfigureAwait(false);
+        if (status == 401)
+        {
+            DropSession("Session expired. Sign in again.");
+            return null;
+        }
+
+        if (status is >= 200 and < 300 && LooksLikeRing(ring))
+        {
+            return ring;
+        }
+
+        var trayPaths = new[]
+        {
+            "/stories/" + escaped,
+            "/users/" + escaped + "/stories",
+            "/stories?userId=" + escaped,
+        };
+        for (var index = 0; index < trayPaths.Length; index++)
+        {
+            var (tray, trayStatus) = await client
+                .GetAsync(trayPaths[index], GateJson.Default.StoryTrayDto, token)
+                .ConfigureAwait(false);
+            if (trayStatus == 401)
+            {
+                DropSession("Session expired. Sign in again.");
+                return null;
+            }
+
+            if (trayStatus is < 200 or >= 300)
+            {
+                continue;
+            }
+
+            var rings = MapStories(tray, Current.Stories);
+            for (var ringIndex = 0; ringIndex < rings.Length; ringIndex++)
+            {
+                if (string.Equals(rings[ringIndex].AuthorId, authorId, StringComparison.Ordinal))
+                {
+                    return new StoryRingDto(rings[ringIndex].AuthorId, rings[ringIndex].AuthorName,
+                        rings[ringIndex].HasUnseen, rings[ringIndex].Count, rings[ringIndex].AvatarUrl,
+                        ToItems(rings[ringIndex].Items));
+                }
+            }
+
+            if (rings.Length == 1)
+            {
+                return new StoryRingDto(rings[0].AuthorId, rings[0].AuthorName, rings[0].HasUnseen, rings[0].Count,
+                    rings[0].AvatarUrl, ToItems(rings[0].Items));
+            }
+        }
+
+        return null;
+    }
+
+    private static StoryItemDto[] ToItems(PearlStorySlide[] slides)
+    {
+        var items = new StoryItemDto[slides.Length];
+        for (var index = 0; index < slides.Length; index++)
+        {
+            var slide = slides[index];
+            items[index] = new StoryItemDto(slide.Id, null, null, slide.Body, null, null, null, slide.MediaUrl,
+                null, null, null, slide.CreatedAtUnix);
+        }
+
+        return items;
+    }
+
+    private static PearlStory[] ReplaceRing(PearlStory[] rings, PearlStory next)
+    {
+        var found = false;
+        var mapped = new PearlStory[rings.Length];
+        for (var index = 0; index < rings.Length; index++)
+        {
+            if (string.Equals(rings[index].AuthorId, next.AuthorId, StringComparison.Ordinal))
+            {
+                mapped[index] = next;
+                found = true;
+            }
+            else
+            {
+                mapped[index] = rings[index];
+            }
+        }
+
+        if (found)
+        {
+            return mapped;
+        }
+
+        var grown = new PearlStory[rings.Length + 1];
+        rings.CopyTo(grown, 0);
+        grown[^1] = next;
+        return grown;
+    }
+
+    private static bool LooksLikeRing(StoryRingDto? ring) =>
+        ring is not null &&
+        (ring.AuthorId is { Length: > 0 } || ring.Count > 0 || ring.Items is { Length: > 0 } ||
+         ring.Stories is { Length: > 0 });
 
     private async Task<int> RunStoryWriteAsync(SocialWrite write, CancellationToken token)
     {

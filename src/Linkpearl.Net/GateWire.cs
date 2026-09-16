@@ -83,13 +83,33 @@ internal sealed record AddContactBodyDto(string? Number, string? Alias, string? 
 
 internal sealed record UserSearchDto(GateUserDto[]? Users);
 
+internal sealed record StoryItemDto(
+    string? Id,
+    string? AuthorId,
+    string? AuthorDisplayName,
+    string? Body,
+    string? Text,
+    string? Caption,
+    string? Content,
+    string? MediaUrl,
+    string? Url,
+    string? MediaId,
+    MediaDto[]? Media,
+    long CreatedAtUnix = 0);
+
 internal sealed record StoryRingDto(
     string? AuthorId,
     string? AuthorDisplayName,
     bool HasUnseen,
-    int Count);
+    int Count,
+    string? AvatarUrl = null,
+    StoryItemDto[]? Items = null,
+    StoryItemDto[]? Stories = null);
 
-internal sealed record StoryTrayDto(StoryRingDto[]? Rings);
+internal sealed record StoryTrayDto(
+    StoryRingDto[]? Rings,
+    StoryRingDto[]? Stories = null,
+    StoryItemDto[]? Items = null);
 
 internal sealed record AnnouncementTranslationDto(string Lang, string Title, string Body);
 
@@ -312,6 +332,7 @@ internal sealed record GateRealtimeDto(
 [JsonSerializable(typeof(ContactListDto))]
 [JsonSerializable(typeof(AddContactBodyDto))]
 [JsonSerializable(typeof(UserSearchDto))]
+[JsonSerializable(typeof(StoryItemDto))]
 [JsonSerializable(typeof(StoryRingDto))]
 [JsonSerializable(typeof(StoryTrayDto))]
 [JsonSerializable(typeof(AnnouncementTranslationDto))]

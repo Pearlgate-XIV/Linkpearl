@@ -1,6 +1,7 @@
 using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Cards;
+using Linkpearl.Destinations.Stories;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Net;
@@ -17,13 +18,15 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
 
     private readonly IPearlHub pearl;
     private readonly IGameSession game;
+    private readonly StoriesSurface stories;
     private int selectedSection;
     private string itemDraft = string.Empty;
 
-    public ExploreDestination(IPearlHub pearl, IGameSession game)
+    public ExploreDestination(IPearlHub pearl, IGameSession game, IFilePicker files, IClock clock)
     {
         this.pearl = pearl;
         this.game = game;
+        stories = new StoriesSurface(pearl, files, clock);
     }
 
     public DestinationTab Tab => DestinationTab.Explore;
@@ -34,13 +37,24 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
 
     public int CurrentSection => selectedSection;
 
-    public void ShowSection(int section) =>
+    public void ShowSection(int section)
+    {
         selectedSection = Math.Clamp(section, 0, SectionTabs.Length - 1);
+        if (selectedSection != 0)
+        {
+            stories.Close();
+        }
+    }
 
-    public bool CanGoBack => selectedSection != 0;
+    public bool CanGoBack => stories.OverlayOpen || selectedSection != 0;
 
     public bool Back()
     {
+        if (stories.Back())
+        {
+            return true;
+        }
+
         if (selectedSection == 0)
         {
             return false;
@@ -50,12 +64,35 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
         return true;
     }
 
+    public void OpenStory(string authorId)
+    {
+        selectedSection = 0;
+        if (authorId.Length > 0)
+        {
+            stories.Open(authorId);
+            return;
+        }
+
+        stories.Close();
+    }
+
+    public void OpenCompose()
+    {
+        selectedSection = 0;
+        stories.OpenCompose();
+    }
+
     public float Compose(in AppletFrame frame)
     {
         var inset = frame.Units(14f);
         var content = frame.Content.Inset(inset);
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
         var snapshot = pearl.Current;
+
+        if (stories.OverlayOpen && selectedSection == 0)
+        {
+            return stories.ComposeOverlay(frame);
+        }
 
         frame.Text.DrawIn(stack.Take(frame.Units(30f)), "Explore",
             new TextStyle(FontRole.Title, frame.Theme.Palette.Ink));
@@ -74,32 +111,20 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
             return content.Height + inset * 2f;
         }
 
-        if (!snapshot.SignedIn)
-        {
-            DrawEmpty(frame, stack.TakeRemaining(), "Sign in from You to load people and stories.");
-            return content.Height + inset * 2f;
-        }
+        stories.DrawList(frame, ref stack, snapshot);
 
-        var drew = false;
-        for (var index = 0; index < snapshot.Stories.Length; index++)
-        {
-            var row = stack.Take(frame.Units(72f));
-            CardChrome.Draw(frame, row);
-            DrawStory(frame, row.Inset(frame.Units(12f)), snapshot.Stories[index]);
-            drew = true;
-        }
-
+        var drewPeople = false;
         for (var index = 0; index < snapshot.People.Length; index++)
         {
             var row = stack.Take(frame.Units(72f));
             CardChrome.Draw(frame, row);
             DrawPerson(frame, row.Inset(frame.Units(12f)), snapshot.People[index]);
-            drew = true;
+            drewPeople = true;
         }
 
-        if (!drew)
+        if (!drewPeople && snapshot.SignedIn && snapshot.StoriesLive && snapshot.Stories.Length == 0)
         {
-            DrawEmpty(frame, stack.Take(frame.Units(72f)), "Nothing to explore yet. Add people from Social.");
+            DrawEmpty(frame, stack.Take(frame.Units(56f)), "Add people from Social to fill Explore.");
         }
 
         return (content.Height - stack.Remaining.Height) + inset * 2f;
@@ -213,16 +238,6 @@ public sealed class ExploreDestination : IDestinationScreen, ISectionedDestinati
         frame.Paint.Fill(area.Inset(frame.Units(2f)), frame.Theme.Palette.Accent, frame.Units(999f));
         frame.Text.DrawIn(area, label, new TextStyle(FontRole.Caption, frame.Theme.Palette.AccentInk, TextAlign.Center));
         return frame.Input.ConsumeClick(area);
-    }
-
-    private static void DrawStory(in AppletFrame frame, Rect inset, PearlStory story)
-    {
-        var stack = new Stack(inset, StackAxis.Vertical, frame.Units(3f));
-        CardChrome.DrawKicker(frame, stack.Take(frame.Units(15f)), "Story", frame.Theme.Palette.WarmAccent);
-        frame.Text.DrawIn(stack.Take(frame.Units(22f)), story.AuthorName,
-            new TextStyle(FontRole.BodyStrong, frame.Theme.Palette.Ink));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), story.HasUnseen ? "Unseen" : "Seen",
-            new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
     }
 
     private static void DrawPerson(in AppletFrame frame, Rect inset, PearlPerson person)

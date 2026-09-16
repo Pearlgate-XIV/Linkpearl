@@ -3,6 +3,7 @@ using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Destinations;
+using Linkpearl.Destinations.Explore;
 using Linkpearl.Destinations.Home;
 using Linkpearl.Destinations.Profile;
 using Linkpearl.Destinations.Settings;
@@ -442,6 +443,15 @@ public sealed class HandsetShell
             quickApps.Close();
             outerFrame.Router.Home();
             OpenDestination(opened, section, talkId, profileId, noticeId, hub.TakeLabel());
+            if (destinationsByTab.TryGetValue(DestinationTab.Explore, out var exploreScreen) &&
+                exploreScreen is ExploreDestination explore)
+            {
+                var storyAuthor = hub.TakeStory();
+                if (storyAuthor.Length > 0)
+                {
+                    explore.OpenStory(storyAuthor);
+                }
+            }
         }
 
         if (hub.TryTakeSearch())
@@ -1181,7 +1191,11 @@ public sealed class HandsetShell
     {
         DestinationTab.Settings => "settings",
         DestinationTab.You => "you",
-        DestinationTab.Explore => section == ExplorePane.Events ? "events" : "market",
+        DestinationTab.Explore => section == ExplorePane.ForYou
+            ? "stories"
+            : section == ExplorePane.Events
+                ? "events"
+                : "market",
         DestinationTab.Social => section switch
         {
             SocialPane.Phone => "phone",
@@ -1204,7 +1218,11 @@ public sealed class HandsetShell
             SocialPane.Linkshells => "linkshells",
             _ => "direct",
         },
-        DestinationTab.Explore => section == ExplorePane.Events ? "events" : "explore",
+        DestinationTab.Explore => section == ExplorePane.ForYou
+            ? "stories"
+            : section == ExplorePane.Events
+                ? "events"
+                : "explore",
         DestinationTab.You => "you",
         DestinationTab.Home => "announcements",
         _ => string.Empty,

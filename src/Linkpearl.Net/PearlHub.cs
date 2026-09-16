@@ -46,6 +46,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
     private bool postQueued;
     private string watchedUser = string.Empty;
     private bool profileQueued;
+    private string watchedStory = string.Empty;
+    private bool storyFetchQueued;
     private readonly Dictionary<string, List<PearlComment>> postComments = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PearlPost> postIndex = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> mediaPaths = new(StringComparer.Ordinal);
@@ -489,6 +491,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             Start(token => RunProfilePostsAsync(id, token));
         }
 
+        if (storyFetchQueued)
+        {
+            storyFetchQueued = false;
+            var id = watchedStory;
+            Start(token => RunWatchStoryAsync(id, token));
+        }
+
         SocialWrite? write = null;
         (bool Add, uint ItemId, string Label)? market = null;
         (bool Add, string UserId, string Number)? friend = null;
@@ -806,7 +815,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var (directoryPage, directoryStatus) = await client
                 .GetAsync("/users/directory", GateJson.Default.UserSearchDto, token)
                 .ConfigureAwait(false);
-            var (stories, _) = await client.GetAsync("/stories", GateJson.Default.StoryTrayDto, token)
+            var (stories, storiesStatus) = await client.GetAsync("/stories", GateJson.Default.StoryTrayDto, token)
                 .ConfigureAwait(false);
             var (announcements, _) = await client.GetAsync("/announcements", GateJson.Default.AnnouncementPageDto, token)
                 .ConfigureAwait(false);
@@ -843,6 +852,13 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
             var chats = MapChats(chatsPage?.Items);
             var people = MapPeople(contacts?.Contacts);
             var prior = Current;
+            var storiesLive = storiesStatus is >= 200 and < 300;
+            var storiesOff = storiesStatus is 404 or 405 or 501;
+            var mappedStories = storiesLive
+                ? KeepStorySlides(MapStories(stories, prior.Stories))
+                : storiesOff
+                    ? []
+                    : prior.Stories;
             var directory = directoryStatus is >= 200 and < 300
                 ? MapDirectory(directoryPage?.Users, meId)
                 : prior.Directory;
@@ -874,7 +890,8 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
                 Chats = chats,
                 People = people,
                 Directory = directory,
-                Stories = MapStories(stories?.Rings),
+                Stories = mappedStories,
+                StoriesLive = storiesLive || (prior.StoriesLive && !storiesOff),
                 Announcements = MapAnnouncements(announcements?.Items),
                 SearchHits = prior.SearchHits,
                 SearchPosts = prior.SearchPosts,
@@ -1019,6 +1036,7 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         creatingChats.Clear();
         watchedPost = string.Empty;
         watchedUser = string.Empty;
+        watchedStory = string.Empty;
     }
 
     private void Replace(PearlSnapshot next)
@@ -1487,19 +1505,138 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         return mapped.ToArray();
     }
 
-    private static PearlStory[] MapStories(StoryRingDto[]? items)
+    private static PearlStory[] MapStories(StoryTrayDto? tray, PearlStory[] prior)
+    {
+        var rings = tray?.Rings ?? tray?.Stories;
+        if (rings is { Length: > 0 })
+        {
+            var mapped = new PearlStory[rings.Length];
+            for (var index = 0; index < rings.Length; index++)
+            {
+                mapped[index] = MapRing(rings[index], prior);
+            }
+
+            return mapped;
+        }
+
+        return MapStoryItems(tray?.Items, prior);
+    }
+
+    private static PearlStory MapRing(StoryRingDto ring, PearlStory[] prior)
+    {
+        var authorId = ring.AuthorId ?? string.Empty;
+        var slides = MapSlides(ring.Items) is { Length: > 0 } nested
+            ? nested
+            : MapSlides(ring.Stories);
+        if (slides.Length == 0)
+        {
+            slides = SlidesFor(prior, authorId);
+        }
+
+        var count = ring.Count > 0 ? ring.Count : slides.Length;
+        return new PearlStory(authorId, ring.AuthorDisplayName ?? "Someone", count, ring.HasUnseen,
+            ring.AvatarUrl ?? string.Empty, slides.Length > 0 ? slides : null);
+    }
+
+    private static PearlStory[] MapStoryItems(StoryItemDto[]? items, PearlStory[] prior)
+    {
+        if (items is null || items.Length == 0)
+        {
+            return prior;
+        }
+
+        var grouped = new List<PearlStory>();
+        for (var index = 0; index < items.Length; index++)
+        {
+            var item = items[index];
+            var authorId = item.AuthorId ?? string.Empty;
+            var slide = MapSlide(item);
+            var found = -1;
+            for (var ring = 0; ring < grouped.Count; ring++)
+            {
+                if (string.Equals(grouped[ring].AuthorId, authorId, StringComparison.Ordinal))
+                {
+                    found = ring;
+                    break;
+                }
+            }
+
+            if (found < 0)
+            {
+                grouped.Add(new PearlStory(authorId, item.AuthorDisplayName ?? "Someone", 1, true,
+                    string.Empty, [slide]));
+                continue;
+            }
+
+            var current = grouped[found];
+            var slides = new PearlStorySlide[current.Items.Length + 1];
+            current.Items.CopyTo(slides, 0);
+            slides[^1] = slide;
+            grouped[found] = current with { Count = slides.Length, Slides = slides };
+        }
+
+        return grouped.ToArray();
+    }
+
+    private static PearlStorySlide[] MapSlides(StoryItemDto[]? items)
     {
         if (items is null || items.Length == 0)
         {
             return [];
         }
 
-        var mapped = new PearlStory[items.Length];
+        var mapped = new PearlStorySlide[items.Length];
         for (var index = 0; index < items.Length; index++)
         {
-            var item = items[index];
-            mapped[index] = new PearlStory(item.AuthorId ?? string.Empty, item.AuthorDisplayName ?? "Someone",
-                item.Count, item.HasUnseen);
+            mapped[index] = MapSlide(items[index]);
+        }
+
+        return mapped;
+    }
+
+    private static PearlStorySlide MapSlide(StoryItemDto item)
+    {
+        var body = item.Body ?? item.Caption ?? item.Text ?? item.Content ?? string.Empty;
+        var media = item.MediaUrl ?? item.Url ?? string.Empty;
+        if (media.Length == 0 && item.Media is { Length: > 0 })
+        {
+            media = item.Media[0].Url ?? string.Empty;
+        }
+
+        return new PearlStorySlide(item.Id ?? string.Empty, body.Trim(), media, item.CreatedAtUnix);
+    }
+
+    private static PearlStorySlide[] SlidesFor(PearlStory[] prior, string authorId)
+    {
+        for (var index = 0; index < prior.Length; index++)
+        {
+            if (string.Equals(prior[index].AuthorId, authorId, StringComparison.Ordinal))
+            {
+                return prior[index].Items;
+            }
+        }
+
+        return [];
+    }
+
+    private PearlStory[] KeepStorySlides(PearlStory[] mapped)
+    {
+        for (var index = 0; index < mapped.Length; index++)
+        {
+            var url = mapped[index].AvatarUrl;
+            if (url.Length > 0)
+            {
+                PrefetchMedia(url);
+            }
+
+            var slides = mapped[index].Items;
+            for (var slide = 0; slide < slides.Length; slide++)
+            {
+                if (slides[slide].MediaUrl.Length > 0)
+                {
+                    PrefetchMedia(slides[slide].MediaUrl);
+                }
+            }
         }
 
         return mapped;

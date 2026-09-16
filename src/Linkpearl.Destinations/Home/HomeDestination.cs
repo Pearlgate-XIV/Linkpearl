@@ -260,18 +260,31 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
         DrawOffCard(frame, row.LeftSlice(half), HomeMark.Market, "MARKET", LinkPearlgate,
             string.Empty, snapshot.SignedIn ? DestinationTab.Explore : DestinationTab.You,
             snapshot.SignedIn ? ExplorePane.Places : 0);
-        if (snapshot.SignedIn && snapshot.Stories.Length > 0)
+        if (!snapshot.SignedIn)
         {
-            var story = FirstUnseenOrFirst(snapshot);
-            DrawWidget(frame, row.RightSlice(half), HomeMark.Event, "EVENTS", story.AuthorName,
-                story.HasUnseen ? "New story" : "Story", story.HasUnseen ? 1 : 0, DestinationTab.Social,
-                SocialPane.Feed);
+            DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "STORIES", LinkPearlgate,
+                string.Empty, DestinationTab.You, 0);
             return;
         }
 
-        DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "EVENTS", LinkPearlgate,
-            string.Empty, snapshot.SignedIn ? DestinationTab.Explore : DestinationTab.You,
-            snapshot.SignedIn ? ExplorePane.Events : 0);
+        if (!snapshot.StoriesLive)
+        {
+            DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "STORIES",
+                "Pearlgate is not hosting stories", string.Empty, DestinationTab.Explore, ExplorePane.ForYou);
+            return;
+        }
+
+        if (snapshot.Stories.Length > 0)
+        {
+            var story = FirstUnseenOrFirst(snapshot);
+            DrawWidget(frame, row.RightSlice(half), HomeMark.Event, "STORIES", story.AuthorName,
+                story.HasUnseen ? "New story" : "Story", story.HasUnseen ? 1 : 0, DestinationTab.Explore,
+                ExplorePane.ForYou, story.AuthorId);
+            return;
+        }
+
+        DrawOffCard(frame, row.RightSlice(half), HomeMark.Event, "STORIES", "No stories yet",
+            string.Empty, DestinationTab.Explore, ExplorePane.ForYou);
     }
 
     private void DrawMessages(in AppletFrame frame, Rect area, PearlSnapshot snapshot)
@@ -563,6 +576,12 @@ public sealed class HomeDestination : IDestinationScreen, ISectionedDestination
 
     private void OpenCard(DestinationTab tab, int pane, string talkId)
     {
+        if (tab == DestinationTab.Explore && pane == ExplorePane.ForYou)
+        {
+            hub.OpenStories(talkId);
+            return;
+        }
+
         if (talkId.Length > 0)
         {
             hub.OpenTalk(talkId);

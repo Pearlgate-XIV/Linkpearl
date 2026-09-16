@@ -3,6 +3,7 @@ using Linkpearl.Applets;
 using Linkpearl.Feedback;
 using Linkpearl.Cards;
 using Linkpearl.Chat;
+using Linkpearl.Destinations.Stories;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
@@ -29,6 +30,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     private readonly IPearlHub pearl;
     private readonly ITalk talk;
+    private readonly DestinationHub hub;
     private readonly IChatBridge chat;
     private readonly DisplayPreferences display;
     private readonly MessagesSurface messages;
@@ -52,10 +54,11 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
         ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks,
-        IFeedbackDesk desk, ILifestream lifestream)
+        IFeedbackDesk desk, ILifestream lifestream, DestinationHub hub)
     {
         this.pearl = pearl;
         this.talk = talk;
+        this.hub = hub;
         this.chat = chat;
         this.display = display;
         this.game = game;
@@ -209,6 +212,9 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         var stack = new Stack(content, StackAxis.Vertical, frame.Units(10f));
         DrawHeading(frame, stack.Take(frame.Units(30f)));
         DrawSectionTabs(frame, stack.Take(frame.Units(32f)));
+        StoriesSurface.DrawRail(frame, stack.Take(frame.Units(72f)), pearl.Current,
+            authorId => hub.OpenStories(authorId),
+            () => hub.OpenStories());
         var restArea = stack.TakeRemaining();
         var used = feed.Compose(frame.WithContent(restArea));
         return (content.Height - restArea.Height) + used + inset * 2f;

@@ -53,6 +53,7 @@ public sealed class DestinationHub
     private string pendingLabel = string.Empty;
     private string pendingApplet = string.Empty;
     private string pendingAppletHint = string.Empty;
+    private string pendingStory = string.Empty;
     private bool pending;
     private bool appletPending;
     private bool searchPending;
@@ -66,6 +67,19 @@ public sealed class DestinationHub
         pendingProfile = string.Empty;
         pendingNotice = string.Empty;
         pendingLabel = label ?? string.Empty;
+        pendingStory = string.Empty;
+        pending = true;
+    }
+
+    public void OpenStories(string authorId = "")
+    {
+        pendingTab = DestinationTab.Explore;
+        pendingSection = ExplorePane.ForYou;
+        pendingTalk = string.Empty;
+        pendingProfile = string.Empty;
+        pendingNotice = string.Empty;
+        pendingLabel = string.Empty;
+        pendingStory = authorId ?? string.Empty;
         pending = true;
     }
 
@@ -77,6 +91,7 @@ public sealed class DestinationHub
         pendingProfile = string.Empty;
         pendingNotice = announcementId ?? string.Empty;
         pendingLabel = string.Empty;
+        pendingStory = string.Empty;
         pending = true;
     }
 
@@ -88,6 +103,7 @@ public sealed class DestinationHub
         pendingProfile = string.Empty;
         pendingNotice = string.Empty;
         pendingLabel = string.Empty;
+        pendingStory = string.Empty;
         pending = true;
     }
 
@@ -99,6 +115,7 @@ public sealed class DestinationHub
         pendingProfile = peerId;
         pendingNotice = string.Empty;
         pendingLabel = string.Empty;
+        pendingStory = string.Empty;
         pending = true;
     }
 
@@ -138,6 +155,13 @@ public sealed class DestinationHub
         var label = pendingLabel;
         pendingLabel = string.Empty;
         return label;
+    }
+
+    public string TakeStory()
+    {
+        var id = pendingStory;
+        pendingStory = string.Empty;
+        return id;
     }
 
     public bool TryTakeApplet(out string appletId, out string routeHint)

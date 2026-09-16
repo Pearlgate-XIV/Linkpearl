@@ -20,11 +20,22 @@ public readonly record struct PearlPerson(
     string World = "",
     string TimeZoneId = "");
 
+public readonly record struct PearlStorySlide(
+    string Id,
+    string Body,
+    string MediaUrl,
+    long CreatedAtUnix);
+
 public readonly record struct PearlStory(
     string AuthorId,
     string AuthorName,
     int Count,
-    bool HasUnseen);
+    bool HasUnseen,
+    string AvatarUrl = "",
+    PearlStorySlide[]? Slides = null)
+{
+    public PearlStorySlide[] Items => Slides is { Length: > 0 } ? Slides : [];
+}
 
 public readonly record struct PearlAnnouncement(
     string Id,
@@ -144,6 +155,8 @@ public sealed record PearlSnapshot
     public PearlPerson[] Directory { get; init; } = [];
 
     public PearlStory[] Stories { get; init; } = [];
+
+    public bool StoriesLive { get; init; }
 
     public PearlAnnouncement[] Announcements { get; init; } = [];
 
@@ -265,6 +278,8 @@ public interface IPearlHub
     void SetAvatar(string mediaPath);
 
     void PublishStory(string body, string mediaPath);
+
+    void WatchStory(string authorId);
 
     IReadOnlyList<PearlComment> CommentsFor(string postId);
 
