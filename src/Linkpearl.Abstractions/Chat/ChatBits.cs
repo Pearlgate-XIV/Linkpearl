@@ -303,6 +303,28 @@ public static class ChatBits
         }
     }
 
+    public static bool TryPlain(in AppletFrame frame, Rect area, string body, ChatCite cite, out Rect face,
+        out string text)
+    {
+        if (TryCite(body, cite, out _, out _, out var rest))
+        {
+            return TryPlain(frame, area.Inset(new Edges(0f, QuoteHeight(frame) + frame.Units(2f), 0f, 0f)), rest,
+                default, out face, out text);
+        }
+
+        var bit = Read(body);
+        if (bit.Kind != ChatBitKind.Text || string.IsNullOrEmpty(bit.Body))
+        {
+            face = default;
+            text = string.Empty;
+            return false;
+        }
+
+        face = area;
+        text = bit.Body;
+        return true;
+    }
+
     public static bool TryCite(string body, ChatCite cite, out string who, out string preview, out string rest)
     {
         if (!string.IsNullOrEmpty(cite.Who))

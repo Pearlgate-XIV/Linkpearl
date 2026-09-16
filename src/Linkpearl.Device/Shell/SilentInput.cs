@@ -38,4 +38,6 @@ internal sealed class SilentInput : IInputProbe
     public bool EscapePressed() => false;
 
     public bool PointerReleased(PointerButton button = PointerButton.Primary) => false;
+
+    public bool CopyChord() => false;
 }

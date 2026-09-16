@@ -104,6 +104,17 @@ public sealed class DalamudInputProbe : IInputProbe
         return Live && ImGui.IsMouseReleased(ToImGuiButton(button)) && !dragged[index];
     }
 
+    public bool CopyChord()
+    {
+        if (!Live || ImGui.GetIO().WantTextInput)
+        {
+            return false;
+        }
+
+        var chord = ImGui.GetIO().KeyCtrl || ImGui.GetIO().KeySuper;
+        return chord && ImGui.IsKeyPressed(ImGuiKey.C, false);
+    }
+
     private bool PointerOnClaim()
     {
         var pointer = Pointer;
