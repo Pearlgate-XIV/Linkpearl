@@ -53,6 +53,7 @@ public sealed class HandsetWindow : Window
     private bool presencePocket;
     private bool presenceVanish;
     private bool pocketMoving;
+    private Vector2 pocketGrab;
     private bool placedOnce;
     private bool placeOnce;
     private bool savePlacement;
@@ -188,6 +189,12 @@ public sealed class HandsetWindow : Window
         {
             ImGui.SetNextWindowPos(
                 ResizeGrip.PosFromAnchor(resizeGrip.ActiveCorner, resizeGrip.Anchor, Size ?? FullSize()),
+                ImGuiCond.Always);
+        }
+        else if (pocketMoving)
+        {
+            ImGui.SetNextWindowPos(
+                HandsetPlacement.Clamp(ImGui.GetMousePos() - pocketGrab, Size ?? FaceSize()),
                 ImGuiCond.Always);
         }
         else if (resizeGrip.Holding && lastOuter.Width > 16f)
@@ -409,6 +416,7 @@ public sealed class HandsetWindow : Window
                         !powerHit.Contains(pointer) && !volumeHit.Contains(pointer) &&
                         windowRect.Contains(pointer))
                     {
+                        pocketGrab = pointer - windowRect.Min;
                         pocketMoving = true;
                     }
                 }
@@ -472,7 +480,6 @@ public sealed class HandsetWindow : Window
                     return;
                 }
 
-                DragPocket(pocketMoving);
                 if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
                     if (pocketMoving)
@@ -1019,14 +1026,4 @@ public sealed class HandsetWindow : Window
     private static bool ChromeClicked(Rect area) =>
         !DalamudInputProbe.OtherWindowAbove() && !area.IsEmpty && area.Contains(ImGui.GetMousePos()) &&
         ImGui.IsMouseClicked(ImGuiMouseButton.Left);
-
-    private static void DragPocket(bool moving)
-    {
-        if (!moving)
-        {
-            return;
-        }
-
-        ImGui.SetWindowPos(ImGui.GetWindowPos() + ImGui.GetIO().MouseDelta);
-    }
 }
