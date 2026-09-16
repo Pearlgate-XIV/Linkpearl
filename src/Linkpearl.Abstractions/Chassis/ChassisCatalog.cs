@@ -23,11 +23,12 @@ public readonly struct ChassisPlate
     public readonly float Corner;
     public readonly float ScreenCorner;
     public readonly float Gasket;
+    public readonly string BackFileName;
 
     public ChassisPlate(string fileName, float width, float height, float screenLeft, float screenTop,
         float screenRight, float screenBottom, float volumeTop, float volumeBottom, float powerTop,
         float powerBottom, float bodyLeft, float bodyTop, float bodyRight, float bodyBottom, float corner,
-        float screenCorner = 0f, float gasket = 0f)
+        float screenCorner = 0f, float gasket = 0f, string backFileName = "")
     {
         FileName = fileName;
         Aspect = width / height;
@@ -46,7 +47,10 @@ public readonly struct ChassisPlate
         Corner = corner;
         ScreenCorner = screenCorner;
         Gasket = gasket;
+        BackFileName = backFileName ?? string.Empty;
     }
+
+    public bool HasBack => BackFileName.Length > 0;
 
     public Rect ScreenOn(Rect window) =>
         window.Inset(new Edges(window.Width * ScreenLeft, window.Height * ScreenTop,
@@ -151,12 +155,26 @@ public static class ChassisCatalog
     public static ChassisPlate Phone { get; } = new("phone.png", 517f, 1008f,
         17f / 517f, 17f / 1008f, 23f / 517f, 16f / 1008f,
         206f / 1008f, 332f / 1008f, 393f / 1008f, 462f / 1008f,
-        4f / 517f, 4f / 1008f, 9f / 517f, 4f / 1008f, 27f / 517f);
+        4f / 517f, 4f / 1008f, 9f / 517f, 4f / 1008f, 27f / 517f,
+        backFileName: "phone-back.png");
+
+    public static ChassisPlate PhoneEtched { get; } = new("phone-etched.png", 517f, 1008f,
+        17f / 517f, 17f / 1008f, 23f / 517f, 16f / 1008f,
+        206f / 1008f, 332f / 1008f, 393f / 1008f, 462f / 1008f,
+        4f / 517f, 4f / 1008f, 9f / 517f, 4f / 1008f, 27f / 517f,
+        backFileName: "phone-etched-back.png");
 
     public static ChassisPlate Tablet { get; } = new("tablet.png", 710f, 987f,
         18f / 710f, 17f / 987f, 23f / 710f, 16f / 987f,
         206f / 987f, 310f / 987f, 382f / 987f, 411f / 987f,
-        5f / 710f, 4f / 987f, 9f / 710f, 4f / 987f, 33f / 710f);
+        5f / 710f, 4f / 987f, 9f / 710f, 4f / 987f, 33f / 710f,
+        backFileName: "tablet-back.png");
+
+    public static ChassisPlate TabletEtched { get; } = new("tablet-etched.png", 710f, 987f,
+        18f / 710f, 17f / 987f, 23f / 710f, 16f / 987f,
+        206f / 987f, 310f / 987f, 382f / 987f, 411f / 987f,
+        5f / 710f, 4f / 987f, 9f / 710f, 4f / 987f, 33f / 710f,
+        backFileName: "tablet-etched-back.png");
 
     public static ChassisPlate Android { get; } = new("android.png", 462f, 938f,
         5f / 462f, 5f / 938f, 12f / 462f, 5f / 938f,
@@ -165,13 +183,21 @@ public static class ChassisCatalog
 
     public static ChassisPlate For(HandsetForm form) => For(form, HandsetCase.Pearl);
 
-    public static ChassisPlate For(HandsetForm form, HandsetCase casing)
+    public static ChassisPlate For(HandsetForm form, HandsetCase casing) =>
+        For(form, casing, HandsetFinish.Crystal);
+
+    public static ChassisPlate For(HandsetForm form, HandsetCase casing, HandsetFinish finish)
     {
         if (casing == HandsetCase.Android && form != HandsetForm.Tablet)
         {
             return Android;
         }
 
-        return form == HandsetForm.Tablet ? Tablet : Phone;
+        if (form == HandsetForm.Tablet)
+        {
+            return finish == HandsetFinish.Etched ? TabletEtched : Tablet;
+        }
+
+        return finish == HandsetFinish.Etched ? PhoneEtched : Phone;
     }
 }

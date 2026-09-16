@@ -230,7 +230,7 @@ public sealed class HandsetWindow : Window
 
     private float CaseRounding()
     {
-        var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case);
+        var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case, shapePreference.Finish);
         var size = fold > 0.5f ? FaceSize() : FullSize();
         var radius = size.X * plate.Corner;
         if (shapePreference.Case == HandsetCase.Android)
@@ -285,7 +285,7 @@ public sealed class HandsetWindow : Window
         var blocked = DalamudInputProbe.OtherWindowAbove();
         var input = new DalamudInputProbe { Live = !blocked };
 
-        var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case);
+        var plate = ChassisCatalog.For(shapePreference.Form, shapePreference.Case, shapePreference.Finish);
         lastOuter = windowRect;
         lastShell = plate.BodyOn(windowRect);
         if (lastShell.IsEmpty)
@@ -303,6 +303,7 @@ public sealed class HandsetWindow : Window
         if (usingSkin)
         {
             var android = shapePreference.Case == HandsetCase.Android;
+            var etched = !android && shapePreference.Finish == HandsetFinish.Etched;
             body = plate.BodyOn(windowRect);
             var overlap = android ? 0f : MathF.Max(1.6f, windowRect.Width * 0.010f);
             screen = plate.GlassOn(windowRect);
@@ -323,7 +324,9 @@ public sealed class HandsetWindow : Window
             if (skin is { IsReady: true } && skin.Handle != 0)
             {
                 CaseWash.StampSkin(paint, skin, windowRect, android ? 0f : plate.CornerOn(windowRect),
-                    tint: android ? Vector4.One : asleep ? new Vector4(1.42f, 1.42f, 1.46f, 1f) : null);
+                    tint: android || etched
+                        ? Vector4.One
+                        : asleep ? new Vector4(1.42f, 1.42f, 1.46f, 1f) : null);
             }
 
             paint.FillSquircle(hole, ink, holeRadius);

@@ -66,7 +66,7 @@ the only place that knows every concrete type).
 
 **Chrome that is actually on screen:** left `DestinationDock` (Messages / You / Explore /
 Settings), right `AppsDock` (Life apps carousel), bottom `SoftKeyBar` (Recents | Home diamond |
-Back). Bundled chassis skins (`Chassis/phone.png`, `tablet.png`) draw over a transparent window
+Back). Bundled chassis skins (`Chassis/phone.png`, `tablet.png`, etched and back-plate pairs) draw over a transparent window
 with an opaque body fill so the world does not show through the glass hole. Tune is Settings.
 `SettingsApplet` still compiles and is unused.
 

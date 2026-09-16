@@ -69,7 +69,8 @@ Search, all reading live Pearlgate data once you sign in:
   `DestinationDock` (left-edge handle; destinations menu), `AppsDock` (right-edge handle;
   carousels to Apps), `SoftKeyBar` (Recents | Home diamond | Back). `HomeSurface` is a 5x6
   grid: 52-unit icons packed from the top, full cell width so labels are not cut off, 30 slots
-  when filled. Chassis PNGs (`phone.png` / `tablet.png`) overlay the window with an opaque body
+  when filled.   Chassis PNGs (`phone.png` / `tablet.png`, plus Crystal/Etched back plates and `phone-etched.png` /
+  `tablet-etched.png`) overlay the window with an opaque body
   under the glass hole. In-glass handles stay vertically centered; volume nubs are reserved.
   `StatusStrip` (time, crystal, and world on the left; decorative signal / wifi / battery marks
   on the right). `UniversalSearchOverlay` is still in the tree. `HandsetShell` orchestrates
@@ -236,9 +237,10 @@ destination. Casino, Coin, Housing, and Hunts are still unbuilt. Not verified in
 - **Done:** Control Center (tap the status strip: Quiet, hush in duty, bells, world, marks,
   still motion, Recents), Recents (recent life apps), and Quiet (badges and chimes stay dark).
   Not yet verified in-game.
-- Chassis materials are still flat AQUOS-style color, not the ornate gold/engraved look from the
-  latest hardware design reference. By explicit direction, only shape/proportions (one
-  side button) were taken from that reference for now; matching the actual finish needs real
-  texture assets (a front bezel image + back-plate image), not hand-drawn vector shapes.
-- Only one side button exists (right edge, power/lock). The reference shows more chassis detail
-  (corner rivets, a back-plate design) not yet represented at all.
+- **Done:** Tune Body picks Crystal (bundled AQUOS bezel) or Etched (gold bezel PNGs with
+  corner rivets). Matching back-plate PNGs (`phone-back.png` / `phone-etched-back.png` and the
+  tablet pair) show in Tune; the live window stamps the selected front skin. Finish still
+  widens the vector fallback rim when a skin is missing. Android stays on `android.png`.
+  Not verified in-game.
+- Only one side button exists (right edge, power/lock). Extra side affordances beyond that
+  nub and the etched rivets are still unbuilt.

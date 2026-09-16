@@ -263,7 +263,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawTopic(frame, ref stack, "Themes", PhoneLanguages.T("set.themes.blurb"),
             "theme color accent text default", InkGroupHeight(frame), DrawInkControls);
         DrawTopic(frame, ref stack, "Display", PhoneLanguages.T("set.display.blurb"),
-            "display size miniature minimized case layout brightness", DisplayInnerHeight(frame), DrawDisplayPage);
+            "display size miniature minimized case layout brightness crystal etched rim finish", DisplayInnerHeight(frame), DrawDisplayPage);
         DrawTopic(frame, ref stack, "Wallpaper", PhoneLanguages.T("set.wallpaper.blurb"),
             "wallpaper plate photo gallery desktop background", PlateGroupHeight(frame), DrawPlateControls);
         DrawTopic(frame, ref stack, "Dim", PhoneLanguages.T("set.dim.blurb"),
@@ -454,7 +454,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         CardChrome.DrawGold(frame, row);
         var inner = row.Inset(frame.Units(10f));
         var preview = inner.LeftSlice(inner.Width * 0.36f);
-        DrawChassis(frame, ChassisRect(preview, ChassisCatalog.For(shape.Form, shape.Case), fill: true), Part.None);
+        DrawChassis(frame, ChassisRect(preview, ChassisCatalog.For(shape.Form, shape.Case, shape.Finish), fill: true),
+            Part.None);
         var copy = inner.Inset(new Edges(preview.Width + frame.Units(12f), frame.Units(6f), 0f, 0f));
         var lines = new Stack(copy, StackAxis.Vertical, frame.Units(4f));
         frame.Text.DrawIn(lines.Take(frame.Units(16f)), "Live look",
@@ -465,7 +466,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             ColorwayId.Label(display.Colorway) + " theme · " + CoreId.Label(display.Core),
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
         var form = shape.Form == HandsetForm.Tablet ? "Tablet" : "Phone";
-        var rim = shape.Finish == HandsetFinish.Etched ? "wide rim" : "slim rim";
+        var rim = shape.Finish == HandsetFinish.Etched ? "Etched" : "Crystal";
         var casing = shape.Case == HandsetCase.Android ? "Android" : "Pearl";
         frame.Text.DrawEllipsized(lines.Take(frame.Units(16f)), form + " · " + rim + " · " + casing,
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
@@ -495,7 +496,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
         var previewHeight = part == Part.None ? frame.Units(260f) : frame.Units(168f);
         var preview = stack.Take(previewHeight);
-        var plate = ChassisCatalog.For(shape.Form, shape.Case);
+        var plate = ChassisCatalog.For(shape.Form, shape.Case, shape.Finish);
         var chassis = ChassisRect(preview, plate, fill: false);
         var glass = plate.GlassOn(chassis);
         var strip = glass.TopSlice(glass.Height * 0.11f);
@@ -533,7 +534,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void DrawChassis(in AppletFrame frame, Rect chassis, Part lit, ChassisPlate? plate = null)
     {
         var gold = frame.Theme.Palette.WarmAccent;
-        var used = plate ?? ChassisCatalog.For(shape.Form, shape.Case);
+        var used = plate ?? ChassisCatalog.For(shape.Form, shape.Case, shape.Finish);
         var androidSkin = used.FileName == ChassisCatalog.Android.FileName;
         var glass = used.GlassOn(chassis);
         var hole = used.ScreenOn(chassis);
@@ -563,7 +564,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
             CaseWash.StampSkin(frame.Paint, skin, chassis,
                 androidSkin ? 0f : used.CornerOn(chassis),
-                tint: androidSkin ? Vector4.One : null);
+                tint: androidSkin || shape.Finish == HandsetFinish.Etched ? Vector4.One : null);
         }
 
         frame.Paint.FillSquircle(hole, ink, holeRadius);
@@ -680,7 +681,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         if (part == Part.None)
         {
             frame.Text.DrawWrapped(stack.Take(frame.Units(40f)),
-                "Touch the screen for Appearance. The ink wash opens Wallpaper. Rim, status bar, and lock open those lists.",
+                "Touch the screen for Appearance. The ink wash opens Wallpaper. Rim opens Crystal or Etched, plus size. Status bar and lock open those lists.",
                 new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
             return;
         }
@@ -704,7 +705,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
                 break;
             case Part.Bezel:
                 DrawOpenSheet(frame, ref stack, "Display",
-                    "Screen size, miniature size, and layout.",
+                    "Screen size, miniature size, Crystal or Etched rim, and layout.",
                     SizeGroupHeight(frame), DrawBodyControls);
                 break;
             case Part.Strip:
@@ -758,6 +759,10 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         StackRun(frame,
             frame.Units(16f),
             frame.Units(108f),
+            frame.Units(16f),
+            frame.Units(36f),
+            frame.Units(16f),
+            frame.Units(72f),
             frame.Units(16f),
             frame.Units(36f),
             frame.Units(56f),
@@ -1174,6 +1179,35 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             index => shape.Form = index == 1 ? HandsetForm.Tablet : HandsetForm.Phone);
     }
 
+    private void DrawFinishRow(AppletFrame frame, Rect row)
+    {
+        DrawChoiceChips(frame, row, new[] { "Crystal", "Etched" },
+            shape.Finish == HandsetFinish.Etched ? 1 : 0,
+            index => shape.Finish = index == 1 ? HandsetFinish.Etched : HandsetFinish.Crystal);
+    }
+
+    private void DrawBackPreview(in AppletFrame frame, Rect area)
+    {
+        var plate = ChassisCatalog.For(shape.Form, shape.Case, shape.Finish);
+        if (!plate.HasBack)
+        {
+            frame.Text.DrawIn(area, "Pearl cases show a back plate here.",
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted, TextAlign.Center));
+            return;
+        }
+
+        var dest = ChassisRect(area, plate, fill: true);
+        var skin = textures.FromFile(paths.Asset(Path.Combine(ChassisCatalog.Folder, plate.BackFileName)));
+        if (skin is { IsReady: true })
+        {
+            CaseWash.StampSkin(frame.Paint, skin, dest, plate.CornerOn(dest), tint: Vector4.One);
+            return;
+        }
+
+        CaseWash.Body(frame.Paint, dest, plate.CornerOn(dest), frame.Theme.Palette.SurfaceSunken,
+            frame.Theme.Palette.WarmAccent);
+    }
+
     private static void DrawChoiceChips(AppletFrame frame, Rect row, string[] labels, int selected, Action<int> pick)
     {
         var gap = frame.Units(6f);
@@ -1356,7 +1390,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         var inner = cell.Inset(frame.Units(6f));
         var caption = inner.BottomSlice(frame.Units(16f));
         var face = new Rect(inner.Min, new Vector2(inner.Max.X, caption.Min.Y - frame.Units(2f)));
-        var plate = ChassisCatalog.For(HandsetForm.Phone, casing);
+        var plate = ChassisCatalog.For(HandsetForm.Phone, casing, shape.Finish);
         DrawChassis(frame, ChassisRect(face, plate, fill: true), on ? Part.Bezel : Part.None, plate);
         frame.Text.DrawIn(caption, label,
             new TextStyle(FontRole.CaptionStrong, on ? gold : frame.Theme.Palette.InkMuted, TextAlign.Center));
@@ -1373,6 +1407,12 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void DrawBodyControls(AppletFrame frame, ref Stack stack)
     {
         DrawCasePicker(frame, ref stack);
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Finish",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        DrawFinishRow(frame, stack.Take(frame.Units(36f)));
+        frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Back plate",
+            new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
+        DrawBackPreview(frame, stack.Take(frame.Units(72f)));
         frame.Text.DrawIn(stack.Take(frame.Units(16f)), "Layout",
             new TextStyle(FontRole.CaptionStrong, frame.Theme.Palette.InkMuted));
         DrawLayoutRow(frame, stack.Take(frame.Units(36f)));
