@@ -64,7 +64,12 @@ internal sealed class WindowGrab
 
         if (pocket)
         {
-            return !slider.Contains(pointer) && !notice.Contains(pointer);
+            if (slider.Contains(pointer) || notice.Contains(pointer))
+            {
+                return false;
+            }
+
+            return !screen.Contains(pointer);
         }
 
         return !screen.Contains(pointer);

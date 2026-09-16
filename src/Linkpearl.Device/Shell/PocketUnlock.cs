@@ -21,6 +21,8 @@ public sealed class PocketUnlock
     private bool dragging;
     private float grab;
 
+    private Vector2 pressAt;
+
     public bool IsDragging => dragging;
 
     public void Reset()
@@ -28,6 +30,7 @@ public sealed class PocketUnlock
         amount = 0f;
         dragging = false;
         grab = 0f;
+        pressAt = Vector2.Zero;
     }
 
     public static Rect TrackOn(Rect screen, float dip, bool notice = false, PocketFace face = PocketFace.Slider)
@@ -63,6 +66,7 @@ public sealed class PocketUnlock
             ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             dragging = true;
+            pressAt = input.Pointer;
             var y = Scalar.Clamp(input.Pointer.Y, minY, maxY);
             amount = (maxY - y) / travel;
             grab = input.Pointer.Y - ThumbY(minY, maxY);
@@ -75,8 +79,9 @@ public sealed class PocketUnlock
         }
         else if (dragging)
         {
+            var tap = (input.Pointer - pressAt).LengthSquared() <= 36f;
             dragging = false;
-            if (amount >= Commit)
+            if (amount >= Commit || tap)
             {
                 Reset();
                 return true;

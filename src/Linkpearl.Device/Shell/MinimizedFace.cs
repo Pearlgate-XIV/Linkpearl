@@ -76,7 +76,14 @@ public static class MinimizedFace
     public static Rect UnlockHit(Rect screen, float dip, bool notice, PocketFace face)
     {
         var inner = GlassSafe.Inner(screen, dip);
-        return PocketUnlock.HitOn(UnlockWell(inner, dip, face), dip, notice && face != PocketFace.Icon, face);
+        var well = UnlockWell(inner, dip, face);
+        var track = PocketUnlock.HitOn(well, dip, notice && face != PocketFace.Icon, face);
+        if (track.IsEmpty)
+        {
+            return well.IsEmpty ? Rect.Empty : well.Expand(MathF.Max(6f, 8f * dip));
+        }
+
+        return track.Expand(MathF.Max(8f, 12f * dip));
     }
 
     public static Rect NoticeOn(Rect screen, float dip, bool notice, PocketFace face = PocketFace.Slider)
