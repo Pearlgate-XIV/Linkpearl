@@ -52,7 +52,7 @@ public static class EmojiText
 
     public static void DrawField(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         Rect area, string body, string placeholder, Vector4 ink, float padX, float padY, bool focused, bool caret,
-        int caretAt = -1, int selectFrom = 0, int selectTo = 0)
+        int caretAt = -1, int selectFrom = 0, int selectTo = 0, float line = 0f)
     {
         if (area.Width < 1f || area.Height < 1f)
         {
@@ -64,12 +64,12 @@ public static class EmojiText
         var shown = hint ? placeholder : body;
         var color = hint ? ink with { W = ink.W * 0.42f } : ink;
         var style = new TextStyle(FontRole.Body, color);
-        var face = MathF.Max(text.Measure("Ag", style.Role).Y, 1f);
+        var face = line > 0f ? line : MathF.Max(text.Measure("Ag", style.Role).Y, 1f);
         var textY = area.Min.Y + padY;
         var inner = MathF.Max(area.Width - padX * 2f, 1f);
-        var wide = MeasureWidth(paint, text, textures, paths, shown, style, face);
+        var wide = MeasureWidth(paint, text, textures, paths, shown, style, face, true);
         var at = empty ? 0 : EmojiBits.ClampIndex(shown, caretAt < 0 ? shown.Length : caretAt);
-        var caretWide = empty ? 0f : MeasureWidth(paint, text, textures, paths, shown[..at], style, face);
+        var caretWide = empty ? 0f : MeasureWidth(paint, text, textures, paths, shown[..at], style, face, true);
         var scroll = 0f;
         if (!empty && wide > inner)
         {
@@ -84,8 +84,8 @@ public static class EmojiText
             var to = EmojiBits.ClampIndex(shown, selectTo);
             if (to > from)
             {
-                var left = origin.X + MeasureWidth(paint, text, textures, paths, shown[..from], style, face);
-                var right = origin.X + MeasureWidth(paint, text, textures, paths, shown[..to], style, face);
+                var left = origin.X + MeasureWidth(paint, text, textures, paths, shown[..from], style, face, true);
+                var right = origin.X + MeasureWidth(paint, text, textures, paths, shown[..to], style, face, true);
                 paint.Fill(new Rect(new Vector2(left, textY), new Vector2(right, textY + face)),
                     new Vector4(0.26f, 0.59f, 0.98f, 0.45f));
             }
@@ -94,7 +94,7 @@ public static class EmojiText
         var height = 0f;
         var used = 0f;
         Walk(paint, text, textures, paths, shown, MathF.Max(wide, inner), style, true, ref height, ref used, origin,
-            true, face);
+            true, face, true);
         if (caret)
         {
             var caretH = MathF.Max(10f, face * 0.82f);
@@ -107,11 +107,12 @@ public static class EmojiText
     }
 
     public static float MeasureWidth(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
-        string body, TextStyle style, float row = 0f)
+        string body, TextStyle style, float row = 0f, bool pinLine = false)
     {
         var height = 0f;
         var used = 0f;
-        Walk(paint, text, textures, paths, body, 10_000f, style, false, ref height, ref used, default, true, row);
+        Walk(paint, text, textures, paths, body, 10_000f, style, false, ref height, ref used, default, true, row,
+            pinLine);
         return used;
     }
 
@@ -147,7 +148,7 @@ public static class EmojiText
 
     private static void Walk(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         string body, float width, TextStyle style, bool draw, ref float height, ref float used, Vector2 origin,
-        bool oneLine, float row = 0f)
+        bool oneLine, float row = 0f, bool pinLine = false)
     {
         var face = row > 0f ? row : MathF.Max(14f, text.LineHeight(style.Role) * style.Scale);
         var x = 0f;
@@ -161,7 +162,7 @@ public static class EmojiText
             var part = walk.GetTextElement();
             if (EmojiBits.LooksEmoji(part))
             {
-                PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine,
+                PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine, pinLine,
                     ref x, ref y, ref line, ref dots);
                 pending = string.Empty;
                 PlaceFace(paint, text, textures, paths, part, width, style, draw, origin, face, oneLine,
@@ -172,7 +173,7 @@ public static class EmojiText
             pending += part;
         }
 
-        PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine,
+        PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine, pinLine,
             ref x, ref y, ref line, ref dots);
         height = y + line;
         used = x;
@@ -213,7 +214,7 @@ public static class EmojiText
     }
 
     private static void PlaceText(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
-        string value, float width, TextStyle style, bool draw, Vector2 origin, float face, bool oneLine,
+        string value, float width, TextStyle style, bool draw, Vector2 origin, float face, bool oneLine, bool pinLine,
         ref float x, ref float y, ref float line, ref bool dots)
     {
         _ = paint;
@@ -248,7 +249,7 @@ public static class EmojiText
                 continue;
             }
 
-            if (x == 0f)
+            if (x == 0f && !pinLine)
             {
                 while (start < value.Length && value[start] == ' ')
                 {
@@ -291,10 +292,15 @@ public static class EmojiText
                 size = text.Measure(slice, style.Role) * style.Scale;
             }
 
-            line = MathF.Max(line, size.Y);
+            if (!pinLine)
+            {
+                line = MathF.Max(line, size.Y);
+            }
+
             if (draw)
             {
-                text.Draw(origin + new Vector2(x, y + MathF.Max(0f, (line - size.Y) * 0.5f)), slice,
+                var drawY = pinLine ? y : y + MathF.Max(0f, (line - size.Y) * 0.5f);
+                text.Draw(origin + new Vector2(x, drawY), slice,
                     new TextStyle(style.Role, style.Color, TextAlign.Left, style.LineSpacing, style.Scale));
             }
 

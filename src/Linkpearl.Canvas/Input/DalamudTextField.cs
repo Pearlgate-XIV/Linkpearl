@@ -195,7 +195,7 @@ public sealed class DalamudTextField : ITextField
         }
 
         using var font = fonts.Handle(FontRole.Body).Push();
-        var face = MathF.Max(ImGui.CalcTextSize("Ag").Y, 1f);
+        var face = MathF.Max(ImGui.GetFontSize(), 1f);
         var padY = MathF.Max((area.Height - face) * 0.5f, 0f);
         var padX = MathF.Max(area.Height * 0.18f, 8f);
         var ink = new Vector4(0.96f, 0.96f, 0.97f, 1f);
@@ -210,7 +210,9 @@ public sealed class DalamudTextField : ITextField
             pendingFocus = string.Empty;
         }
 
-        ImGui.PushClipRect(area.Min, area.Max, true);
+        var nativeMin = new Vector2(area.Min.X, area.Min.Y + padY - 2f);
+        var nativeMax = new Vector2(area.Max.X, area.Min.Y + padY + face + 2f);
+        ImGui.PushClipRect(nativeMin, nativeMax, true);
         ImGui.SetCursorScreenPos(area.Min);
         ImGui.SetNextItemWidth(area.Width);
         var hidden = PushHiddenFieldChrome(hideGlyphs: true, ink);
@@ -235,6 +237,9 @@ public sealed class DalamudTextField : ITextField
             Math.Max(maxLength + (secret ? 0 : wireFaces.Count * 8), 1), flags, OnPick);
         var overField = ImGui.IsMouseHoveringRect(area.Min, area.Max, true);
         var itemActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
+        var inkOrigin = ImGui.GetItemRectMin() + new Vector2(padX, padY);
+        var inkPadX = inkOrigin.X - area.Min.X;
+        var inkPadY = inkOrigin.Y - area.Min.Y;
 
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(hidden);
@@ -301,7 +306,7 @@ public sealed class DalamudTextField : ITextField
         var painted = secret && shown.Length > 0 ? new string('•', shown.Length) : shown;
         var caretAt = shownCaret < 0 ? painted.Length : Math.Clamp(shownCaret, 0, painted.Length);
         carets[id] = caretAt;
-        Paint(area, painted, placeholder, focused, padX, padY, face, ink, caretAt, shownSelA, shownSelB);
+        Paint(area, painted, placeholder, focused, inkPadX, inkPadY, face, ink, caretAt, shownSelA, shownSelB);
         _ = native;
         return shown;
     }
@@ -549,7 +554,7 @@ public sealed class DalamudTextField : ITextField
         if (paint is not null && text is not null && textures is not null && paths is not null)
         {
             EmojiText.DrawField(paint, text, textures, paths, area, current, placeholder, ink, padX, padY, focused,
-                CaretOn(focused), caretAt, selectFrom, selectTo);
+                CaretOn(focused), caretAt, selectFrom, selectTo, line);
             return;
         }
 
