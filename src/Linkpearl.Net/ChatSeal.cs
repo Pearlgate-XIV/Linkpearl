@@ -27,6 +27,20 @@ internal static class ChatSeal
         return new Identity(Prefix + Encode(PublicPoint(parameters)), Encode(parameters.D ?? []));
     }
 
+    public static bool TryCreateIdentity(out Identity identity)
+    {
+        try
+        {
+            identity = CreateIdentity();
+            return identity.PublicKey.Length > 0 && identity.PrivateD.Length > 0;
+        }
+        catch (CryptographicException)
+        {
+            identity = default;
+            return false;
+        }
+    }
+
     public static bool TryParsePublic(string? packed, out byte[] x, out byte[] y)
     {
         x = [];

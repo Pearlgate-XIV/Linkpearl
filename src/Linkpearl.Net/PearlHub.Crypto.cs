@@ -16,12 +16,23 @@ public sealed partial class PearlHub
     private readonly string sealPath;
     private ChatSeal.Identity? identity;
     private bool gateE2E = true;
+    private bool sealDisabled;
     private readonly Dictionary<string, RoomSeal> roomKeys = new(StringComparer.Ordinal);
 
-    private bool E2EEnabled => allowE2E() && gateE2E;
+    private bool E2EEnabled => allowE2E() && gateE2E && !sealDisabled;
 
-    private void LoadIdentity()
+    private bool EnsureIdentity()
     {
+        if (sealDisabled)
+        {
+            return false;
+        }
+
+        if (identity is not null)
+        {
+            return true;
+        }
+
         try
         {
             if (File.Exists(sealPath))
@@ -31,7 +42,7 @@ public sealed partial class PearlHub
                     ChatSeal.TryParsePublic(saved.PublicKey, out _, out _))
                 {
                     identity = new ChatSeal.Identity(saved.PublicKey, saved.PrivateD);
-                    return;
+                    return true;
                 }
             }
         }
@@ -40,8 +51,22 @@ public sealed partial class PearlHub
             log.Write(LogSeverity.Warning, failure, "Could not read the local chat seal");
         }
 
-        identity = ChatSeal.CreateIdentity();
+        if (!ChatSeal.TryCreateIdentity(out var minted))
+        {
+            DisableSeal("Could not create a chat seal key; this handset will send plaintext.");
+            return false;
+        }
+
+        identity = minted;
         PersistIdentity();
+        return true;
+    }
+
+    private void DisableSeal(string reason)
+    {
+        sealDisabled = true;
+        identity = null;
+        log.Write(LogSeverity.Warning, reason);
     }
 
     private void PersistIdentity()
@@ -64,7 +89,7 @@ public sealed partial class PearlHub
 
     private async Task PublishIdentityAsync(CancellationToken token)
     {
-        if (identity is not { } mine)
+        if (!E2EEnabled || !EnsureIdentity() || identity is not { } mine)
         {
             return;
         }
@@ -100,7 +125,7 @@ public sealed partial class PearlHub
 
     private async Task<SendChatDto> SealOutgoingAsync(string chatId, string plaintext, CancellationToken token)
     {
-        if (!E2EEnabled)
+        if (!E2EEnabled || !EnsureIdentity())
         {
             return new SendChatDto(plaintext);
         }
@@ -224,7 +249,7 @@ public sealed partial class PearlHub
             }
         }
 
-        if (identity is not { } mine)
+        if (!EnsureIdentity() || identity is not { } mine)
         {
             return null;
         }
@@ -277,21 +302,30 @@ public sealed partial class PearlHub
         var roomKey = RandomNumberGenerator.GetBytes(32);
         var wraps = new List<NewWrapDto>(members.Length + 1);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = 0; index < members.Length; index++)
+        try
         {
-            var member = members[index];
-            if (!seen.Add(member.UserId))
+            for (var index = 0; index < members.Length; index++)
             {
-                continue;
+                var member = members[index];
+                if (!seen.Add(member.UserId))
+                {
+                    continue;
+                }
+
+                wraps.Add(new NewWrapDto(member.UserId, member.KeyVersion, ChatSeal.WrapRoomKey(member.PublicKey, roomKey)));
             }
 
-            wraps.Add(new NewWrapDto(member.UserId, member.KeyVersion, ChatSeal.WrapRoomKey(member.PublicKey, roomKey)));
+            var meId = Current.MeId;
+            if (meId.Length > 0 && seen.Add(meId))
+            {
+                wraps.Add(new NewWrapDto(meId, 1, ChatSeal.WrapRoomKey(mine.PublicKey, roomKey)));
+            }
         }
-
-        var meId = Current.MeId;
-        if (meId.Length > 0 && seen.Add(meId))
+        catch (CryptographicException failure)
         {
-            wraps.Add(new NewWrapDto(meId, 1, ChatSeal.WrapRoomKey(mine.PublicKey, roomKey)));
+            DisableSeal("Could not wrap a room key; this handset will send plaintext.");
+            log.Write(LogSeverity.Warning, failure, "Room-key wrap failed");
+            return null;
         }
 
         if (wraps.Count == 0)

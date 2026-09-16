@@ -78,7 +78,6 @@ public sealed partial class PearlHub : IPearlHub, IDisposable
         Directory.CreateDirectory(this.mediaCache);
         var state = Path.GetDirectoryName(this.mediaCache);
         sealPath = Path.Combine(string.IsNullOrWhiteSpace(state) ? this.mediaCache : state, "chat-seal.json");
-        LoadIdentity();
         if (!string.IsNullOrWhiteSpace(savedToken))
         {
             client.SetBearer(savedToken);
