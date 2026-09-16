@@ -56,7 +56,7 @@ public static class AppShelf
     {
         Spec("pearlchat", "PearlChat", "Messaging", AppGroup.Essentials, AppChip.Social, AppKind.Applet,
             default, 0, true, "pearlchat.png"),
-        Spec("phone", "Phone", "Calls and texts", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
+        Spec("phone", "Phone", "Local call preview", AppGroup.Essentials, AppChip.Social, AppKind.Applet, default, 0,
             true, "phone.png"),
         Spec("music", "Music", "Media Player", AppGroup.Essentials, AppChip.Music, AppKind.Applet, default, 0, true,
             "music.png"),

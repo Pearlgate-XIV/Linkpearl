@@ -233,7 +233,7 @@ public sealed class PhoneApplet : IApplet
         frame.Paint.Fill(row, Pill, row.Height * 0.5f);
         var width = row.Width / 3f;
         DrawNavItem(frame, row.Translate(new Vector2(0f, 0f)).WithWidth(width), 0, "Phone");
-        DrawNavItem(frame, row.Translate(new Vector2(width, 0f)).WithWidth(width), 1, "Messages");
+        DrawNavItem(frame, row.Translate(new Vector2(width, 0f)).WithWidth(width), 1, "Notes");
         DrawNavItem(frame, row.Translate(new Vector2(width * 2f, 0f)).WithWidth(width), 2, "Contacts");
     }
 
@@ -299,7 +299,7 @@ public sealed class PhoneApplet : IApplet
         var page = new LayoutFlow(area, StackAxis.Vertical, frame.Units(8f));
         DrawLineCard(frame, page.Take(frame.Units(52f)));
         var rest = page.TakeRemaining();
-        var cluster = frame.Units(348f);
+        var cluster = frame.Units(380f);
         var lift = MathF.Max(frame.Units(8f), (rest.Height - cluster) * 0.42f);
         var stack = new LayoutFlow(rest.Inset(new Edges(0f, lift, 0f, 0f)), StackAxis.Vertical, frame.Units(10f));
         var dial = stack.Take(frame.Units(52f));
@@ -316,6 +316,9 @@ public sealed class PhoneApplet : IApplet
         }
 
         DrawKeys(frame, stack.Take(frame.Units(228f)));
+        frame.Text.DrawWrapped(stack.Take(frame.Units(32f)),
+            "Green starts a local speaker and mic preview. It is not a call to another player. Use PearlChat to message someone.",
+            new TextStyle(FontRole.Caption, Muted, TextAlign.Center));
         var callRow = stack.Take(frame.Units(56f));
         var radius = frame.Units(24f);
         frame.Paint.FillCircle(callRow.Center, radius, Green);
@@ -440,7 +443,7 @@ public sealed class PhoneApplet : IApplet
     {
         var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(10f));
         var live = line.State == LineState.Live;
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), live ? "On a call" : "Calling…",
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)), live ? "Local audio preview" : "Starting local preview…",
             new TextStyle(FontRole.CaptionStrong, Green, TextAlign.Center));
         frame.Text.DrawIn(stack.Take(frame.Units(28f)), line.PeerName,
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));
@@ -448,8 +451,8 @@ public sealed class PhoneApplet : IApplet
             new TextStyle(FontRole.Caption, Muted, TextAlign.Center));
         frame.Text.DrawIn(stack.Take(frame.Units(20f)), Clock(line.Elapsed),
             new TextStyle(FontRole.BodyStrong, Ink, TextAlign.Center));
-        frame.Text.DrawWrapped(stack.Take(frame.Units(36f)),
-            "Nothing is sent until the other line answers on Pearlgate voice. This keeps your mic and speaker ready.",
+        frame.Text.DrawWrapped(stack.Take(frame.Units(48f)),
+            "This is a call-interface preview on this PC. Nobody else joined. Open PearlChat for player messages.",
             new TextStyle(FontRole.Caption, Muted, TextAlign.Center));
 
         sense.RefreshPoints();
@@ -551,7 +554,7 @@ public sealed class PhoneApplet : IApplet
         }
 
         var stack = new LayoutFlow(area, StackAxis.Vertical, frame.Units(6f));
-        DrawChrome(frame, stack.Take(frame.Units(32f)), "Messages", search: true, add: false);
+        DrawChrome(frame, stack.Take(frame.Units(32f)), "Notes on this phone", search: true, add: false);
         if (showSearch)
         {
             search = frame.TextField.Draw("phone-search", stack.Take(frame.Units(34f)), search, "Search");
@@ -598,7 +601,7 @@ public sealed class PhoneApplet : IApplet
         if (shown == 0)
         {
             frame.Text.DrawWrapped(list.Inset(frame.Units(16f)),
-                "Texts on this phone stay here. They are not Direct tells.",
+                "These notes stay on this handset. They are not PearlChat and are not sent through Pearlgate. Open PearlChat to message a player.",
                 new TextStyle(FontRole.Caption, Muted, TextAlign.Center));
         }
 
@@ -625,7 +628,7 @@ public sealed class PhoneApplet : IApplet
         var header = stack.Take(frame.Units(32f));
         frame.Text.DrawIn(header.LeftSlice(frame.Units(28f)), "‹",
             new TextStyle(FontRole.Title, Ink, TextAlign.Center));
-        frame.Text.DrawIn(header.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)), "New message",
+        frame.Text.DrawIn(header.Inset(new Edges(frame.Units(32f), 0f, 0f, 0f)), "New note",
             new TextStyle(FontRole.Title, Ink));
         if (frame.Input.ConsumeClick(header.LeftSlice(frame.Units(40f))))
         {

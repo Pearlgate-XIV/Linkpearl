@@ -23,7 +23,8 @@ internal sealed class PhonePad
     public void Compose(in AppletFrame frame, ITalk talk, MessagesSurface messages)
     {
         var stack = new LayoutFlow(frame.Content, StackAxis.Vertical, frame.Units(8f));
-        frame.Text.DrawIn(stack.Take(frame.Units(18f)), "Dial a tell, or match a saved number.",
+        frame.Text.DrawIn(stack.Take(frame.Units(18f)),
+            "Dial opens PearlChat only when the number matches a saved contact. Use PearlChat to message players.",
             new TextStyle(FontRole.Caption, frame.Theme.Palette.InkMuted));
 
         var display = stack.Take(frame.Units(40f));
@@ -95,12 +96,6 @@ internal sealed class PhonePad
                 messages.OpenProfile(peers[index].Id);
                 return;
             }
-        }
-
-        var hints = talk.SuggestTells();
-        if (hints.Count > 0)
-        {
-            messages.Open(talk.StartTell(hints[0].Name, hints[0].World));
         }
     }
 
