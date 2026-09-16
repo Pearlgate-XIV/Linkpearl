@@ -117,6 +117,8 @@ public sealed class HandsetShell
 
     public bool HoldsWindow => recents.IsOpen || recents.HoldsPointer;
 
+    public void AlignAfterWake() => appsDock.SyncToPage();
+
     public int PocketNoticeCount() => notices.Count(pearl.Current, talk, clock);
 
     public bool DrawMinimized(in AppletFrame frame, Rect screen, PocketUnlock unlock, bool allowSlide, PocketFace face)

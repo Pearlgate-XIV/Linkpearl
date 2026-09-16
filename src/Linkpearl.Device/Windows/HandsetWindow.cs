@@ -145,8 +145,11 @@ public sealed class HandsetWindow : Window
         }
 
         wantFold = false;
+        fold = 0f;
+        placeOnce = true;
         pocketUnlock.Reset();
         DropWindowGrab(remember: false);
+        shell.AlignAfterWake();
         persistMinimized(false);
         savePlacement = true;
     }
@@ -273,7 +276,17 @@ public sealed class HandsetWindow : Window
     {
         RememberLivePlacement();
         var deltaSeconds = ImGui.GetIO().DeltaTime;
-        var asleep = fold > 0.02f;
+        if (!wantFold && fold <= 0.02f && !presenceVanish)
+        {
+            var full = FullSize();
+            var now = ImGui.GetWindowSize();
+            if (now.X + 8f < full.X || now.Y + 8f < full.Y)
+            {
+                ImGui.SetWindowSize(full);
+            }
+        }
+
+        var asleep = wantFold || fold > 0.04f;
         var gripScale = MathF.Max(0.75f, ImGuiHelpers.GlobalScale);
         var windowRect = new Rect(ImGui.GetWindowPos(), ImGui.GetWindowPos() + ImGui.GetWindowSize());
         if (windowRect.Width < 16f || windowRect.Height < 16f)
@@ -816,7 +829,9 @@ public sealed class HandsetWindow : Window
 
         var full = FullSize();
         var face = FaceSize();
-        Size = presenceVanish ? new Vector2(8f, 8f) : Vector2.Lerp(full, face, Ease(fold));
+        var nextSize = presenceVanish ? new Vector2(8f, 8f) : Vector2.Lerp(full, face, Ease(fold));
+        Size = nextSize;
+        ImGui.SetNextWindowSize(nextSize, ImGuiCond.Always);
     }
 
     private Vector2 FaceSize()

@@ -62,6 +62,7 @@ public sealed class AppsDock
     {
         rest = StudioPage;
         page = StudioPage;
+        slide = page;
     }
 
     public void SnapStudio()
@@ -116,11 +117,13 @@ public sealed class AppsDock
         {
             page = AppsPage;
             rest = page;
+            slide = page;
             return;
         }
 
         page = StudioPage;
         rest = page;
+        slide = page;
     }
 
     public void ShowDestinations()
@@ -128,6 +131,7 @@ public sealed class AppsDock
         destLane = true;
         rest = 0;
         page = 0;
+        slide = 0f;
     }
 
     public void ShowExtra(int index)
@@ -138,6 +142,15 @@ public sealed class AppsDock
         }
 
         page = Math.Clamp(index, 0, extras - 1);
+        rest = page;
+        slide = page;
+    }
+
+    public void SyncToPage()
+    {
+        tracking = false;
+        dragging = false;
+        slide = page;
         rest = page;
     }
 
@@ -151,6 +164,7 @@ public sealed class AppsDock
         }
 
         page = AppsPage;
+        slide = page;
     }
 
     public void CoverWithApp()
