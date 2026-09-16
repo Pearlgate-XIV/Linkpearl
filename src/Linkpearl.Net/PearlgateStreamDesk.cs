@@ -349,6 +349,8 @@ public sealed class PearlgateStreamDesk : IStreamDesk
             if (stayDown)
             {
                 missingRoutes = true;
+                live = [];
+                own = default;
             }
 
             notice = copy;

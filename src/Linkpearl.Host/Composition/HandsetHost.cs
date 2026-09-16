@@ -174,6 +174,8 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<ICommunityRadio>(communityRadio);
         services.AddSingleton<IUniversalisMarket>(new UniversalisMarket());
         services.AddSingleton<IVenuesDesk>(new VenuesDesk(paths));
+        // Mock DJs only when Dalamud IsDev and StreamDeskMode is explicitly "mock".
+        // Offline Pearlgate uses PearlgateStreamDesk notices, never MockStreamDesk.
         IStreamDesk accounts = string.Equals(config.StreamDeskMode, "mock", StringComparison.OrdinalIgnoreCase) &&
                                isDevelopment
             ? new MockStreamDesk()

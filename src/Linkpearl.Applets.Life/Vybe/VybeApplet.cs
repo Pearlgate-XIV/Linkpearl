@@ -836,17 +836,50 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         if (shown == 0)
         {
             VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
-                state.FeedPick == FeedPick.Plus
-                    ? state.PlusBlocked
-                        ? "VYBE+ is not available on Lalafell characters."
-                        : "No VYBE+ posts yet."
-                    : state.FeedPick == FeedPick.Groups
-                    ? "No group posts yet."
-                    : snap.SignedIn
-                        ? snap.FeedLive ? "Nothing on the feed yet." : "Pearlgate is not hosting posts yet."
-                        : "Sign in from You to see the live feed.",
+                FeedEmptyHint(snap, state.FeedPick == FeedPick.Plus, state.PlusBlocked,
+                    state.FeedPick == FeedPick.Groups),
                 night);
         }
+    }
+
+    private static string FeedEmptyHint(PearlSnapshot snap, bool plus, bool plusBlocked, bool groups)
+    {
+        if (plus && plusBlocked)
+        {
+            return "VYBE+ is not available on Lalafell characters.";
+        }
+
+        if (snap.Busy && !snap.SignedIn)
+        {
+            return "Connecting to Pearlgate…";
+        }
+
+        if (!snap.SignedIn)
+        {
+            return "Sign in on You to load the feed.";
+        }
+
+        if (!snap.GateLive)
+        {
+            return "Pearlgate is unreachable right now. Try again in a moment.";
+        }
+
+        if (plus)
+        {
+            return "No VYBE+ posts yet.";
+        }
+
+        if (groups)
+        {
+            return "No group posts yet.";
+        }
+
+        if (!snap.FeedLive)
+        {
+            return "Pearlgate is not serving a post feed yet. Local posts still show here.";
+        }
+
+        return "Nothing on the feed yet.";
     }
 
     private void DrawWelcomeCard(in AppletFrame frame, Rect area, bool night)
@@ -1601,9 +1634,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         if (shownPosts == 0)
         {
             VybeChrome.Mute(frame, stack.Take(frame.Units(28f)),
-                state.DiscoverPostPlus
-                    ? "No VYBE+ posts yet."
-                    : pearl.Current.FeedLive ? "Nothing on the feed yet." : "Pearlgate is not hosting posts yet.",
+                FeedEmptyHint(pearl.Current, state.DiscoverPostPlus, state.PlusBlocked, groups: false),
                 night);
         }
     }
@@ -2175,11 +2206,7 @@ public sealed partial class VybeApplet : IApplet, IHandsetProfileSink
         if (shown == 0)
         {
             VybeChrome.Mute(frame, stack.Take(frame.Units(36f)),
-                state.FeedPick == FeedPick.Plus
-                    ? state.PlusBlocked
-                        ? "VYBE+ is not available on Lalafell characters."
-                        : "No VYBE+ posts yet."
-                    : pearl.Current.FeedLive ? "Nothing shared yet." : "Pearlgate is not hosting a feed yet.",
+                FeedEmptyHint(pearl.Current, state.FeedPick == FeedPick.Plus, state.PlusBlocked, groups: false),
                 state.Night);
         }
     }

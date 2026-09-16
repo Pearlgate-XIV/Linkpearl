@@ -274,6 +274,13 @@ public sealed partial class MusicApplet
     {
         MusicChrome.Kicker(frame, stack.Take(frame.Units(16f)), "CONNECTED SERVICES");
         var own = streams.Own;
+        if (streams.Notice.Contains("Mock", StringComparison.OrdinalIgnoreCase))
+        {
+            MusicChrome.FitCopy(frame, ref stack,
+                "Developer mock Twitch (alyxfm / lunawave / nyxdeck). Not Pearlgate.",
+                MusicChrome.Mute);
+        }
+
         if (own.Connected)
         {
             var label = own.DisplayName.Length > 0 ? own.DisplayName : own.Username;
