@@ -130,7 +130,7 @@ public sealed class HandsetShell
     public void Draw(in AppletFrame outerFrame, Rect screen)
     {
         router.RevokeDisallowed();
-        if (StaffNoticeSheet.Draw(outerFrame, screen, pearl.Current, pearl))
+        if (StaffNoticeSheet.Draw(outerFrame, screen, pearl.Current, pearl, notices))
         {
             return;
         }

@@ -73,6 +73,15 @@ internal sealed class NoticeBanner
             frame.Input.Claim(box);
         }
 
+        if (held && frame.Input.EscapePressed())
+        {
+            held = false;
+            lift = 0f;
+            life = 0f;
+            ledger.Dismiss(toastId);
+            return;
+        }
+
         if (!held && life > 0f && frame.Input.WasPressed(box))
         {
             held = true;
@@ -97,6 +106,7 @@ internal sealed class NoticeBanner
             if (toss)
             {
                 life = 0f;
+                ledger.Dismiss(toastId);
                 return;
             }
 

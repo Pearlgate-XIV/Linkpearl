@@ -1,4 +1,5 @@
 using Linkpearl.Applets;
+using Linkpearl.Destinations;
 using Linkpearl.Geometry;
 using Linkpearl.Net;
 using Linkpearl.Painting;
@@ -7,7 +8,7 @@ namespace Linkpearl.Device.Shell;
 
 internal static class StaffNoticeSheet
 {
-    public static bool Draw(in AppletFrame frame, Rect glass, PearlSnapshot snap, IPearlHub pearl)
+    public static bool Draw(in AppletFrame frame, Rect glass, PearlSnapshot snap, IPearlHub pearl, NoticeLedger ledger)
     {
         var pending = Pending(snap);
         if (!snap.Banned && pending is null)
@@ -55,6 +56,7 @@ internal static class StaffNoticeSheet
         if (pending is { } open && (frame.Input.ConsumeClick(okHit) || frame.Input.PressedInside(okHit)))
         {
             pearl.MarkStaffNotice(open.Id);
+            ledger.Dismiss("staff:" + open.Id);
         }
 
         frame.Input.Claim(glass);

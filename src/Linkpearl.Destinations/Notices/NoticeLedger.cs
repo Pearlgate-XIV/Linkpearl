@@ -105,6 +105,7 @@ public sealed class NoticeLedger : INoticeTray
     public void Ingest(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
         IngestStaff(snapshot, clock);
+        PruneSettled(snapshot, talk);
         var unread = talk.UnreadTotal + snapshot.UnreadTotal;
         if (!seeded)
         {
@@ -163,17 +164,6 @@ public sealed class NoticeLedger : INoticeTray
         }
 
         lastUnread = unread;
-        if (snapshot.People.Length > 0)
-        {
-            var person = snapshot.People[0];
-            var id = "people:" + person.Id;
-            if (seen.Add(id))
-            {
-                Keep(new GlassNotice(id, NoticeKind.People, person.DisplayName,
-                    person.IsMutual ? "On the glass" : person.Handle, Stamp(clock),
-                    DestinationTab.Social, SocialPane.People, TalkIds.Person(person.Id)));
-            }
-        }
     }
 
     private void IngestStaff(PearlSnapshot snapshot, IClock clock)
@@ -195,6 +185,69 @@ public sealed class NoticeLedger : INoticeTray
 
             Keep(new GlassNotice(id, NoticeKind.Staff, item.Title, Snippet(item.Body),
                 Stamp(clock), DestinationTab.Settings, 0, item.Id));
+        }
+
+        for (var index = tray.Count - 1; index >= 0; index--)
+        {
+            if (tray[index].Kind != NoticeKind.Staff)
+            {
+                continue;
+            }
+
+            var staffId = tray[index].TargetId;
+            var stillOpen = false;
+            for (var row = 0; row < notices.Length; row++)
+            {
+                if (!notices[row].Read && string.Equals(notices[row].Id, staffId, StringComparison.Ordinal))
+                {
+                    stillOpen = true;
+                    break;
+                }
+            }
+
+            if (!stillOpen)
+            {
+                tray.RemoveAt(index);
+            }
+        }
+    }
+
+    private void PruneSettled(PearlSnapshot snapshot, ITalk talk)
+    {
+        var inbox = talk.Inbox();
+        for (var index = tray.Count - 1; index >= 0; index--)
+        {
+            var item = tray[index];
+            if (item.Kind != NoticeKind.Chat)
+            {
+                continue;
+            }
+
+            if (snapshot.UnreadTotal + talk.UnreadTotal <= 0)
+            {
+                tray.RemoveAt(index);
+                continue;
+            }
+
+            if (item.TargetId.Length == 0)
+            {
+                continue;
+            }
+
+            var unread = 0;
+            for (var row = 0; row < inbox.Count; row++)
+            {
+                if (string.Equals(inbox[row].Id, item.TargetId, StringComparison.Ordinal))
+                {
+                    unread = inbox[row].Unread;
+                    break;
+                }
+            }
+
+            if (unread <= 0)
+            {
+                tray.RemoveAt(index);
+            }
         }
     }
 
