@@ -7,6 +7,8 @@ using Linkpearl.Platform;
 
 namespace Linkpearl.Emoji;
 
+public readonly record struct TextRun(int Start, int Length, Rect Box);
+
 public static class EmojiText
 {
     public static TextStyle Style(string body, Vector4 ink)
@@ -36,13 +38,27 @@ public static class EmojiText
         var height = 0f;
         var used = 0f;
         Walk(frame.Paint, frame.Text, frame.Textures, frame.Paths, body, width, style, false, ref height,
-            ref used, default, false);
+            ref used, default, false, 0f, false, null);
         return MathF.Max(height, frame.Text.LineHeight(style.Role) * style.Scale);
     }
 
     public static void Draw(in AppletFrame frame, Rect area, string body, Vector4 ink)
     {
         DrawStyled(frame, area, body, Style(body, ink), false);
+    }
+
+    public static void Collect(in AppletFrame frame, Rect area, string body, IList<TextRun> runs)
+    {
+        if (area.Width < 1f || area.Height < 1f || string.IsNullOrEmpty(body))
+        {
+            return;
+        }
+
+        var style = Style(body, Vector4.One);
+        var height = 0f;
+        var used = 0f;
+        Walk(frame.Paint, frame.Text, frame.Textures, frame.Paths, body, area.Width, style, false, ref height,
+            ref used, area.Min, false, 0f, false, runs);
     }
 
     public static void DrawEllipsized(in AppletFrame frame, Rect area, string body, Vector4 ink)
@@ -94,7 +110,7 @@ public static class EmojiText
         var height = 0f;
         var used = 0f;
         Walk(paint, text, textures, paths, shown, MathF.Max(wide, inner), style, true, ref height, ref used, origin,
-            true, face, true);
+            true, face, true, null);
         if (caret)
         {
             var caretH = MathF.Max(10f, face * 0.82f);
@@ -112,7 +128,7 @@ public static class EmojiText
         var height = 0f;
         var used = 0f;
         Walk(paint, text, textures, paths, body, 10_000f, style, false, ref height, ref used, default, true, row,
-            pinLine);
+            pinLine, null);
         return used;
     }
 
@@ -131,7 +147,7 @@ public static class EmojiText
             frame.Paint.PushClip(area);
             clipped = true;
             Walk(frame.Paint, frame.Text, frame.Textures, frame.Paths, body, area.Width, style, true, ref height,
-                ref used, area.Min, oneLine);
+                ref used, area.Min, oneLine, 0f, false, null);
         }
         catch (Exception)
         {
@@ -148,7 +164,7 @@ public static class EmojiText
 
     private static void Walk(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         string body, float width, TextStyle style, bool draw, ref float height, ref float used, Vector2 origin,
-        bool oneLine, float row = 0f, bool pinLine = false)
+        bool oneLine, float row, bool pinLine, IList<TextRun>? runs)
     {
         var face = row > 0f ? row : MathF.Max(14f, text.LineHeight(style.Role) * style.Scale);
         var x = 0f;
@@ -157,31 +173,40 @@ public static class EmojiText
         var dots = false;
         var walk = StringInfo.GetTextElementEnumerator(body ?? string.Empty);
         var pending = string.Empty;
+        var pendingAt = 0;
+        var at = 0;
         while (walk.MoveNext())
         {
             var part = walk.GetTextElement();
+            var partAt = at;
+            at += part.Length;
             if (EmojiBits.LooksEmoji(part))
             {
                 PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine, pinLine,
-                    ref x, ref y, ref line, ref dots);
+                    ref x, ref y, ref line, ref dots, pendingAt, runs);
                 pending = string.Empty;
                 PlaceFace(paint, text, textures, paths, part, width, style, draw, origin, face, oneLine,
-                    ref x, ref y, ref line, ref dots);
+                    ref x, ref y, ref line, ref dots, partAt, runs);
                 continue;
+            }
+
+            if (pending.Length == 0)
+            {
+                pendingAt = partAt;
             }
 
             pending += part;
         }
 
         PlaceText(paint, text, textures, paths, pending, width, style, draw, origin, face, oneLine, pinLine,
-            ref x, ref y, ref line, ref dots);
+            ref x, ref y, ref line, ref dots, pendingAt, runs);
         height = y + line;
         used = x;
     }
 
     private static void PlaceFace(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         string glyph, float width, TextStyle style, bool draw, Vector2 origin, float face, bool oneLine,
-        ref float x, ref float y, ref float line, ref bool dots)
+        ref float x, ref float y, ref float line, ref bool dots, int glyphAt, IList<TextRun>? runs)
     {
         if (oneLine && dots)
         {
@@ -201,21 +226,22 @@ public static class EmojiText
             line = face;
         }
 
+        var dest = Rect.FromSize(origin + new Vector2(x, y), new Vector2(face, face));
         if (draw)
         {
-            var dest = Rect.FromSize(origin + new Vector2(x, y), new Vector2(face, face));
             if (!EmojiArt.TryDraw(paint, textures, paths, dest, glyph))
             {
                 text.DrawIn(dest, glyph, new TextStyle(style.Role, style.Color, TextAlign.Center));
             }
         }
 
+        runs?.Add(new TextRun(glyphAt, glyph.Length, dest));
         x += face;
     }
 
     private static void PlaceText(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths,
         string value, float width, TextStyle style, bool draw, Vector2 origin, float face, bool oneLine, bool pinLine,
-        ref float x, ref float y, ref float line, ref bool dots)
+        ref float x, ref float y, ref float line, ref bool dots, int textAt, IList<TextRun>? runs)
     {
         _ = paint;
         _ = textures;
@@ -297,11 +323,34 @@ public static class EmojiText
                 line = MathF.Max(line, size.Y);
             }
 
+            var drawY = pinLine ? y : y + MathF.Max(0f, (line - size.Y) * 0.5f);
             if (draw)
             {
-                var drawY = pinLine ? y : y + MathF.Max(0f, (line - size.Y) * 0.5f);
                 text.Draw(origin + new Vector2(x, drawY), slice,
                     new TextStyle(style.Role, style.Color, TextAlign.Left, style.LineSpacing, style.Scale));
+            }
+
+            if (runs is not null)
+            {
+                var cursor = x;
+                var offset = 0;
+                while (offset < take)
+                {
+                    var len = 1;
+                    if (offset + 1 < take && char.IsHighSurrogate(value[start + offset]) &&
+                        char.IsLowSurrogate(value[start + offset + 1]))
+                    {
+                        len = 2;
+                    }
+
+                    var glyph = value.AsSpan(start + offset, len);
+                    var wide = text.Measure(glyph, style.Role).X * style.Scale;
+                    var box = Rect.FromSize(origin + new Vector2(cursor, drawY),
+                        new Vector2(MathF.Max(wide, 1f), MathF.Max(size.Y, face * 0.7f)));
+                    runs.Add(new TextRun(textAt + start + offset, len, box));
+                    cursor += wide;
+                    offset += len;
+                }
             }
 
             x += size.X;

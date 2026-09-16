@@ -234,7 +234,8 @@ public sealed class ChatMarks
         ReplyPreview = string.Empty;
     }
 
-    public void DrawMenu(in AppletFrame frame, Rect bounds, Vector4 ink, Vector4 mute, Vector4 accent, Vector4 card)
+    public void DrawMenu(in AppletFrame frame, Rect bounds, Vector4 ink, Vector4 mute, Vector4 accent, Vector4 card,
+        ChatPick? pick = null)
     {
         if (faceOn)
         {
@@ -247,7 +248,12 @@ public sealed class ChatMarks
             return;
         }
 
-        var labels = new[] { "React", "Reply" };
+        var labels = new[] { "Copy", "React", "Reply" };
+        if (ChatLinks.First(ChatPick.Plain(menuPreview), out _))
+        {
+            labels = ["Copy", "Open link", "React", "Reply"];
+        }
+
         var width = frame.Units(148f);
         var rowH = frame.Units(34f);
         var height = rowH * labels.Length + frame.Units(8f);
@@ -280,18 +286,41 @@ public sealed class ChatMarks
                 continue;
             }
 
-            if (index == 0)
+            var chosen = labels[index];
+            menuOn = false;
+            if (chosen == "Copy")
+            {
+                if (pick is null || !pick.Copy(frame, menuKey, menuPreview))
+                {
+                    frame.TextField.PutClipboard(ChatPick.Plain(menuPreview));
+                }
+
+                return;
+            }
+
+            if (chosen == "Open link")
+            {
+                if (pick is null || !pick.Open(menuPreview))
+                {
+                    if (ChatLinks.First(ChatPick.Plain(menuPreview), out var link))
+                    {
+                        ChatWeb.Open(link.Href);
+                    }
+                }
+
+                return;
+            }
+
+            if (chosen == "React")
             {
                 faceOn = true;
                 faces.Open();
-                menuOn = false;
                 return;
             }
 
             ReplyThread = menuThread;
             ReplyWho = menuWho;
             ReplyPreview = ChatBits.Snippet(menuPreview);
-            menuOn = false;
             return;
         }
 

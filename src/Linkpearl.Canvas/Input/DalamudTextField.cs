@@ -712,4 +712,17 @@ public sealed class DalamudTextField : ITextField
             return string.Empty;
         }
     }
+
+    public void PutClipboard(string text)
+    {
+        try
+        {
+            ImGui.SetClipboardText(text ?? string.Empty);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    public bool TakingKeys => Capturing;
 }

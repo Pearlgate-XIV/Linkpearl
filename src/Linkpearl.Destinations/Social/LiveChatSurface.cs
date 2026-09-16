@@ -30,6 +30,7 @@ internal sealed class LiveChatSurface
     private bool dragging;
     private int seenGeneration = -1;
     private FeedMenu? menu;
+    private readonly ChatPick pick = new();
 
     private readonly IGifDesk gifs;
     private readonly ChatMarks marks;
@@ -77,7 +78,9 @@ internal sealed class LiveChatSurface
         var log = new Rect(new Vector2(area.Min.X, filters.Max.Y + frame.Units(8f)),
             new Vector2(area.Max.X, composer.Min.Y - frame.Units(8f)));
         DrawFilters(frame, filters);
+        pick.Begin();
         DrawLines(frame, log, thread, partyReady);
+        pick.End(frame);
         DrawComposer(frame, composer, thread, partyReady);
         DrawChannels(frame, sendBar, partyReady);
         DrawLineMenu(frame, frame.Content);
@@ -294,7 +297,12 @@ internal sealed class LiveChatSurface
             }
         }
 
-        if (menu is null && (frame.Input.PressedInside(viewport) || dragging))
+        if (pick.Busy)
+        {
+            dragging = false;
+        }
+
+        if (menu is null && !pick.Busy && (frame.Input.PressedInside(viewport) || dragging))
         {
             if (frame.Input.IsHeld())
             {
@@ -412,6 +420,7 @@ internal sealed class LiveChatSurface
         frame.Paint.Fill(top, ChannelWash(line.Tag), radius);
         frame.Paint.Stroke(top, lineColor, frame.Units(1.5f), radius);
         var key = LineKey(line);
+        var cite = marks.Cite(key, TalkIds.Live, line.Body ?? string.Empty, line.Mine);
         var band = marks.Band(frame, key);
         var copy = top.Inset(new Edges(frame.Units(10f), frame.Units(8f), frame.Units(10f),
             frame.Units(8f) + band));
@@ -419,11 +428,15 @@ internal sealed class LiveChatSurface
         try
         {
             ChatBits.Draw(frame, copy, line.Body ?? string.Empty, lineColor, lineColor with { W = 0.72f }, lifestream, gifs,
-                marks.Cite(key, TalkIds.Live, line.Body ?? string.Empty, line.Mine));
+                cite);
         }
         finally
         {
             frame.Paint.PopClip();
+        }
+        if (ChatBits.TryPlain(frame, copy, line.Body ?? string.Empty, cite, out var face, out var text))
+        {
+            pick.Face(frame, face, key, text, lineColor);
         }
         if (band > 0f)
         {
@@ -447,10 +460,18 @@ internal sealed class LiveChatSurface
         }
 
         var labels = open.Mine || open.Name.Length == 0
-            ? new[] { "React", "Reply" }
+            ? new[] { "Copy", "React", "Reply" }
             : reportLine is null
-                ? new[] { "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend" }
-                : new[] { "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend", "Report" };
+                ? new[] { "Copy", "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend" }
+                : new[] { "Copy", "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend", "Report" };
+        if (ChatLinks.First(ChatPick.Plain(open.Body), out _))
+        {
+            var extra = new string[labels.Length + 1];
+            extra[0] = labels[0];
+            extra[1] = "Open link";
+            Array.Copy(labels, 1, extra, 2, labels.Length - 1);
+            labels = extra;
+        }
         var width = frame.Units(176f);
         var rowH = frame.Units(34f);
         var height = rowH * labels.Length + frame.Units(8f);
@@ -475,7 +496,7 @@ internal sealed class LiveChatSurface
                 new TextStyle(FontRole.CaptionStrong, hover ? gold : frame.Theme.Palette.Ink));
             if (frame.Input.ConsumeClick(row))
             {
-                RunLineMenu(labels[index], open);
+                RunLineMenu(frame, labels[index], open);
                 return;
             }
         }
@@ -489,9 +510,21 @@ internal sealed class LiveChatSurface
         }
     }
 
-    private void RunLineMenu(string label, FeedMenu open)
+    private void RunLineMenu(in AppletFrame frame, string label, FeedMenu open)
     {
         menu = null;
+        if (label == "Copy")
+        {
+            pick.Copy(frame, open.Key, open.Body);
+            return;
+        }
+
+        if (label == "Open link")
+        {
+            pick.Open(open.Body);
+            return;
+        }
+
         if (label == "React")
         {
             marks.BeginReact(open.Key);

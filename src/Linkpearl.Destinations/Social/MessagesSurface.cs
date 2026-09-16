@@ -49,6 +49,7 @@ internal sealed class MessagesSurface
     private int inboxPane = SocialPane.Messages;
     private float inboxScroll;
     private InboxMenu? inboxMenu;
+    private readonly ChatPick pick = new();
     private bool reportOpen;
     private bool reportFresh;
     private int reportReason;
@@ -524,7 +525,9 @@ internal sealed class MessagesSurface
         }
 
         frame.Paint.Fill(messages, frame.Theme.Palette.SurfaceSunken with { W = 0.90f }, frame.Units(14f));
+        pick.Begin();
         DrawLines(frame, messages.Inset(frame.Units(12f)), thread);
+        pick.End(frame);
         if (replies > 0f)
         {
             DrawReplies(frame, replyRow, thread);
@@ -547,7 +550,7 @@ internal sealed class MessagesSurface
         }
 
         marks.DrawMenu(frame, frame.Content, frame.Theme.Palette.Ink, frame.Theme.Palette.InkMuted,
-            frame.Theme.Palette.Accent, frame.Theme.Palette.SurfaceRaised);
+            frame.Theme.Palette.Accent, frame.Theme.Palette.SurfaceRaised, pick);
         return frame.Content.Height;
     }
 
@@ -1399,6 +1402,7 @@ internal sealed class MessagesSurface
         frame.Paint.Stroke(top, frame.Theme.Palette.WarmAccent with { W = line.Mine ? 0.36f : 0.20f },
             frame.Theme.Metrics.Hairline, radius);
         var key = LineKey(line);
+        var cite = marks.Cite(key, openId, line.Body ?? string.Empty, line.Mine);
         var band = marks.Band(frame, key);
         var copy = top.Inset(new Edges(frame.Units(8f), frame.Units(8f), frame.Units(8f),
             frame.Units(8f) + band));
@@ -1406,11 +1410,15 @@ internal sealed class MessagesSurface
         try
         {
             ChatBits.Draw(frame, copy, line.Body ?? string.Empty, ink, frame.Theme.Palette.InkMuted, lifestream, gifs,
-                marks.Cite(key, openId, line.Body ?? string.Empty, line.Mine));
+                cite);
         }
         finally
         {
             frame.Paint.PopClip();
+        }
+        if (ChatBits.TryPlain(frame, copy, line.Body ?? string.Empty, cite, out var face, out var text))
+        {
+            pick.Face(frame, face, key, text, ink);
         }
         if (band > 0f)
         {

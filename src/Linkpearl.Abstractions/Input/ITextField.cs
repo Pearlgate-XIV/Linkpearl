@@ -40,6 +40,12 @@ public interface ITextField
 
     string ClipboardText();
 
+    void PutClipboard(string text)
+    {
+    }
+
+    bool TakingKeys => false;
+
     void Dress(IPaintSurface paint, ITextPainter text, ITextureSource textures, HostPaths paths)
     {
     }
