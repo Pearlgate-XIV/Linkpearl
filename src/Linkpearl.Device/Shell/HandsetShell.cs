@@ -119,12 +119,12 @@ public sealed class HandsetShell
 
     public int PocketNoticeCount() => notices.Count(pearl.Current, talk, clock);
 
-    public bool DrawMinimized(in AppletFrame frame, Rect screen, PocketUnlock unlock, bool allowSlide)
+    public bool DrawMinimized(in AppletFrame frame, Rect screen, PocketUnlock unlock, bool allowSlide, PocketFace face)
     {
         var tray = notices.Visible(pearl.Current, talk, clock);
         var mark = tray.Count > 0 ? NoticeMarks.For(tray[0].Kind) : "pearlchat";
         return MinimizedFace.Draw(frame, screen, unlock, allowSlide, HandsetClockText.Format(clock, preferences),
-            HandsetClockText.FormatDate(clock), tray.Count, mark);
+            HandsetClockText.FormatDate(clock), tray.Count, mark, face);
     }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)

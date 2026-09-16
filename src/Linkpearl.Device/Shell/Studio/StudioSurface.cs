@@ -1370,10 +1370,9 @@ internal sealed class StudioSurface
         var labelGap = frame.Units(4f);
         var labelHeight = frame.Text.LineHeight(FontRole.Caption);
         var hover = frame.Input.IsHovering(cell);
-        var drawn = hover ? side * 1.08f : side;
+        side = MathF.Min(side, MathF.Max(8f, cell.Height - labelGap - labelHeight));
         var icon = Rect.FromSize(new Vector2(cell.Center.X - side * 0.5f, cell.Min.Y), new Vector2(side, side));
-        var bubble = Rect.FromSize(icon.Center - new Vector2(drawn * 0.5f, drawn * 0.5f), new Vector2(drawn, drawn));
-        AppMarks.DrawFace(frame, bubble, appletId, hover);
+        AppMarks.DrawFace(frame, icon, appletId, hover);
         var caption = new Rect(
             new Vector2(cell.Min.X, icon.Max.Y + labelGap),
             new Vector2(cell.Max.X, icon.Max.Y + labelGap + labelHeight));
@@ -1387,7 +1386,7 @@ internal sealed class StudioSurface
             frame.Text.DrawWrapped(caption, label, style);
         }
 
-        AppMarks.DrawCount(frame, bubble, badge);
+        AppMarks.DrawCount(frame, icon, badge);
 
         if (open && frame.Input.ConsumeClick(cell))
         {

@@ -19,7 +19,7 @@ public sealed class HandsetShapePreference
         scaleStep = initialScaleStep;
         form = initialForm;
         this.positionLocked = positionLocked;
-        this.pocketScale = pocketScale;
+        this.pocketScale = SnapPocket(pocketScale);
         this.finish = finish;
         this.showLockTab = showLockTab;
         this.casing = casing;
@@ -133,10 +133,23 @@ public sealed class HandsetShapePreference
         }
     }
 
-    // Small matches the compact overlay phones (~half the old default miniature).
-    public static readonly float[] PocketSteps = { 0.64f, 1f, 1.22f };
+    // Three distinct minis: icon face, lock screen, slide-to-wake communicator.
+    public static readonly float[] PocketSteps = { 0.38f, 0.90f, 1.50f };
 
-    public static readonly string[] PocketLabels = { "Small", "Medium", "Large" };
+    public static readonly string[] PocketLabels = { "Tiny", "Medium", "Large" };
+
+    public static PocketFace FaceFor(float scale) =>
+        IndexOf(scale) switch
+        {
+            0 => PocketFace.Icon,
+            1 => PocketFace.Lock,
+            _ => PocketFace.Slider,
+        };
+
+    public void CyclePocket()
+    {
+        PocketScale = PocketSteps[(PocketIndex() + 1) % PocketSteps.Length];
+    }
 
     public static float SnapPocket(float scale)
     {
@@ -155,9 +168,11 @@ public sealed class HandsetShapePreference
         return closest;
     }
 
-    public int PocketIndex()
+    public int PocketIndex() => IndexOf(pocketScale);
+
+    public static int IndexOf(float scale)
     {
-        var snapped = SnapPocket(pocketScale);
+        var snapped = SnapPocket(scale);
         for (var index = 0; index < PocketSteps.Length; index++)
         {
             if (PocketSteps[index].Equals(snapped))
@@ -168,4 +183,11 @@ public sealed class HandsetShapePreference
 
         return 1;
     }
+}
+
+public enum PocketFace : byte
+{
+    Icon = 0,
+    Lock = 1,
+    Slider = 2,
 }

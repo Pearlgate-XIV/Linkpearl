@@ -28,8 +28,9 @@ public static class AppMarks
             return;
         }
 
-        var radius = frame.Units(9f);
-        var center = new Vector2(icon.Max.X - radius * 0.22f, icon.Min.Y + radius * 0.22f);
+        var radius = MathF.Min(frame.Units(8f), MathF.Min(icon.Width, icon.Height) * 0.22f);
+        var inset = radius + 1f;
+        var center = new Vector2(icon.Max.X - inset, icon.Min.Y + inset);
         frame.Paint.FillCircle(center, radius, frame.Theme.Palette.Negative);
         frame.Text.Draw(center, count > 9 ? "9+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture),
             new TextStyle(FontRole.CaptionStrong, Vector4.One, TextAlign.Center, 1f, 0.92f));
