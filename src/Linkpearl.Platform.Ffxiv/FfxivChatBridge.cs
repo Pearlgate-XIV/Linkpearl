@@ -12,6 +12,7 @@ using Linkpearl.Chat;
 using Linkpearl.Platform;
 using WorldSheet = Lumina.Excel.Sheets.World;
 using TerritorySheet = Lumina.Excel.Sheets.TerritoryType;
+using EmoteSheet = Lumina.Excel.Sheets.Emote;
 
 namespace Linkpearl.Platform.Ffxiv;
 
@@ -40,6 +41,8 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
     private int pendingAddWait;
     private string pendingTellName = string.Empty;
     private string pendingTellWorld = string.Empty;
+    private readonly Dictionary<string, string> emoteCommands = new(StringComparer.OrdinalIgnoreCase);
+    private bool emotesLoaded;
 
     public FfxivChatBridge(IChatGui chat, IClientState clientState, IPartyList party, IObjectTable objects,
         IDataManager data, IGameSession session, IFramework framework, IPluginLog log, ITargetManager targets)
@@ -257,6 +260,36 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         QueueFriend("invite", name, home);
     }
 
+    public void TargetPlayer(string characterName, string world)
+    {
+        var name = characterName.Trim();
+        var home = world.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        PeelWorld(ref name, home);
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        QueueFriend("target", name, home);
+    }
+
+    public bool TrySendEmote(string body)
+    {
+        EnsureEmotes();
+        if (!GameEmoteDraft.TryCommand(body, emoteCommands, out var command))
+        {
+            return false;
+        }
+
+        Queue(command);
+        return true;
+    }
+
     private bool TryFormatPlayer(string characterName, string world, out string target)
     {
         target = string.Empty;
@@ -380,6 +413,7 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
 
     private void HandleUpdate(IFramework running)
     {
+        EnsureEmotes();
         if (!clientState.IsLoggedIn)
         {
             lock (friendGate)
@@ -1012,6 +1046,10 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             case XivChatType.TellIncoming:
                 channel = GameChannel.Tell;
                 return true;
+            case XivChatType.StandardEmote:
+            case XivChatType.CustomEmote:
+                channel = GameChannel.Emote;
+                return true;
             case XivChatType.Say:
                 channel = GameChannel.Say;
                 return true;
@@ -1123,6 +1161,73 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
         return trimmed;
     }
 
+    private void EnsureEmotes()
+    {
+        if (emotesLoaded)
+        {
+            return;
+        }
+
+        emotesLoaded = true;
+        foreach (var emote in data.GetExcelSheet<EmoteSheet>())
+        {
+            if (emote.TextCommand.ValueNullable is not { } text)
+            {
+                continue;
+            }
+
+            var canon = CanonEmote(text.Command.ExtractText());
+            if (canon.Length == 0)
+            {
+                canon = CanonEmote(text.ShortCommand.ExtractText());
+            }
+
+            if (canon.Length == 0)
+            {
+                continue;
+            }
+
+            RememberEmote(text.Command.ExtractText(), canon);
+            RememberEmote(text.ShortCommand.ExtractText(), canon);
+            RememberEmote(text.Alias.ExtractText(), canon);
+            RememberEmote(text.ShortAlias.ExtractText(), canon);
+        }
+    }
+
+    private void RememberEmote(string raw, string canon)
+    {
+        var key = NormalizeEmote(raw);
+        if (key.Length == 0)
+        {
+            return;
+        }
+
+        emoteCommands.TryAdd(key, canon);
+    }
+
+    private static string NormalizeEmote(string raw)
+    {
+        var trimmed = (raw ?? string.Empty).Trim();
+        if (trimmed.StartsWith('/'))
+        {
+            trimmed = trimmed[1..];
+        }
+
+        var space = trimmed.IndexOf(' ');
+        if (space >= 0)
+        {
+            trimmed = trimmed[..space];
+        }
+
+        return trimmed.ToLowerInvariant();
+    }
+
+    private static string CanonEmote(string raw)
+    {
+        var key = NormalizeEmote(raw);
+        return key.Length == 0 ? string.Empty : "/" + key;
+    }
+
     private void Queue(string command)
     {
         if (command.Length == 0)
@@ -1193,6 +1298,16 @@ public sealed class FfxivChatBridge : IChatBridge, IDisposable
             {
                 world = liveWorld;
             }
+        }
+
+        if (verb.Equals("target", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryAimAtPlayer(name, world))
+            {
+                chat.Print("Linkpearl could not target " + name + " right now.", "Linkpearl");
+            }
+
+            return;
         }
 
         if (name.IndexOf(' ') < 0)

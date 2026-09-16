@@ -384,6 +384,11 @@ public sealed class TalkInbox : ITalk, IDisposable
             return;
         }
 
+        if (IsFeedThread(threadId) && chat.TrySendEmote(trimmed))
+        {
+            return;
+        }
+
         if (threadId is TalkIds.Party or TalkIds.LiveParty)
         {
             if (!chat.InParty)
@@ -1319,7 +1324,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         GameChannel.Tell => TalkIds.Tell(line.Sender, line.SenderWorld),
         GameChannel.Linkshell => TalkIds.Linkshell(line.ChannelIndex),
         GameChannel.CrossWorldLinkshell => TalkIds.CrossWorld(line.ChannelIndex),
-        GameChannel.Say or GameChannel.Shout or GameChannel.Yell => TalkIds.Live,
+        GameChannel.Say or GameChannel.Shout or GameChannel.Yell or GameChannel.Emote => TalkIds.Live,
         _ => string.Empty,
     };
 
@@ -1332,7 +1337,7 @@ public sealed class TalkInbox : ITalk, IDisposable
         GameChannel.Tell => TalkKind.Tell,
         GameChannel.Linkshell => TalkKind.Linkshell,
         GameChannel.CrossWorldLinkshell => TalkKind.CrossWorldLinkshell,
-        GameChannel.Say or GameChannel.Shout or GameChannel.Yell => TalkKind.Live,
+        GameChannel.Say or GameChannel.Shout or GameChannel.Yell or GameChannel.Emote => TalkKind.Live,
         _ => TalkKind.Party,
     };
 
@@ -1366,8 +1371,12 @@ public sealed class TalkInbox : ITalk, IDisposable
         GameChannel.Shout => "SHOUT",
         GameChannel.Yell => "YELL",
         GameChannel.Party => "PARTY",
+        GameChannel.Emote => "EMOTE",
         _ => string.Empty,
     };
+
+    private static bool IsFeedThread(string threadId) => threadId is TalkIds.Live or TalkIds.LiveSay
+        or TalkIds.LiveShout or TalkIds.LiveYell or TalkIds.LiveParty;
 
     private static int Compare(TalkThread left, TalkThread right)
     {

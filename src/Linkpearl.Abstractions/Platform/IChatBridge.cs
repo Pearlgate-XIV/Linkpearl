@@ -95,6 +95,10 @@ public interface IChatBridge
 
     void InviteToParty(string characterName, string world);
 
+    void TargetPlayer(string characterName, string world);
+
+    bool TrySendEmote(string body);
+
     void Print(string body);
 
     void OpenGameMenu(GameMenu menu);

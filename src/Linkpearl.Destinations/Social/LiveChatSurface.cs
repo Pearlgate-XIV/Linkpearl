@@ -243,7 +243,7 @@ internal sealed class LiveChatSurface
         {
             if (Channels[index].ThreadId == sendId)
             {
-                return Channels[index].Label;
+                return Channels[index].Label + " · /wave or :dance:";
             }
         }
 
@@ -449,8 +449,8 @@ internal sealed class LiveChatSurface
         var labels = open.Mine || open.Name.Length == 0
             ? new[] { "React", "Reply" }
             : reportLine is null
-                ? new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend" }
-                : new[] { "React", "Reply", "Send tell", "Invite to party", "Add friend", "Report" };
+                ? new[] { "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend" }
+                : new[] { "React", "Reply", "Target", "Send tell", "Invite to party", "Add friend", "Report" };
         var width = frame.Units(176f);
         var rowH = frame.Units(34f);
         var height = rowH * labels.Length + frame.Units(8f);
@@ -504,6 +504,12 @@ internal sealed class LiveChatSurface
             return;
         }
 
+        if (label == "Target")
+        {
+            chat.TargetPlayer(open.Name, open.World);
+            return;
+        }
+
         if (label == "Send tell")
         {
             openTell(open.Name, open.World);
@@ -540,6 +546,7 @@ internal sealed class LiveChatSurface
         "SHOUT" => new Vector4(0.96f, 0.48f, 0.14f, 1f),
         "YELL" => new Vector4(0.98f, 0.84f, 0.16f, 1f),
         "PARTY" => new Vector4(0.35f, 0.62f, 1f, 1f),
+        "EMOTE" => new Vector4(0.86f, 0.62f, 1f, 1f),
         _ => new Vector4(1f, 1f, 1f, 1f),
     };
 
