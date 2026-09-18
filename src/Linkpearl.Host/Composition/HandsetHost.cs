@@ -3,6 +3,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Linkpearl.Applets;
 using Linkpearl.Applets.Life.Calendar;
+using Linkpearl.Applets.Life.Market;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Canvas.Input;
@@ -119,6 +120,7 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
         services.AddSingleton<ISkyDesk>(new FfxivSkyDesk(pluginInterface, dataManager, session, clock, clock));
         services.AddSingleton(new ChatMarks(paths, log));
+        services.AddSingleton<FriendBook>();
         services.AddSingleton(new CharacterMigration(paths, clock, log));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
@@ -205,7 +207,8 @@ public sealed class HandsetHost : IDisposable
         provider = services.BuildServiceProvider();
         characterDesk = new CharacterStateDesk(session, provider.GetRequiredService<CharacterMigration>(),
             provider.GetRequiredService<CalendarBook>(), provider.GetRequiredService<PearlLedger>(),
-            provider.GetRequiredService<IHandsetLine>(), isDevelopment);
+            provider.GetRequiredService<IHandsetLine>(), provider.GetRequiredService<FriendBook>(),
+            provider.GetRequiredService<MarketApplet>(), provider.GetRequiredService<ChatMarks>(), isDevelopment);
 
         fonts = new HandsetFontService(pluginInterface);
         fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,
@@ -218,7 +221,8 @@ public sealed class HandsetHost : IDisposable
         // stays a destination. RouteTrail is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
             provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>(),
-            provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>(), hub, log);
+            provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>(), hub,
+            provider.GetRequiredService<FriendBook>());
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));

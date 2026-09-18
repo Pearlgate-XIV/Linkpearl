@@ -1517,14 +1517,14 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             !string.Equals(migration.Claimant, hex, StringComparison.Ordinal))
         {
             ActionRow(frame, ref stack, "Make this character main",
-                "Move Calendar, Pearls, and Phone notes onto this character.",
+                "Move Calendar, Pearls, Phone notes, Friends, Market, and chat marks onto this character.",
                 () => migration.TryMakeMain(id));
         }
 
         if (!migration.HasClaimant)
         {
             ActionRow(frame, ref stack, "Never import",
-                "Do not copy this install's unclaimed Calendar, Pearls, or Phone notes.",
+                "Do not copy this install's unclaimed Calendar, Pearls, Phone notes, Friends, Market, or chat marks.",
                 () => migration.Never());
         }
     }

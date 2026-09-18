@@ -30,7 +30,10 @@ public sealed class MarketApplet : IApplet
     private readonly IGameItems items;
     private readonly IGameSession game;
     private readonly ILinkpearlLog log;
-    private readonly string bookPath;
+    private readonly HostPaths paths;
+    private string bookPath = string.Empty;
+    private ulong bound;
+    private bool writeThrough;
     private readonly List<GameMarketItem> recents = [];
     private readonly List<GameMarketItem> watches = [];
     private readonly List<int> watchIds = [];
@@ -52,8 +55,59 @@ public sealed class MarketApplet : IApplet
         this.items = items;
         this.game = game;
         this.log = log;
-        bookPath = paths.State("market.json");
-        LoadBook();
+        this.paths = paths;
+    }
+
+    public ulong BoundId => bound;
+
+    public bool Flush()
+    {
+        if (bookPath.Length == 0 || !writeThrough)
+        {
+            return true;
+        }
+
+        return SaveBook();
+    }
+
+    public bool Bind(ulong contentId)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        if (!Flush())
+        {
+            return false;
+        }
+
+        recents.Clear();
+        watches.Clear();
+        watchIds.Clear();
+        hits = [];
+        query = string.Empty;
+        lastQuery = string.Empty;
+        peeked = string.Empty;
+        itemOpen = false;
+        opened = default;
+        scroll = 0f;
+        corrupt = default;
+        writeThrough = false;
+        bound = contentId;
+        bookPath = CharacterStatePaths.Market(paths, contentId);
+        if (bookPath.Length == 0)
+        {
+            return true;
+        }
+
+        writeThrough = File.Exists(bookPath);
+        if (writeThrough)
+        {
+            LoadBook();
+        }
+
+        return true;
     }
 
     AppletManifest IApplet.Manifest => Manifest;
@@ -411,6 +465,7 @@ public sealed class MarketApplet : IApplet
             recents.RemoveAt(recents.Count - 1);
         }
 
+        writeThrough = true;
         SaveBook();
         opened = item;
         itemOpen = true;
@@ -540,6 +595,7 @@ public sealed class MarketApplet : IApplet
         }
 
         RebuildWatches();
+        writeThrough = true;
         SaveBook();
     }
 
@@ -623,6 +679,11 @@ public sealed class MarketApplet : IApplet
 
     private void LoadBook()
     {
+        if (bookPath.Length == 0)
+        {
+            return;
+        }
+
         if (!AtomicJson.TryRead(bookPath, null, out Book? book, ref corrupt, log) || book is null)
         {
             return;
@@ -663,9 +724,14 @@ public sealed class MarketApplet : IApplet
         }
     }
 
-    private void SaveBook()
+    private bool SaveBook()
     {
-        AtomicJson.TrySave(bookPath, new Book
+        if (bookPath.Length == 0 || !writeThrough)
+        {
+            return true;
+        }
+
+        return AtomicJson.TrySave(bookPath, new Book
         {
             RecentIds = recents.ConvertAll(row => row.Id),
             WatchIds = [.. watchIds],

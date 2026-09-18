@@ -5,19 +5,23 @@ using Linkpearl.Platform;
 
 namespace Linkpearl.Destinations.Social;
 
-internal sealed class FriendBook
+public sealed class FriendBook
 {
-    private readonly string path;
+    private readonly HostPaths paths;
     private readonly ILinkpearlLog log;
     private readonly HashSet<string> stars = new(StringComparer.OrdinalIgnoreCase);
     private JsonCorruptHold corrupt;
+    private string path = string.Empty;
+    private ulong bound;
+    private bool writeThrough;
 
     public FriendBook(HostPaths paths, ILinkpearlLog log)
     {
+        this.paths = paths;
         this.log = log;
-        path = paths.State("friends.json");
-        Load();
     }
+
+    public ulong BoundId => bound;
 
     public bool OnlineFirst { get; private set; } = true;
 
@@ -29,6 +33,7 @@ internal sealed class FriendBook
         }
 
         OnlineFirst = value;
+        writeThrough = true;
         Save();
     }
 
@@ -42,7 +47,50 @@ internal sealed class FriendBook
             stars.Remove(key);
         }
 
+        writeThrough = true;
         Save();
+    }
+
+    public bool Flush()
+    {
+        if (path.Length == 0 || !writeThrough)
+        {
+            return true;
+        }
+
+        return Save();
+    }
+
+    public bool Bind(ulong contentId)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        if (!Flush())
+        {
+            return false;
+        }
+
+        stars.Clear();
+        OnlineFirst = true;
+        corrupt = default;
+        writeThrough = false;
+        bound = contentId;
+        path = CharacterStatePaths.Friends(paths, contentId);
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
+        writeThrough = File.Exists(path);
+        if (writeThrough)
+        {
+            Load();
+        }
+
+        return true;
     }
 
     private void Load()
@@ -68,11 +116,16 @@ internal sealed class FriendBook
         }
     }
 
-    private void Save()
+    private bool Save()
     {
+        if (path.Length == 0 || !writeThrough)
+        {
+            return true;
+        }
+
         var keys = new string[stars.Count];
         stars.CopyTo(keys);
-        AtomicJson.TrySave(path, new BookSave
+        return AtomicJson.TrySave(path, new BookSave
         {
             OnlineFirst = OnlineFirst,
             Stars = keys,

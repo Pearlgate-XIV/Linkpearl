@@ -3,7 +3,6 @@ using Linkpearl.Feedback;
 using Linkpearl.Cards;
 using Linkpearl.Chat;
 using Linkpearl.Destinations.Stories;
-using Linkpearl.Diagnostics;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Layout;
@@ -54,7 +53,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
 
     public SocialDestination(IPearlHub pearl, IClock clock, ITalk talk, IGameSession game, DisplayPreferences display,
         ITalkPopouts popouts, IChatBridge chat, HostPaths paths, IFilePicker files, IGifDesk gifs, ChatMarks marks,
-        IFeedbackDesk desk, ILifestream lifestream, DestinationHub hub, ILinkpearlLog log)
+        IFeedbackDesk desk, ILifestream lifestream, DestinationHub hub, FriendBook friends)
     {
         this.pearl = pearl;
         this.talk = talk;
@@ -64,7 +63,7 @@ public sealed class SocialDestination : IDestinationScreen, ISectionedDestinatio
         this.game = game;
         this.desk = desk;
         this.lifestream = lifestream;
-        friendsBook = new FriendBook(paths, log);
+        friendsBook = friends;
         messages = new MessagesSurface(talk, clock, game, display, pearl, popouts, files, gifs, marks, desk,
             lifestream);
         feed = new LiveChatSurface(talk, display, chat, OpenTellFromPeople, gifs, marks,

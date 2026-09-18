@@ -33,6 +33,11 @@ public sealed class ChatMarks
     private Vector2 menuAt;
     private JsonCorruptHold marksCorrupt;
     private JsonCorruptHold citesCorrupt;
+    private ulong bound;
+    private string marksPath = string.Empty;
+    private string citesPath = string.Empty;
+    private bool marksThrough;
+    private bool citesThrough;
 
     public ChatMarks(HostPaths paths, ILinkpearlLog log)
     {
@@ -49,6 +54,63 @@ public sealed class ChatMarks
     public bool HasReply => ReplyThread.Length > 0;
 
     public bool Busy => menuOn || faceOn;
+
+    public ulong BoundId => bound;
+
+    public bool Flush()
+    {
+        var ok = true;
+        if (marksThrough)
+        {
+            ok &= Save();
+        }
+
+        if (citesThrough)
+        {
+            ok &= SaveCites();
+        }
+
+        return ok;
+    }
+
+    public bool Bind(ulong contentId)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        if (!Flush())
+        {
+            return false;
+        }
+
+        board.Clear();
+        cites.Clear();
+        loaded = false;
+        marksCorrupt = default;
+        citesCorrupt = default;
+        marksThrough = false;
+        citesThrough = false;
+        menuOn = false;
+        faceOn = false;
+        ClearReply();
+        pendingThread = string.Empty;
+        pendingWho = string.Empty;
+        pendingPreview = string.Empty;
+        bound = contentId;
+        marksPath = CharacterStatePaths.ChatMarks(paths, contentId);
+        citesPath = CharacterStatePaths.ChatCites(paths, contentId);
+        if (marksPath.Length == 0)
+        {
+            return true;
+        }
+
+        marksThrough = File.Exists(marksPath);
+        citesThrough = File.Exists(citesPath);
+        Load();
+        return true;
+    }
 
     public bool Dismiss()
     {
@@ -233,6 +295,7 @@ public sealed class ChatMarks
         pendingThread = string.Empty;
         pendingWho = string.Empty;
         pendingPreview = string.Empty;
+        citesThrough = true;
         SaveCites();
     }
 
@@ -387,6 +450,7 @@ public sealed class ChatMarks
         }
 
         list.Add(glyph);
+        marksThrough = true;
         Save();
     }
 
@@ -399,8 +463,12 @@ public sealed class ChatMarks
 
         loaded = true;
         LoadCites();
-        var path = paths.State("chat-marks.json");
-        if (!AtomicJson.TryRead(path, Json, out Dictionary<string, string[]>? save, ref marksCorrupt, log) ||
+        if (marksPath.Length == 0 || !File.Exists(marksPath))
+        {
+            return;
+        }
+
+        if (!AtomicJson.TryRead(marksPath, Json, out Dictionary<string, string[]>? save, ref marksCorrupt, log) ||
             save is null)
         {
             return;
@@ -417,9 +485,13 @@ public sealed class ChatMarks
         }
     }
 
-    private void Save()
+    private bool Save()
     {
-        var path = paths.State("chat-marks.json");
+        if (marksPath.Length == 0 || !marksThrough)
+        {
+            return true;
+        }
+
         var save = new Dictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var pair in board)
         {
@@ -429,15 +501,19 @@ public sealed class ChatMarks
             }
         }
 
-        AtomicJson.TrySave(path, save, Json, ref marksCorrupt, log);
+        return AtomicJson.TrySave(marksPath, save, Json, ref marksCorrupt, log);
     }
 
     private static string BodyKey(string thread, string body) => thread + "\nme\nbody\n" + (body ?? string.Empty);
 
     private void LoadCites()
     {
-        var path = paths.State("chat-cites.json");
-        if (!AtomicJson.TryRead(path, Json, out Dictionary<string, string[]>? save, ref citesCorrupt, log) ||
+        if (citesPath.Length == 0 || !File.Exists(citesPath))
+        {
+            return;
+        }
+
+        if (!AtomicJson.TryRead(citesPath, Json, out Dictionary<string, string[]>? save, ref citesCorrupt, log) ||
             save is null)
         {
             return;
@@ -454,15 +530,19 @@ public sealed class ChatMarks
         }
     }
 
-    private void SaveCites()
+    private bool SaveCites()
     {
-        var path = paths.State("chat-cites.json");
+        if (citesPath.Length == 0 || !citesThrough)
+        {
+            return true;
+        }
+
         var save = new Dictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var pair in cites)
         {
             save[pair.Key] = [pair.Value.Who, pair.Value.Preview];
         }
 
-        AtomicJson.TrySave(path, save, Json, ref citesCorrupt, log);
+        return AtomicJson.TrySave(citesPath, save, Json, ref citesCorrupt, log);
     }
 }
