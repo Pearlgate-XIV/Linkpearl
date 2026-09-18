@@ -36,6 +36,7 @@ public sealed class HandsetShell
     private readonly RouteTrail router;
     private bool pocketRequest;
     private bool powerOffRequest;
+    private string pendingPocketNoticeId = string.Empty;
     private readonly List<IApplet> apps;
     private readonly GlassEdit glass = new();
     private readonly AppsDrawer appsDrawer;
@@ -125,6 +126,37 @@ public sealed class HandsetShell
         var mark = tray.Count > 0 ? NoticeMarks.For(tray[0].Kind) : "pearlchat";
         return MinimizedFace.Draw(frame, screen, unlock, allowSlide, HandsetClockText.Format(clock, preferences),
             HandsetClockText.FormatDate(clock), tray.Count, mark, face);
+    }
+
+    public void OfferPocketNoticeTap()
+    {
+        if (pendingPocketNoticeId.Length > 0)
+        {
+            return;
+        }
+
+        var tray = notices.Visible(pearl.Current, talk, clock);
+        if (tray.Count == 0)
+        {
+            return;
+        }
+
+        pendingPocketNoticeId = tray[0].Id;
+    }
+
+    public void CancelPocketNotice() => pendingPocketNoticeId = string.Empty;
+
+    public void CommitPocketNoticeAfterWake()
+    {
+        var id = pendingPocketNoticeId;
+        pendingPocketNoticeId = string.Empty;
+        if (id.Length == 0 || !notices.TryGet(id, out var item))
+        {
+            return;
+        }
+
+        NoticeLaunch.ToHub(hub, item.Kind, item.Tab, item.Section, item.TargetId);
+        notices.Dismiss(id);
     }
 
     public void Draw(in AppletFrame outerFrame, Rect screen)

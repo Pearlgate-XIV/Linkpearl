@@ -301,6 +301,24 @@ public sealed class NoticeLedger : INoticeTray
             Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
     }
 
+    public bool TryGet(string id, out GlassNotice item)
+    {
+        if (id.Length > 0)
+        {
+            for (var index = 0; index < tray.Count; index++)
+            {
+                if (string.Equals(tray[index].Id, id, StringComparison.Ordinal))
+                {
+                    item = tray[index];
+                    return true;
+                }
+            }
+        }
+
+        item = default;
+        return false;
+    }
+
     public void Dismiss(string id)
     {
         if (id.Length == 0)

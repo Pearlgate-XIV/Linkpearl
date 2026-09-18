@@ -87,12 +87,17 @@ public static class MinimizedFace
 
     public static Rect NoticeOn(Rect screen, float dip, bool notice, PocketFace face = PocketFace.Slider)
     {
-        if (!notice || face == PocketFace.Icon)
+        if (!notice)
         {
             return Rect.Empty;
         }
 
         var inner = GlassSafe.Inner(screen, dip);
+        if (face == PocketFace.Icon)
+        {
+            return inner.TopSlice(IconHeight(inner, dip));
+        }
+
         var width = MathF.Max(0f, inner.Width);
         var height = MathF.Min(NoticeUnits * dip, inner.Height * 0.28f);
         var y = inner.Min.Y + (ClockUnits + GapUnits) * dip;

@@ -132,6 +132,7 @@ public sealed class HandsetWindow : Window
         DropWindowGrab(remember: false);
         textField.Release();
         boot.Cancel();
+        shell.CancelPocketNotice();
         persistMinimized(true);
         savePlacement = true;
     }
@@ -163,6 +164,7 @@ public sealed class HandsetWindow : Window
         DropWindowGrab(remember: false);
         textField.Release();
         boot.Cancel();
+        shell.CancelPocketNotice();
     }
 
     public override void PreDraw()
@@ -291,6 +293,7 @@ public sealed class HandsetWindow : Window
         if (pocketFace && !asleep)
         {
             shell.AlignAfterWake();
+            shell.CommitPocketNoticeAfterWake();
         }
 
         pocketFace = asleep;
@@ -442,9 +445,10 @@ public sealed class HandsetWindow : Window
                 var dip = MinimizedFace.LayoutDip(screen, ui, pocketFace, hasNotice);
                 var sliderHit = MinimizedFace.UnlockHit(screen, dip, hasNotice, pocketFace);
                 var noticeHit = MinimizedFace.NoticeOn(screen, dip, hasNotice, pocketFace);
+                var overNotice = noticeHit.Contains(pointer);
                 if (!blocked && !windowGrab.IsDragging && !pocketUnlock.IsDragging &&
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left) &&
-                    !sliderHit.Contains(pointer) && !noticeHit.Contains(pointer) &&
+                    !sliderHit.Contains(pointer) && !overNotice &&
                     !powerHit.Contains(pointer) && !volumeHit.Contains(pointer) &&
                     windowRect.Contains(pointer))
                 {
@@ -470,11 +474,22 @@ public sealed class HandsetWindow : Window
                     }
                 }
 
+                var noticeWoke = false;
+                if (!blocked && !windowGrab.IsDragging && !pocketUnlock.IsDragging &&
+                    !noticeHit.IsEmpty && frameInput.ConsumeClick(noticeHit))
+                {
+                    shell.OfferPocketNoticeTap();
+                    noticeWoke = true;
+                }
+
                 if (fonts.Ready)
                 {
                     woke = shell.DrawMinimized(frame, screen, pocketUnlock,
-                        allowSlide: !windowGrab.IsDragging && !overChrome, pocketFace);
+                        allowSlide: !windowGrab.IsDragging && !overChrome && !overNotice && !noticeWoke,
+                        pocketFace);
                 }
+
+                woke = woke || noticeWoke;
             }
             else
             {

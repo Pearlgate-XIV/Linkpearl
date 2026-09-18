@@ -215,6 +215,12 @@ internal static class NoticeLaunch
             return;
         }
 
+        if (kind == NoticeKind.Staff)
+        {
+            hub.Open(DestinationTab.Settings, 0);
+            return;
+        }
+
         if (targetId.Length > 0 && tab == DestinationTab.Social && section == SocialPane.Messages)
         {
             hub.OpenTalk(targetId);
