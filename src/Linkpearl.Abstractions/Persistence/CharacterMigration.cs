@@ -72,6 +72,14 @@ public sealed class CharacterMigration
 
     public string HandsetLineMark => file.HandsetLine ?? "unclaimed";
 
+    public string FriendsMark => file.Friends ?? "unclaimed";
+
+    public string MarketMark => file.Market ?? "unclaimed";
+
+    public string ChatMarksMark => file.ChatMarks ?? "unclaimed";
+
+    public string ChatCitesMark => file.ChatCites ?? "unclaimed";
+
     public bool HasClaimant => Claimant.Length == 16;
 
     public bool NeedsPrompt(ulong contentId) =>
@@ -103,6 +111,10 @@ public sealed class CharacterMigration
         file.Calendar = "unclaimed";
         file.Pearls = "unclaimed";
         file.HandsetLine = "unclaimed";
+        file.Friends = "unclaimed";
+        file.Market = "unclaimed";
+        file.ChatMarks = "unclaimed";
+        file.ChatCites = "unclaimed";
         file.Complete = true;
         file.AtUnix = clock.UtcNow.ToUnixTimeSeconds();
         Persist();
@@ -147,7 +159,7 @@ public sealed class CharacterMigration
     public void Resume(ulong contentId)
     {
         if (!HasClaimant || !CharacterStatePaths.TryHex(contentId, out var hex) ||
-            !string.Equals(file.Claimant, hex, StringComparison.Ordinal) || file.Complete)
+            !string.Equals(file.Claimant, hex, StringComparison.Ordinal) || !NeedsCopy())
         {
             return;
         }
@@ -174,6 +186,18 @@ public sealed class CharacterMigration
         file.HandsetLine = CopyStore(CharacterStatePaths.HandsetLineName,
             CharacterStatePaths.Legacy(paths, CharacterStatePaths.HandsetLineName),
             CharacterStatePaths.HandsetLine(paths, contentId), failures);
+        file.Friends = CopyStore(CharacterStatePaths.FriendsName,
+            CharacterStatePaths.Legacy(paths, CharacterStatePaths.FriendsName),
+            CharacterStatePaths.Friends(paths, contentId), failures);
+        file.Market = CopyStore(CharacterStatePaths.MarketName,
+            CharacterStatePaths.Legacy(paths, CharacterStatePaths.MarketName),
+            CharacterStatePaths.Market(paths, contentId), failures);
+        file.ChatMarks = CopyStore(CharacterStatePaths.ChatMarksName,
+            CharacterStatePaths.Legacy(paths, CharacterStatePaths.ChatMarksName),
+            CharacterStatePaths.ChatMarks(paths, contentId), failures);
+        file.ChatCites = CopyStore(CharacterStatePaths.ChatCitesName,
+            CharacterStatePaths.Legacy(paths, CharacterStatePaths.ChatCitesName),
+            CharacterStatePaths.ChatCites(paths, contentId), failures);
         file.Failures = failures.Count == 0 ? null : failures.ToArray();
         file.Complete = failures.Count == 0;
         Persist();
@@ -189,6 +213,10 @@ public sealed class CharacterMigration
         file.Calendar = "unclaimed";
         file.Pearls = "unclaimed";
         file.HandsetLine = "unclaimed";
+        file.Friends = "unclaimed";
+        file.Market = "unclaimed";
+        file.ChatMarks = "unclaimed";
+        file.ChatCites = "unclaimed";
         file.Failures = null;
         file.Complete = true;
         file.AtUnix = clock.UtcNow.ToUnixTimeSeconds();
@@ -204,29 +232,32 @@ public sealed class CharacterMigration
             return CharacterMainResult.Failed;
         }
 
-        var destCalendar = CharacterStatePaths.Calendar(paths, destId);
-        var destPearls = CharacterStatePaths.Pearls(paths, destId);
-        var destLine = CharacterStatePaths.HandsetLine(paths, destId);
-        if (destCalendar.Length == 0 || destPearls.Length == 0 || destLine.Length == 0)
+        var dests = CharacterStatePaths.CharacterFiles(paths, destId);
+        var sources = CharacterStatePaths.CharacterFiles(paths, fromId);
+        if (dests.Length != CharacterStatePaths.StoreNames.Length ||
+            sources.Length != CharacterStatePaths.StoreNames.Length)
         {
             return CharacterMainResult.Invalid;
         }
 
-        if (File.Exists(destCalendar) || File.Exists(destPearls) || File.Exists(destLine))
+        for (var index = 0; index < dests.Length; index++)
         {
-            OccupiedNote = "That character already has data.";
-            return CharacterMainResult.Occupied;
+            if (File.Exists(dests[index]))
+            {
+                OccupiedNote = "That character already has data.";
+                return CharacterMainResult.Occupied;
+            }
         }
 
         var written = new List<string>();
         var drop = new List<string>();
         var failures = new List<string>();
-        var calendar = Relocate(CharacterStatePaths.CalendarName,
-            CharacterStatePaths.Calendar(paths, fromId), destCalendar, written, drop, failures);
-        var pearls = Relocate(CharacterStatePaths.PearlsName,
-            CharacterStatePaths.Pearls(paths, fromId), destPearls, written, drop, failures);
-        var line = Relocate(CharacterStatePaths.HandsetLineName,
-            CharacterStatePaths.HandsetLine(paths, fromId), destLine, written, drop, failures);
+        var marks = new string[dests.Length];
+        for (var index = 0; index < dests.Length; index++)
+        {
+            marks[index] = Relocate(CharacterStatePaths.StoreNames[index], sources[index], dests[index], written,
+                drop, failures);
+        }
         if (failures.Count > 0)
         {
             for (var index = 0; index < written.Count; index++)
@@ -246,9 +277,13 @@ public sealed class CharacterMigration
         file.Refused = false;
         file.Deferred = false;
         file.Claimant = hex;
-        file.Calendar = calendar;
-        file.Pearls = pearls;
-        file.HandsetLine = line;
+        file.Calendar = marks[0];
+        file.Pearls = marks[1];
+        file.HandsetLine = marks[2];
+        file.Friends = marks[3];
+        file.Market = marks[4];
+        file.ChatMarks = marks[5];
+        file.ChatCites = marks[6];
         file.Failures = null;
         file.Complete = true;
         file.AtUnix = clock.UtcNow.ToUnixTimeSeconds();
@@ -258,6 +293,21 @@ public sealed class CharacterMigration
     }
 
     public void Wake() => snooze = false;
+
+    private bool NeedsCopy()
+    {
+        if (!file.Complete)
+        {
+            return true;
+        }
+
+        return OpenMark(file.Calendar) || OpenMark(file.Pearls) || OpenMark(file.HandsetLine) ||
+               OpenMark(file.Friends) || OpenMark(file.Market) || OpenMark(file.ChatMarks) ||
+               OpenMark(file.ChatCites);
+    }
+
+    private static bool OpenMark(string? mark) =>
+        string.IsNullOrEmpty(mark) || mark == "unclaimed" || mark == "failed";
 
     private string CopyStore(string name, string source, string dest, List<string> failures)
     {
@@ -475,6 +525,14 @@ public sealed class CharacterMigration
         public string? Pearls { get; set; }
 
         public string? HandsetLine { get; set; }
+
+        public string? Friends { get; set; }
+
+        public string? Market { get; set; }
+
+        public string? ChatMarks { get; set; }
+
+        public string? ChatCites { get; set; }
 
         public string? Backup { get; set; }
 

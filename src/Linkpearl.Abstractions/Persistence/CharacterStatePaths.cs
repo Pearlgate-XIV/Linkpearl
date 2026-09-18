@@ -9,6 +9,15 @@ public static class CharacterStatePaths
     public const string CalendarName = "calendar.json";
     public const string PearlsName = "pearls.json";
     public const string HandsetLineName = "handset-line.json";
+    public const string FriendsName = "friends.json";
+    public const string MarketName = "market.json";
+    public const string ChatMarksName = "chat-marks.json";
+    public const string ChatCitesName = "chat-cites.json";
+
+    public static readonly string[] StoreNames =
+    [
+        CalendarName, PearlsName, HandsetLineName, FriendsName, MarketName, ChatMarksName, ChatCitesName,
+    ];
 
     public static bool TryHex(ulong contentId, out string hex)
     {
@@ -65,4 +74,35 @@ public static class CharacterStatePaths
 
     public static string HandsetLine(HostPaths paths, ulong contentId) =>
         File(paths, contentId, HandsetLineName);
+
+    public static string Friends(HostPaths paths, ulong contentId) =>
+        File(paths, contentId, FriendsName);
+
+    public static string Market(HostPaths paths, ulong contentId) =>
+        File(paths, contentId, MarketName);
+
+    public static string ChatMarks(HostPaths paths, ulong contentId) =>
+        File(paths, contentId, ChatMarksName);
+
+    public static string ChatCites(HostPaths paths, ulong contentId) =>
+        File(paths, contentId, ChatCitesName);
+
+    public static string[] CharacterFiles(HostPaths paths, ulong contentId)
+    {
+        if (!TryHex(contentId, out _))
+        {
+            return [];
+        }
+
+        return
+        [
+            Calendar(paths, contentId),
+            Pearls(paths, contentId),
+            HandsetLine(paths, contentId),
+            Friends(paths, contentId),
+            Market(paths, contentId),
+            ChatMarks(paths, contentId),
+            ChatCites(paths, contentId),
+        ];
+    }
 }
