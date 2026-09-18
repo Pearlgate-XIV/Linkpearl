@@ -27,8 +27,11 @@ live Pearlgate at `https://pearlgate.194.113.211.29.sslip.io`.
 - **Linkpearl.Data** — sectioned JSON under `ConfigDirectory/state/` (`FileSettings`, schema
   stamps). Notes (`notes.json`), search drafts (`search.json`). Camera gallery is
   `state/photos/` + `library.json`. Alarms stay on `alarms.json`. Look, plate, shade, ink,
-  clocks, presence, shape, and the Pearlgate bearer stay on `HandsetConfig`. `FreshBoot`
-  wipes once if the mark is below 3, then bumps it — that is not “reset every launch.”
+  clocks, presence, shape, and the Pearlgate bearer stay on `HandsetConfig`. `FreshBootMark`
+  is a schema floor: raising it must not delete `state/` or reset layout. Calendar, pearls,
+  and phone notes live per character under `state/characters/{contentId:x16}/` after the
+  player claims one character (`docs/CHARACTER_STATE_MIGRATION.md`). Legacy
+  `state/calendar.json`, `pearls.json`, and `handset-line.json` stay for rollback.
 - **Linkpearl.Destinations** — Home (greeting, announcements card, 2x3 grid, STORIES card),
   Social (Direct / Messages / People / Feed / Phone keypad), Explore (For You stories +
   people; Places/Activities/Events/Groups honest-empty while muster/YP flags are off), You
