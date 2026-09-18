@@ -27,18 +27,21 @@ public readonly record struct CalendarAgendaLine(string Id, string Title, string
 
 public sealed class CalendarBook : IDisposable
 {
+    private readonly HostPaths paths;
     private readonly ILinkpearlLog log;
-    private readonly string file;
+    private string file = string.Empty;
+    private ulong bound;
     private readonly List<CalendarItem> items = [];
     private JsonCorruptHold corrupt;
     private bool dirty;
 
     public CalendarBook(HostPaths paths, ILinkpearlLog log)
     {
+        this.paths = paths;
         this.log = log;
-        file = paths.State("calendar.json");
-        Load();
     }
+
+    public ulong BoundId => bound;
 
     public IReadOnlyList<CalendarItem> Items => items;
 
@@ -289,12 +292,51 @@ public sealed class CalendarBook : IDisposable
         return changed;
     }
 
+    public bool Flush()
+    {
+        if (file.Length == 0)
+        {
+            dirty = false;
+            return true;
+        }
+
+        if (!dirty)
+        {
+            return true;
+        }
+
+        Save();
+        return !dirty;
+    }
+
+    public bool Bind(ulong contentId)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        if (!Flush())
+        {
+            return false;
+        }
+
+        items.Clear();
+        corrupt = default;
+        dirty = false;
+        bound = contentId;
+        file = CharacterStatePaths.Calendar(paths, contentId);
+        if (file.Length > 0)
+        {
+            Load();
+        }
+
+        return true;
+    }
+
     public void Dispose()
     {
-        if (dirty)
-        {
-            Save();
-        }
+        Flush();
     }
 
     public static string ShownTitle(CalendarItem item)
@@ -320,6 +362,11 @@ public sealed class CalendarBook : IDisposable
 
     private void Load()
     {
+        if (file.Length == 0)
+        {
+            return;
+        }
+
         if (!AtomicJson.TryRead(file, null, out List<CalendarItem>? loaded, ref corrupt, log) ||
             loaded is null)
         {
@@ -332,6 +379,11 @@ public sealed class CalendarBook : IDisposable
 
     private void Save()
     {
+        if (file.Length == 0)
+        {
+            return;
+        }
+
         if (AtomicJson.TrySave(file, items, null, ref corrupt, log))
         {
             dirty = false;

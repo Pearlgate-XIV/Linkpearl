@@ -53,12 +53,13 @@ public sealed class HandsetShell
     private readonly List<ShellSeat> trail = [];
     private ShellSeat? launchSeat;
     private DestinationTab currentTab = DestinationTab.Home;
+    private readonly CharacterMigration migration;
 
     public HandsetShell(IReadOnlyList<IDestinationScreen> destinations, IClock clock, IGameSession game,
         DisplayPreferences preferences, ITextField textField, IPearlHub pearl, DestinationHub hub, RouteTrail router,
         ITalk talk, IReadOnlyList<IApplet> applets, IWifeSync wife, NoticeLedger notices, IWeatherOracle weather,
         ISkyDesk sky, bool development, BadgeBook badges, IHandsetAudio audio, IPublicRadio radio, IStationMarks marks,
-        ISettings<SearchScratch> searchDraft)
+        ISettings<SearchScratch> searchDraft, CharacterMigration migration)
     {
         this.clock = clock;
         this.game = game;
@@ -69,6 +70,7 @@ public sealed class HandsetShell
         this.wife = wife;
         this.hub = hub;
         this.router = router;
+        this.migration = migration;
         apps = LifeApps(applets);
         appsDrawer = new AppsDrawer(apps, hub, preferences, glass, talk, notices, RememberLaunchSeat);
         search = new UniversalSearchOverlay(pearl, talk, hub, searchDraft);
@@ -163,6 +165,11 @@ public sealed class HandsetShell
     {
         router.RevokeDisallowed();
         if (StaffNoticeSheet.Draw(outerFrame, screen, pearl.Current, pearl, notices))
+        {
+            return;
+        }
+
+        if (CharacterClaimSheet.Draw(outerFrame, screen, game, migration))
         {
             return;
         }

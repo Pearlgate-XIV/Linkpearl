@@ -13,6 +13,7 @@ using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
+using Linkpearl.Persistence;
 using Linkpearl.Preferences;
 
 namespace Linkpearl.Destinations.Settings;
@@ -46,6 +47,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private readonly IAudioPorts audioPorts;
     private readonly IHandsetAudio audio;
     private readonly ProfileChrome profile;
+    private readonly CharacterMigration migration;
     private Part part;
     private bool flipped;
     private string bannerError = string.Empty;
@@ -66,7 +68,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     public SettingsDestination(HandsetShapePreference shape, DisplayPreferences display, HostEnvironment environment,
         IGameSession game, IPearlHub pearl, DestinationHub hub, HostPaths paths, ITextureSource textures,
         IFilePicker files, IAudioPorts audioPorts, IHandsetAudio audio, BadgeBook badges,
-        HandsetProfileDesk profiles)
+        HandsetProfileDesk profiles, CharacterMigration migration)
     {
         this.shape = shape;
         this.display = display;
@@ -78,6 +80,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         this.textures = textures;
         this.audioPorts = audioPorts;
         this.audio = audio;
+        this.migration = migration;
         profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, environment.IsDevelopment,
             profiles);
     }
@@ -240,7 +243,8 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         }
         DrawPreviewCard(frame, stack.Take(frame.Units(108f)));
         DrawTopic(frame, ref stack, "General", PhoneLanguages.T("set.general.blurb"),
-            "lock pin combat portraits cutscenes motion behavior", OptionBand(frame, 6), DrawGeneralPage);
+            "lock pin combat portraits cutscenes motion behavior character calendar pearls phone notes",
+            OptionBand(frame, 10), DrawGeneralPage);
         DrawTopic(frame, ref stack, "Appearance", PhoneLanguages.T("set.appearance.blurb"),
             "theme display wallpaper dim home status accent text default", AppearanceInnerHeight(frame),
             DrawAppearancePage);
@@ -284,6 +288,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
 
     private void DrawGeneralPage(AppletFrame frame, ref LayoutFlow stack)
     {
+        DrawCharacterClaim(frame, ref stack);
         DrawPinControls(frame, ref stack);
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.motion"), display.ReduceMotion,
             value => display.ReduceMotion = value, PhoneLanguages.T("set.motion.hint"));
@@ -1453,6 +1458,36 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             value => display.ShowWorld = value, PhoneLanguages.T("set.world.hint"));
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.icons"), display.ShowMarks,
             value => display.ShowMarks = value, PhoneLanguages.T("set.icons.hint"));
+    }
+
+    private void DrawCharacterClaim(AppletFrame frame, ref LayoutFlow stack)
+    {
+        var id = game.Character.ContentId;
+        if (migration.HasClaimant)
+        {
+            ActionRow(frame, ref stack, "Character files",
+                "Assigned on this install. Calendar, pearls, and phone notes follow the character.",
+                static () => { });
+            return;
+        }
+
+        if (!CharacterStatePaths.TryHex(id, out _))
+        {
+            ActionRow(frame, ref stack, "Character files",
+                "Log in on a character to assign calendar, pearls, and phone notes.",
+                static () => { });
+            return;
+        }
+
+        ActionRow(frame, ref stack, "This character",
+            "Copy this install's calendar, pearls, and phone notes onto this character.",
+            () => migration.Claim(id));
+        ActionRow(frame, ref stack, "Later",
+            "Ask again the next time this character logs in. Nothing is copied.",
+            () => migration.Later(id));
+        ActionRow(frame, ref stack, "Never for this install",
+            "Do not copy those files. Each character starts empty.",
+            () => migration.Never());
     }
 
     private void DrawPinControls(AppletFrame frame, ref LayoutFlow stack)

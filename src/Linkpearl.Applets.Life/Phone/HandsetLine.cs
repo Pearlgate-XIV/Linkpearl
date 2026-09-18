@@ -25,7 +25,9 @@ public sealed class HandsetLine : IHandsetLine
     private readonly IBroadcastSense sense;
     private readonly DisplayPreferences display;
     private readonly ILinkpearlLog log;
-    private readonly string path;
+    private readonly HostPaths paths;
+    private string path = string.Empty;
+    private ulong bound;
     private readonly object gate = new();
     private readonly List<LineContact> book = [];
     private readonly List<SavedThread> threads = [];
@@ -50,8 +52,7 @@ public sealed class HandsetLine : IHandsetLine
         this.sense = sense;
         this.display = display;
         this.log = log;
-        path = paths.State("handset-line.json");
-        Load();
+        this.paths = paths;
     }
 
     public string Dial
@@ -452,8 +453,44 @@ public sealed class HandsetLine : IHandsetLine
         }
     }
 
+    public bool BindCharacter(ulong contentId)
+    {
+        lock (gate)
+        {
+            if (contentId == bound)
+            {
+                return true;
+            }
+
+            if (!FlushLocked())
+            {
+                return false;
+            }
+
+            book.Clear();
+            threads.Clear();
+            recents.Clear();
+            ownNumber = string.Empty;
+            corrupt = default;
+            bound = contentId;
+            path = CharacterStatePaths.HandsetLine(paths, contentId);
+            if (path.Length > 0)
+            {
+                Load();
+                EnsureOwnNumber();
+            }
+
+            return true;
+        }
+    }
+
     private void Load()
     {
+        if (path.Length == 0)
+        {
+            return;
+        }
+
         if (!AtomicJson.TryRead(path, Json, out ShelfFile? file, ref corrupt, log) || file is null)
         {
             return;
@@ -483,8 +520,25 @@ public sealed class HandsetLine : IHandsetLine
         ownNumber = LineOf(file.OwnNumber);
     }
 
-    private void Save()
+    private bool FlushLocked()
     {
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
+        return Write();
+    }
+
+    private void Save() => Write();
+
+    private bool Write()
+    {
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
         var file = new ShelfFile
         {
             Contacts = book.ToArray(),
@@ -492,7 +546,7 @@ public sealed class HandsetLine : IHandsetLine
             Recents = recents.ToArray(),
             OwnNumber = ownNumber,
         };
-        AtomicJson.TrySave(path, file, Json, ref corrupt, log);
+        return AtomicJson.TrySave(path, file, Json, ref corrupt, log);
     }
 
     private void EnsureOwnNumber()

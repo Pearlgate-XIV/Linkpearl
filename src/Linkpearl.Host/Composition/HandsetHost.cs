@@ -2,6 +2,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Linkpearl.Applets;
+using Linkpearl.Applets.Life.Calendar;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
 using Linkpearl.Canvas.Input;
@@ -33,6 +34,7 @@ using Linkpearl.Net.Market;
 using Linkpearl.Net.Radio;
 using Linkpearl.Pearls;
 using Linkpearl.Persistence;
+using Linkpearl.Phone;
 using Linkpearl.Platform;
 using Linkpearl.Platform.Ffxiv;
 using Linkpearl.Preferences;
@@ -73,6 +75,7 @@ public sealed class HandsetHost : IDisposable
     private readonly IcecastBroadcastPush broadcastPush;
     private readonly EchoMixBoothHost echoMix;
     private readonly StreamDesk streamDesk;
+    private readonly CharacterStateDesk characterDesk;
     private readonly bool isDevelopment;
     private int lastUnread;
     private bool poweringOff;
@@ -116,6 +119,7 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
         services.AddSingleton<ISkyDesk>(new FfxivSkyDesk(pluginInterface, dataManager, session, clock, clock));
         services.AddSingleton(new ChatMarks(paths, log));
+        services.AddSingleton(new CharacterMigration(paths, clock, log));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
@@ -140,16 +144,7 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton(preferences);
         services.AddSingleton<HandsetProfileDesk>();
         services.AddSingleton(_ => BadgeBook.Load(paths, clock, log));
-        services.AddSingleton(_ =>
-        {
-            var book = PearlLedger.Load(paths, clock, log);
-            if (isDevelopment)
-            {
-                book.GrantDevTestPurse();
-            }
-
-            return book;
-        });
+        services.AddSingleton(_ => PearlLedger.Create(paths, clock, log));
 
         var chime = new DalamudChime(chatGui, preferences, session);
         services.AddSingleton<IChime>(chime);
@@ -208,6 +203,9 @@ public sealed class HandsetHost : IDisposable
         }
 
         provider = services.BuildServiceProvider();
+        characterDesk = new CharacterStateDesk(session, provider.GetRequiredService<CharacterMigration>(),
+            provider.GetRequiredService<CalendarBook>(), provider.GetRequiredService<PearlLedger>(),
+            provider.GetRequiredService<IHandsetLine>(), isDevelopment);
 
         fonts = new HandsetFontService(pluginInterface);
         fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,
@@ -243,14 +241,15 @@ public sealed class HandsetHost : IDisposable
             new ExploreDestination(pearl, session, files, clock),
             new YouDestination(session, pearl, badges, paths, textures, files, preferences, isDevelopment, profiles),
             new SettingsDestination(shapePreference, preferences, environment, session, pearl, hub, paths, textures,
-                files, ports, audio, badges, profiles),
+                files, ports, audio, badges, profiles, provider.GetRequiredService<CharacterMigration>()),
         };
         var textField = new DalamudTextField(fonts);
         this.textField = textField;
         var wife = new WifeSyncBridge(pluginInterface, commands);
         var shell = new HandsetShell(destinations, clock, session, preferences, textField, pearl, hub, router, talk,
             apps, wife, notices, weather, provider.GetRequiredService<ISkyDesk>(), isDevelopment, badges, audio, publicRadio,
-            provider.GetRequiredService<IStationMarks>(), provider.GetRequiredService<ISettings<SearchScratch>>());
+            provider.GetRequiredService<IStationMarks>(), provider.GetRequiredService<ISettings<SearchScratch>>(),
+            provider.GetRequiredService<CharacterMigration>());
         var screenField = new ScreenField(textures, paths, preferences, clock);
 
         placement = new HandsetPlacement();
@@ -317,6 +316,7 @@ public sealed class HandsetHost : IDisposable
 
         lastUnread = unread;
         popouts.Pulse();
+        characterDesk.Tick();
         echoMix.SyncStation();
     }
 
@@ -368,6 +368,7 @@ public sealed class HandsetHost : IDisposable
         framework.Update -= OnFrameworkUpdate;
         pluginInterface.UiBuilder.Draw -= OnUiDraw;
         pluginInterface.UiBuilder.OpenMainUi -= ToggleHandset;
+        characterDesk.Dispose();
         popouts.Dispose();
         echoMix.Dispose();
         audio.Dispose();

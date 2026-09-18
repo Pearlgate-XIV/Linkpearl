@@ -77,4 +77,6 @@ public interface IHandsetLine
     void MarkRead(string number);
 
     string TitleOf(string number);
+
+    bool BindCharacter(ulong contentId);
 }

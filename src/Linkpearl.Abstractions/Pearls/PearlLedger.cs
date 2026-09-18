@@ -41,9 +41,11 @@ public sealed class PearlLedger
     private static readonly int[] SpinWeights = [18, 22, 28, 16, 12, 4];
     public static readonly float[] SpinMultipliers = [0f, 0.5f, 1f, 1.5f, 2f, 5f];
 
-    private readonly string path;
+    private readonly HostPaths paths;
     private readonly IClock clock;
     private readonly ILinkpearlLog? log;
+    private string path = string.Empty;
+    private ulong bound;
     private readonly List<PearlTx> history = new();
     private readonly HashSet<string> claimed = new(StringComparer.Ordinal);
     private int balance;
@@ -57,12 +59,14 @@ public sealed class PearlLedger
     private readonly Random rng = new();
     private JsonCorruptHold corrupt;
 
-    private PearlLedger(string path, IClock clock, ILinkpearlLog? log)
+    private PearlLedger(HostPaths paths, IClock clock, ILinkpearlLog? log)
     {
-        this.path = path;
+        this.paths = paths;
         this.clock = clock;
         this.log = log;
     }
+
+    public ulong BoundId => bound;
 
     public int Balance => balance;
 
@@ -112,68 +116,69 @@ public sealed class PearlLedger
 
     public bool Claimed(string id) => claimed.Contains(id);
 
-    public static PearlLedger Load(HostPaths paths, IClock clock, ILinkpearlLog? log = null)
+    public static PearlLedger Create(HostPaths paths, IClock clock, ILinkpearlLog? log = null) =>
+        new(paths, clock, log);
+
+    public bool Flush()
     {
-        var path = paths.State("pearls.json");
-        var book = new PearlLedger(path, clock, log);
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
+        return Persist();
+    }
+
+    public bool Bind(ulong contentId, bool grantDevTest)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        if (!Flush())
+        {
+            return false;
+        }
+
+        WipeMemory();
+        bound = contentId;
+        path = CharacterStatePaths.Pearls(paths, contentId);
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
         if (!File.Exists(path))
         {
-            book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned, "welcome");
-            return book;
-        }
-
-        if (!AtomicJson.TryRead(path, null, out Save? save, ref book.corrupt, log) || save is null)
-        {
-            return book;
-        }
-
-        book.balance = Math.Max(0, save.Balance);
-        book.lifetimeEarned = Math.Max(0, save.LifetimeEarned);
-        book.checkIns = Math.Max(0, save.CheckIns);
-        book.streak = Math.Max(0, save.Streak);
-        book.lastCheckDay = save.LastCheckDay ?? string.Empty;
-        book.playDay = save.PlayDay ?? string.Empty;
-        book.spinWagered = Math.Max(0, save.SpinWagered);
-        book.shellsToday = Math.Max(0, save.ShellsToday);
-        if (save.Claimed is not null)
-        {
-            foreach (var id in save.Claimed)
+            Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned, "welcome");
+            if (grantDevTest)
             {
-                if (!string.IsNullOrWhiteSpace(id))
-                {
-                    book.claimed.Add(id);
-                }
+                GrantDevTestPurse();
             }
+
+            return true;
         }
 
-        if (save.History is not null)
+        if (!AtomicJson.TryRead(path, null, out Save? save, ref corrupt, log) || save is null)
         {
-            foreach (var row in save.History)
-            {
-                if (row is null || string.IsNullOrWhiteSpace(row.Title))
-                {
-                    continue;
-                }
-
-                book.history.Add(new PearlTx
-                {
-                    AtUnix = row.AtUnix,
-                    Amount = row.Amount,
-                    Kind = row.Kind,
-                    Title = row.Title,
-                    Detail = row.Detail ?? string.Empty,
-                });
-            }
+            return true;
         }
 
-        if (!book.claimed.Contains("welcome") && book.history.Count == 0)
+        Apply(save);
+        if (!claimed.Contains("welcome") && history.Count == 0)
         {
-            book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned,
+            Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned,
                 "welcome");
         }
 
-        book.RollPlayDay();
-        return book;
+        RollPlayDay();
+        if (grantDevTest)
+        {
+            GrantDevTestPurse();
+        }
+
+        return true;
     }
 
     public string TodayKey() => clock.Now.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -430,8 +435,72 @@ public sealed class PearlLedger
         Persist();
     }
 
-    private void Persist()
+    private void WipeMemory()
     {
+        history.Clear();
+        claimed.Clear();
+        balance = 0;
+        lifetimeEarned = 0;
+        checkIns = 0;
+        streak = 0;
+        lastCheckDay = string.Empty;
+        playDay = string.Empty;
+        spinWagered = 0;
+        shellsToday = 0;
+        corrupt = default;
+    }
+
+    private void Apply(Save save)
+    {
+        balance = Math.Max(0, save.Balance);
+        lifetimeEarned = Math.Max(0, save.LifetimeEarned);
+        checkIns = Math.Max(0, save.CheckIns);
+        streak = Math.Max(0, save.Streak);
+        lastCheckDay = save.LastCheckDay ?? string.Empty;
+        playDay = save.PlayDay ?? string.Empty;
+        spinWagered = Math.Max(0, save.SpinWagered);
+        shellsToday = Math.Max(0, save.ShellsToday);
+        if (save.Claimed is not null)
+        {
+            foreach (var id in save.Claimed)
+            {
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    claimed.Add(id);
+                }
+            }
+        }
+
+        if (save.History is null)
+        {
+            return;
+        }
+
+        foreach (var row in save.History)
+        {
+            if (row is null || string.IsNullOrWhiteSpace(row.Title))
+            {
+                continue;
+            }
+
+            history.Add(new PearlTx
+            {
+                AtUnix = row.AtUnix,
+                Amount = row.Amount,
+                Kind = row.Kind,
+                Title = row.Title,
+                Detail = row.Detail ?? string.Empty,
+            });
+        }
+    }
+
+    private bool Persist()
+    {
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
         var save = new Save
         {
             Balance = balance,
@@ -453,7 +522,7 @@ public sealed class PearlLedger
             }).ToArray(),
         };
 
-        AtomicJson.TrySave(path, save, Json, ref corrupt, log);
+        return AtomicJson.TrySave(path, save, Json, ref corrupt, log);
     }
 
     private sealed class Save
