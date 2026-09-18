@@ -15,6 +15,7 @@ internal sealed class CharacterStateDesk : IDisposable
     private readonly IHandsetLine line;
     private readonly bool development;
     private ulong wanted;
+    private bool reload;
 
     public CharacterStateDesk(IGameSession game, CharacterMigration migration, CalendarBook calendar,
         PearlLedger pearls, IHandsetLine line, bool development)
@@ -28,12 +29,13 @@ internal sealed class CharacterStateDesk : IDisposable
         game.CharacterChanged += OnCharacterChanged;
         game.LoggedOut += OnLoggedOut;
         migration.Changed += OnMigrationChanged;
+        migration.FlushOutgoing += OnFlushOutgoing;
         Apply(game.Character.ContentId);
     }
 
     public void Tick()
     {
-        if (wanted != calendar.BoundId || wanted != pearls.BoundId)
+        if (reload || wanted != calendar.BoundId || wanted != pearls.BoundId)
         {
             TryApply();
         }
@@ -44,6 +46,7 @@ internal sealed class CharacterStateDesk : IDisposable
         game.CharacterChanged -= OnCharacterChanged;
         game.LoggedOut -= OnLoggedOut;
         migration.Changed -= OnMigrationChanged;
+        migration.FlushOutgoing -= OnFlushOutgoing;
         calendar.Bind(0UL);
         pearls.Bind(0UL, false);
         line.BindCharacter(0UL);
@@ -57,7 +60,18 @@ internal sealed class CharacterStateDesk : IDisposable
         Apply(0UL);
     }
 
-    private void OnMigrationChanged() => Apply(game.Character.ContentId);
+    private void OnMigrationChanged()
+    {
+        reload = true;
+        Apply(game.Character.ContentId);
+    }
+
+    private void OnFlushOutgoing()
+    {
+        calendar.Flush();
+        pearls.Flush();
+        line.Flush();
+    }
 
     private void Apply(ulong contentId)
     {
@@ -67,9 +81,17 @@ internal sealed class CharacterStateDesk : IDisposable
 
     private void TryApply()
     {
-        if (wanted != 0UL && migration.NeedsPrompt(wanted))
+        if (wanted != 0UL && !migration.HasClaimant && !migration.Refused)
         {
             return;
+        }
+
+        if (reload)
+        {
+            calendar.Bind(0UL);
+            pearls.Bind(0UL, false);
+            line.BindCharacter(0UL);
+            reload = false;
         }
 
         if (wanted != 0UL && migration.HasClaimant &&

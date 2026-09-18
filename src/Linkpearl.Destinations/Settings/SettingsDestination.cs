@@ -244,7 +244,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         DrawPreviewCard(frame, stack.Take(frame.Units(108f)));
         DrawTopic(frame, ref stack, "General", PhoneLanguages.T("set.general.blurb"),
             "lock pin combat portraits cutscenes motion behavior character calendar pearls phone notes",
-            OptionBand(frame, 10), DrawGeneralPage);
+            OptionBand(frame, 11), DrawGeneralPage);
         DrawTopic(frame, ref stack, "Appearance", PhoneLanguages.T("set.appearance.blurb"),
             "theme display wallpaper dim home status accent text default", AppearanceInnerHeight(frame),
             DrawAppearancePage);
@@ -1463,31 +1463,44 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private void DrawCharacterClaim(AppletFrame frame, ref LayoutFlow stack)
     {
         var id = game.Character.ContentId;
-        if (migration.HasClaimant)
+        var hex = CharacterStatePaths.Hex(id);
+        var main = migration.HasClaimant
+            ? string.Equals(migration.Claimant, hex, StringComparison.Ordinal) &&
+              game.Character.Name.Trim().Length > 0
+                ? game.Character.Name.Trim()
+                : CharacterStatePaths.ShortHex(migration.Claimant)
+            : "Not set";
+        ActionRow(frame, ref stack, "Main character",
+            main + ". You can change this later. Only one character holds imported Pearls.",
+            static () => { });
+        if (migration.OccupiedNote.Length > 0)
         {
-            ActionRow(frame, ref stack, "Character files",
-                "Assigned on this install. Calendar, pearls, and phone notes follow the character.",
-                static () => { });
-            return;
+            frame.Text.DrawEllipsized(stack.Take(frame.Units(16f)), migration.OccupiedNote,
+                new TextStyle(FontRole.Caption, frame.Theme.Palette.Negative));
         }
 
         if (!CharacterStatePaths.TryHex(id, out _))
         {
             ActionRow(frame, ref stack, "Character files",
-                "Log in on a character to assign calendar, pearls, and phone notes.",
+                "Log in on a character to choose a main.",
                 static () => { });
             return;
         }
 
-        ActionRow(frame, ref stack, "This character",
-            "Copy this install's calendar, pearls, and phone notes onto this character.",
-            () => migration.Claim(id));
-        ActionRow(frame, ref stack, "Later",
-            "Ask again the next time this character logs in. Nothing is copied.",
-            () => migration.Later(id));
-        ActionRow(frame, ref stack, "Never for this install",
-            "Do not copy those files. Each character starts empty.",
-            () => migration.Never());
+        if (!migration.HasClaimant ||
+            !string.Equals(migration.Claimant, hex, StringComparison.Ordinal))
+        {
+            ActionRow(frame, ref stack, "Make this character main",
+                "Move Calendar, Pearls, and Phone notes onto this character.",
+                () => migration.TryMakeMain(id));
+        }
+
+        if (!migration.HasClaimant)
+        {
+            ActionRow(frame, ref stack, "Never import",
+                "Do not copy this install's unclaimed Calendar, Pearls, or Phone notes.",
+                () => migration.Never());
+        }
     }
 
     private void DrawPinControls(AppletFrame frame, ref LayoutFlow stack)

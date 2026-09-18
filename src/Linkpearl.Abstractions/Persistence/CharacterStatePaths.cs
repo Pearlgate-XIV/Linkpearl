@@ -28,7 +28,13 @@ public static class CharacterStatePaths
     public static string ShortHex(ulong contentId)
     {
         var hex = Hex(contentId);
-        return hex.Length <= 6 ? hex : hex[..6];
+        return ShortHex(hex);
+    }
+
+    public static string ShortHex(string hex)
+    {
+        var value = hex.Trim();
+        return value.Length <= 6 ? value : value[..6];
     }
 
     public static string Manifest(HostPaths paths) => paths.State(ManifestName);
