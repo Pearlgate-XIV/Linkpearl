@@ -1,4 +1,5 @@
 using Linkpearl.Geometry;
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
 using Linkpearl.Platform;
@@ -62,7 +63,7 @@ public sealed partial class CameraApplet : IApplet, IDisposable
     private bool storeWait;
 
     public CameraApplet(IClock clock, IGameSession game, HostPaths paths, ITextureSource textures, IFilePicker files,
-        DisplayPreferences display)
+        DisplayPreferences display, ILinkpearlLog log)
     {
         this.clock = clock;
         this.game = game;
@@ -70,7 +71,7 @@ public sealed partial class CameraApplet : IApplet, IDisposable
         this.textures = textures;
         this.files = files;
         this.display = display;
-        library = PhotoLibrary.Load(paths);
+        library = PhotoLibrary.Load(paths, log);
         RebuildAlbums();
     }
 
@@ -104,7 +105,7 @@ public sealed partial class CameraApplet : IApplet, IDisposable
         library.Save();
     }
 
-    public void Dispose() => library.Save();
+    public void Dispose() => library.Flush();
 
     public bool CanGoBack => picking || confirmBulkRemove || uploadSheet || mode != Mode.Page || pane != Pane.Camera ||
         place.Length > 0;

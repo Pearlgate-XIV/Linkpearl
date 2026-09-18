@@ -52,16 +52,12 @@ public static class GalleryFiles
         {
             try
             {
-                Directory.CreateDirectory(custom);
-                if (Directory.Exists(custom))
-                {
-                    return Path.GetFullPath(custom);
-                }
+                return Path.GetFullPath(custom);
             }
-            catch (IOException)
+            catch (ArgumentException)
             {
             }
-            catch (UnauthorizedAccessException)
+            catch (NotSupportedException)
             {
             }
         }

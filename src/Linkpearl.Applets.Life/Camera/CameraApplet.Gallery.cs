@@ -513,7 +513,11 @@ public sealed partial class CameraApplet
         frame.Text.DrawIn(text.TopSlice(frame.Units(18f)), "Photo storage",
             new TextStyle(FontRole.BodyStrong, PhotosChrome.Ink));
         frame.Text.DrawEllipsized(text.BottomSlice(frame.Units(16f)),
-            custom ? library.Root : "Phone folder (default). Tap to choose another.",
+            custom && !library.StorageReady
+                ? "Unavailable. Tap to reconnect."
+                : custom
+                    ? library.Root
+                    : "Phone folder (default). Tap to choose another.",
             new TextStyle(FontRole.Caption, PhotosChrome.Mute));
         if (custom)
         {
