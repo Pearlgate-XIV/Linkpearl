@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Linkpearl.Audio;
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
 using Linkpearl.Net;
+using Linkpearl.Persistence;
 using Linkpearl.Phone;
 using Linkpearl.Platform;
 using Linkpearl.Preferences;
@@ -22,6 +24,7 @@ public sealed class HandsetLine : IHandsetLine
     private readonly IClock clock;
     private readonly IBroadcastSense sense;
     private readonly DisplayPreferences display;
+    private readonly ILinkpearlLog log;
     private readonly string path;
     private readonly object gate = new();
     private readonly List<LineContact> book = [];
@@ -36,15 +39,17 @@ public sealed class HandsetLine : IHandsetLine
     private float ringFor;
     private bool speakerMuted;
     private bool micMuted;
+    private JsonCorruptHold corrupt;
 
     public HandsetLine(IPearlHub pearl, IGameSession game, IClock clock, IBroadcastSense sense,
-        DisplayPreferences display, HostPaths paths)
+        DisplayPreferences display, HostPaths paths, ILinkpearlLog log)
     {
         this.pearl = pearl;
         this.game = game;
         this.clock = clock;
         this.sense = sense;
         this.display = display;
+        this.log = log;
         path = paths.State("handset-line.json");
         Load();
     }
@@ -449,68 +454,45 @@ public sealed class HandsetLine : IHandsetLine
 
     private void Load()
     {
-        if (!File.Exists(path))
+        if (!AtomicJson.TryRead(path, Json, out ShelfFile? file, ref corrupt, log) || file is null)
         {
             return;
         }
 
-        try
+        book.Clear();
+        if (file.Contacts is not null)
         {
-            var file = JsonSerializer.Deserialize<ShelfFile>(File.ReadAllText(path), Json);
-            if (file is null)
+            for (var index = 0; index < file.Contacts.Length; index++)
             {
-                return;
+                book.Add(Clean(file.Contacts[index]));
             }
-
-            book.Clear();
-            if (file.Contacts is not null)
-            {
-                for (var index = 0; index < file.Contacts.Length; index++)
-                {
-                    book.Add(Clean(file.Contacts[index]));
-                }
-            }
-
-            threads.Clear();
-            if (file.Threads is not null)
-            {
-                threads.AddRange(file.Threads);
-            }
-
-            recents.Clear();
-            if (file.Recents is not null)
-            {
-                recents.AddRange(file.Recents);
-            }
-
-            ownNumber = LineOf(file.OwnNumber);
         }
-        catch (Exception)
+
+        threads.Clear();
+        if (file.Threads is not null)
         {
+            threads.AddRange(file.Threads);
         }
+
+        recents.Clear();
+        if (file.Recents is not null)
+        {
+            recents.AddRange(file.Recents);
+        }
+
+        ownNumber = LineOf(file.OwnNumber);
     }
 
     private void Save()
     {
-        try
+        var file = new ShelfFile
         {
-            var folder = Path.GetDirectoryName(path);
-            if (folder is { Length: > 0 })
-            {
-                Directory.CreateDirectory(folder);
-            }
-            var file = new ShelfFile
-            {
-                Contacts = book.ToArray(),
-                Threads = threads.ToArray(),
-                Recents = recents.ToArray(),
-                OwnNumber = ownNumber,
-            };
-            File.WriteAllText(path, JsonSerializer.Serialize(file, Json));
-        }
-        catch (Exception)
-        {
-        }
+            Contacts = book.ToArray(),
+            Threads = threads.ToArray(),
+            Recents = recents.ToArray(),
+            OwnNumber = ownNumber,
+        };
+        AtomicJson.TrySave(path, file, Json, ref corrupt, log);
     }
 
     private void EnsureOwnNumber()

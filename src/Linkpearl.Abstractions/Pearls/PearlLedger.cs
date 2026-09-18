@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
+using Linkpearl.Persistence;
 using Linkpearl.Time;
 
 namespace Linkpearl.Pearls;
@@ -41,6 +43,7 @@ public sealed class PearlLedger
 
     private readonly string path;
     private readonly IClock clock;
+    private readonly ILinkpearlLog? log;
     private readonly List<PearlTx> history = new();
     private readonly HashSet<string> claimed = new(StringComparer.Ordinal);
     private int balance;
@@ -52,11 +55,13 @@ public sealed class PearlLedger
     private int spinWagered;
     private int shellsToday;
     private readonly Random rng = new();
+    private JsonCorruptHold corrupt;
 
-    private PearlLedger(string path, IClock clock)
+    private PearlLedger(string path, IClock clock, ILinkpearlLog? log)
     {
         this.path = path;
         this.clock = clock;
+        this.log = log;
     }
 
     public int Balance => balance;
@@ -107,78 +112,64 @@ public sealed class PearlLedger
 
     public bool Claimed(string id) => claimed.Contains(id);
 
-    public static PearlLedger Load(HostPaths paths, IClock clock)
+    public static PearlLedger Load(HostPaths paths, IClock clock, ILinkpearlLog? log = null)
     {
         var path = paths.State("pearls.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? paths.StateDirectory);
-        var book = new PearlLedger(path, clock);
+        var book = new PearlLedger(path, clock, log);
         if (!File.Exists(path))
         {
             book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned, "welcome");
             return book;
         }
 
-        try
+        if (!AtomicJson.TryRead(path, null, out Save? save, ref book.corrupt, log) || save is null)
         {
-            var save = JsonSerializer.Deserialize<Save>(File.ReadAllText(path));
-            if (save is null)
-            {
-                book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned,
-                    "welcome");
-                return book;
-            }
+            return book;
+        }
 
-            book.balance = Math.Max(0, save.Balance);
-            book.lifetimeEarned = Math.Max(0, save.LifetimeEarned);
-            book.checkIns = Math.Max(0, save.CheckIns);
-            book.streak = Math.Max(0, save.Streak);
-            book.lastCheckDay = save.LastCheckDay ?? string.Empty;
-            book.playDay = save.PlayDay ?? string.Empty;
-            book.spinWagered = Math.Max(0, save.SpinWagered);
-            book.shellsToday = Math.Max(0, save.ShellsToday);
-            if (save.Claimed is not null)
+        book.balance = Math.Max(0, save.Balance);
+        book.lifetimeEarned = Math.Max(0, save.LifetimeEarned);
+        book.checkIns = Math.Max(0, save.CheckIns);
+        book.streak = Math.Max(0, save.Streak);
+        book.lastCheckDay = save.LastCheckDay ?? string.Empty;
+        book.playDay = save.PlayDay ?? string.Empty;
+        book.spinWagered = Math.Max(0, save.SpinWagered);
+        book.shellsToday = Math.Max(0, save.ShellsToday);
+        if (save.Claimed is not null)
+        {
+            foreach (var id in save.Claimed)
             {
-                foreach (var id in save.Claimed)
+                if (!string.IsNullOrWhiteSpace(id))
                 {
-                    if (!string.IsNullOrWhiteSpace(id))
-                    {
-                        book.claimed.Add(id);
-                    }
+                    book.claimed.Add(id);
                 }
             }
+        }
 
-            if (save.History is not null)
+        if (save.History is not null)
+        {
+            foreach (var row in save.History)
             {
-                foreach (var row in save.History)
+                if (row is null || string.IsNullOrWhiteSpace(row.Title))
                 {
-                    if (row is null || string.IsNullOrWhiteSpace(row.Title))
-                    {
-                        continue;
-                    }
-
-                    book.history.Add(new PearlTx
-                    {
-                        AtUnix = row.AtUnix,
-                        Amount = row.Amount,
-                        Kind = row.Kind,
-                        Title = row.Title,
-                        Detail = row.Detail ?? string.Empty,
-                    });
+                    continue;
                 }
-            }
 
-            if (!book.claimed.Contains("welcome") && book.history.Count == 0)
-            {
-                book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned,
-                    "welcome");
+                book.history.Add(new PearlTx
+                {
+                    AtUnix = row.AtUnix,
+                    Amount = row.Amount,
+                    Kind = row.Kind,
+                    Title = row.Title,
+                    Detail = row.Detail ?? string.Empty,
+                });
             }
         }
-        catch (JsonException)
+
+        if (!book.claimed.Contains("welcome") && book.history.Count == 0)
         {
-            book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned, "welcome");
-        }
-        catch (IOException)
-        {
+            book.Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned,
+                "welcome");
         }
 
         book.RollPlayDay();
@@ -261,7 +252,9 @@ public sealed class PearlLedger
     }
 
     public bool GrantDevTestPurse() =>
-        Credit(DevTestAmount, "Test purse", "Local development grant.", PearlKind.Gift, "dev-test-purse");
+        corrupt.IsPending
+            ? false
+            : Credit(DevTestAmount, "Test purse", "Local development grant.", PearlKind.Gift, "dev-test-purse");
 
     public bool TryGiftClaim(int amount, string title, string detail, string flag)
     {
@@ -460,16 +453,7 @@ public sealed class PearlLedger
             }).ToArray(),
         };
 
-        try
-        {
-            File.WriteAllText(path, JsonSerializer.Serialize(save, Json));
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        AtomicJson.TrySave(path, save, Json, ref corrupt, log);
     }
 
     private sealed class Save

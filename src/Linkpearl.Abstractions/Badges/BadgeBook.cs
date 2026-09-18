@@ -1,4 +1,6 @@
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
+using Linkpearl.Persistence;
 using Linkpearl.Time;
 using System.Text.Json;
 
@@ -10,6 +12,7 @@ public sealed class BadgeBook
 
     private readonly string path;
     private readonly IClock clock;
+    private readonly ILinkpearlLog? log;
     private readonly List<BadgeOwn> owned = new();
     private readonly string[] slots = new string[BadgeCatalog.SlotCount];
     private string featuredId = string.Empty;
@@ -19,11 +22,13 @@ public sealed class BadgeBook
     private float portraitFocusY = 0.5f;
     private string featuredFile = string.Empty;
     private readonly string[] slotFiles = new string[BadgeCatalog.SlotCount];
+    private JsonCorruptHold corrupt;
 
-    private BadgeBook(string path, IClock clock)
+    private BadgeBook(string path, IClock clock, ILinkpearlLog? log)
     {
         this.path = path;
         this.clock = clock;
+        this.log = log;
     }
 
     public IReadOnlyList<BadgeOwn> Owned => owned;
@@ -42,77 +47,44 @@ public sealed class BadgeBook
 
     public IReadOnlyList<string> SlotFiles => slotFiles;
 
-    public static BadgeBook Load(HostPaths paths, IClock clock)
+    public static BadgeBook Load(HostPaths paths, IClock clock, ILinkpearlLog? log = null)
     {
         var path = paths.State("badges.json");
-        var book = new BadgeBook(path, clock);
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? paths.StateDirectory);
-        if (!File.Exists(path))
+        var book = new BadgeBook(path, clock, log);
+        if (!AtomicJson.TryRead(path, null, out Save? save, ref book.corrupt, log) || save is null)
         {
             return book;
         }
 
-        try
+        book.portraitFile = Path.GetFileName(save.PortraitFile ?? string.Empty);
+        book.portraitZoom = save.PortraitZoom > 0.99f ? save.PortraitZoom : 1f;
+        book.portraitFocusX = save.PortraitFocusX ?? 0.5f;
+        book.portraitFocusY = save.PortraitFocusY ?? 0.5f;
+        book.featuredId = save.FeaturedId ?? string.Empty;
+        book.featuredFile = string.Empty;
+        var incoming = save.Slots ?? [];
+        for (var index = 0; index < book.slots.Length; index++)
         {
-            var save = JsonSerializer.Deserialize<Save>(File.ReadAllText(path));
-            if (save is null)
-            {
-                return book;
-            }
+            book.slots[index] = index < incoming.Length ? incoming[index] ?? string.Empty : string.Empty;
+        }
 
-            book.portraitFile = Path.GetFileName(save.PortraitFile ?? string.Empty);
-            book.portraitZoom = save.PortraitZoom > 0.99f ? save.PortraitZoom : 1f;
-            book.portraitFocusX = save.PortraitFocusX ?? 0.5f;
-            book.portraitFocusY = save.PortraitFocusY ?? 0.5f;
-            book.featuredId = save.FeaturedId ?? string.Empty;
-            var wipeCustom = !string.IsNullOrWhiteSpace(save.FeaturedFile);
-            book.featuredFile = string.Empty;
-            var incoming = save.Slots ?? [];
-            for (var index = 0; index < book.slots.Length; index++)
+        if (save.Owned is not null)
+        {
+            for (var index = 0; index < save.Owned.Length; index++)
             {
-                book.slots[index] = index < incoming.Length ? incoming[index] ?? string.Empty : string.Empty;
-            }
-
-            var incomingFiles = save.SlotFiles ?? [];
-            for (var index = 0; index < book.slotFiles.Length; index++)
-            {
-                if (index < incomingFiles.Length && !string.IsNullOrWhiteSpace(incomingFiles[index]))
+                var row = save.Owned[index];
+                if (row is null || string.IsNullOrWhiteSpace(row.Id) || BadgeCatalog.Find(row.Id) is null)
                 {
-                    wipeCustom = true;
+                    continue;
                 }
 
-                book.slotFiles[index] = string.Empty;
-            }
-
-            if (save.Owned is not null)
-            {
-                for (var index = 0; index < save.Owned.Length; index++)
+                book.owned.Add(new BadgeOwn
                 {
-                    var row = save.Owned[index];
-                    if (row is null || string.IsNullOrWhiteSpace(row.Id) || BadgeCatalog.Find(row.Id) is null)
-                    {
-                        continue;
-                    }
-
-                    book.owned.Add(new BadgeOwn
-                    {
-                        Id = row.Id,
-                        EarnedAtUnix = row.EarnedAtUnix,
-                        Source = row.Source ?? string.Empty,
-                    });
-                }
+                    Id = row.Id,
+                    EarnedAtUnix = row.EarnedAtUnix,
+                    Source = row.Source ?? string.Empty,
+                });
             }
-
-            if (wipeCustom)
-            {
-                book.Persist();
-            }
-        }
-        catch (JsonException)
-        {
-        }
-        catch (IOException)
-        {
         }
 
         return book;
@@ -363,16 +335,7 @@ public sealed class BadgeBook
             }).ToArray(),
         };
 
-        try
-        {
-            File.WriteAllText(path, JsonSerializer.Serialize(save, Json));
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        AtomicJson.TrySave(path, save, Json, ref corrupt, log);
     }
 
     private sealed class Save

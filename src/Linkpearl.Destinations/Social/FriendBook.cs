@@ -1,5 +1,6 @@
-using System.Text.Json;
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
+using Linkpearl.Persistence;
 using Linkpearl.Platform;
 
 namespace Linkpearl.Destinations.Social;
@@ -7,10 +8,13 @@ namespace Linkpearl.Destinations.Social;
 internal sealed class FriendBook
 {
     private readonly string path;
+    private readonly ILinkpearlLog log;
     private readonly HashSet<string> stars = new(StringComparer.OrdinalIgnoreCase);
+    private JsonCorruptHold corrupt;
 
-    public FriendBook(HostPaths paths)
+    public FriendBook(HostPaths paths, ILinkpearlLog log)
     {
+        this.log = log;
         path = paths.State("friends.json");
         Load();
     }
@@ -43,61 +47,36 @@ internal sealed class FriendBook
 
     private void Load()
     {
-        if (!File.Exists(path))
+        if (!AtomicJson.TryRead(path, null, out BookSave? dto, ref corrupt, log) || dto is null)
         {
             return;
         }
 
-        try
+        OnlineFirst = dto.OnlineFirst ?? true;
+        if (dto.Stars is null)
         {
-            var dto = JsonSerializer.Deserialize<BookSave>(File.ReadAllText(path));
-            if (dto is null)
-            {
-                return;
-            }
-
-            OnlineFirst = dto.OnlineFirst ?? true;
-            if (dto.Stars is null)
-            {
-                return;
-            }
-
-            for (var index = 0; index < dto.Stars.Length; index++)
-            {
-                var key = dto.Stars[index];
-                if (!string.IsNullOrWhiteSpace(key))
-                {
-                    stars.Add(key.Trim());
-                }
-            }
+            return;
         }
-        catch (JsonException)
+
+        for (var index = 0; index < dto.Stars.Length; index++)
         {
-        }
-        catch (IOException)
-        {
+            var key = dto.Stars[index];
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                stars.Add(key.Trim());
+            }
         }
     }
 
     private void Save()
     {
-        try
+        var keys = new string[stars.Count];
+        stars.CopyTo(keys);
+        AtomicJson.TrySave(path, new BookSave
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
-            var keys = new string[stars.Count];
-            stars.CopyTo(keys);
-            File.WriteAllText(path, JsonSerializer.Serialize(new BookSave
-            {
-                OnlineFirst = OnlineFirst,
-                Stars = keys,
-            }));
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+            OnlineFirst = OnlineFirst,
+            Stars = keys,
+        }, null, ref corrupt, log);
     }
 
     private static string Key(GameFriend friend)

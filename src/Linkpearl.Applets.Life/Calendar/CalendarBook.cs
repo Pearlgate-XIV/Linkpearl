@@ -1,6 +1,7 @@
 using System.Globalization;
-using System.Text.Json;
+using Linkpearl.Diagnostics;
 using Linkpearl.Modules;
+using Linkpearl.Persistence;
 
 namespace Linkpearl.Applets.Life.Calendar;
 
@@ -26,13 +27,15 @@ public readonly record struct CalendarAgendaLine(string Id, string Title, string
 
 public sealed class CalendarBook : IDisposable
 {
-    private readonly HostPaths paths;
+    private readonly ILinkpearlLog log;
     private readonly string file;
     private readonly List<CalendarItem> items = [];
+    private JsonCorruptHold corrupt;
+    private bool dirty;
 
-    public CalendarBook(HostPaths paths)
+    public CalendarBook(HostPaths paths, ILinkpearlLog log)
     {
-        this.paths = paths;
+        this.log = log;
         file = paths.State("calendar.json");
         Load();
     }
@@ -144,11 +147,13 @@ public sealed class CalendarBook : IDisposable
             }
 
             items[index] = item;
+            dirty = true;
             Save();
             return;
         }
 
         items.Add(item);
+        dirty = true;
         Save();
     }
 
@@ -159,6 +164,7 @@ public sealed class CalendarBook : IDisposable
             if (string.Equals(items[index].Id, id, StringComparison.Ordinal))
             {
                 items.RemoveAt(index);
+                dirty = true;
             }
         }
 
@@ -204,6 +210,7 @@ public sealed class CalendarBook : IDisposable
 
         if (dirty)
         {
+            this.dirty = true;
             Save();
         }
     }
@@ -220,7 +227,7 @@ public sealed class CalendarBook : IDisposable
             return;
         }
 
-        var dirty = false;
+        var changed = false;
         for (var index = items.Count - 1; index >= 0; index--)
         {
             var item = items[index];
@@ -235,18 +242,19 @@ public sealed class CalendarBook : IDisposable
             }
 
             items.RemoveAt(index);
-            dirty = true;
+            changed = true;
         }
 
-        if (dirty)
+        if (changed)
         {
+            dirty = true;
             Save();
         }
     }
 
     public bool FireDue(DateTimeOffset now, Action<CalendarItem> due)
     {
-        var dirty = false;
+        var changed = false;
         for (var index = 0; index < items.Count; index++)
         {
             var item = items[index];
@@ -268,19 +276,26 @@ public sealed class CalendarBook : IDisposable
             }
 
             item.LastFired = stamp;
-            dirty = true;
+            changed = true;
             due(item);
         }
 
+        if (changed)
+        {
+            dirty = true;
+            Save();
+        }
+
+        return changed;
+    }
+
+    public void Dispose()
+    {
         if (dirty)
         {
             Save();
         }
-
-        return dirty;
     }
-
-    public void Dispose() => Save();
 
     public static string ShownTitle(CalendarItem item)
     {
@@ -305,39 +320,21 @@ public sealed class CalendarBook : IDisposable
 
     private void Load()
     {
-        if (!File.Exists(file))
+        if (!AtomicJson.TryRead(file, null, out List<CalendarItem>? loaded, ref corrupt, log) ||
+            loaded is null)
         {
             return;
         }
 
-        try
-        {
-            var loaded = JsonSerializer.Deserialize<List<CalendarItem>>(File.ReadAllText(file));
-            if (loaded is null)
-            {
-                return;
-            }
-
-            items.Clear();
-            items.AddRange(loaded);
-        }
-        catch (JsonException)
-        {
-        }
-        catch (IOException)
-        {
-        }
+        items.Clear();
+        items.AddRange(loaded);
     }
 
     private void Save()
     {
-        try
+        if (AtomicJson.TrySave(file, items, null, ref corrupt, log))
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(file) ?? paths.StateDirectory);
-            File.WriteAllText(file, JsonSerializer.Serialize(items));
-        }
-        catch (IOException)
-        {
+            dirty = false;
         }
     }
 }

@@ -1,11 +1,12 @@
 using System.Globalization;
-using System.Text.Json;
+using Linkpearl.Diagnostics;
 using Linkpearl.Geometry;
 using Linkpearl.Layout;
 using Linkpearl.Media;
 using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 using Linkpearl.Platform;
 
 namespace Linkpearl.Applets.Life.Market;
@@ -28,6 +29,7 @@ public sealed class MarketApplet : IApplet
     private readonly IUniversalisMarket market;
     private readonly IGameItems items;
     private readonly IGameSession game;
+    private readonly ILinkpearlLog log;
     private readonly string bookPath;
     private readonly List<GameMarketItem> recents = [];
     private readonly List<GameMarketItem> watches = [];
@@ -41,12 +43,15 @@ public sealed class MarketApplet : IApplet
     private MarketScopeKind scope = MarketScopeKind.DataCenter;
     private int quality;
     private float scroll;
+    private JsonCorruptHold corrupt;
 
-    public MarketApplet(IUniversalisMarket market, IGameItems items, IGameSession game, HostPaths paths)
+    public MarketApplet(IUniversalisMarket market, IGameItems items, IGameSession game, HostPaths paths,
+        ILinkpearlLog log)
     {
         this.market = market;
         this.items = items;
         this.game = game;
+        this.log = log;
         bookPath = paths.State("market.json");
         LoadBook();
     }
@@ -618,39 +623,27 @@ public sealed class MarketApplet : IApplet
 
     private void LoadBook()
     {
-        if (!File.Exists(bookPath))
+        if (!AtomicJson.TryRead(bookPath, null, out Book? book, ref corrupt, log) || book is null)
         {
             return;
         }
 
-        try
+        recents.Clear();
+        FillItems(recents, book.RecentIds);
+        watchIds.Clear();
+        if (book.WatchIds is { Count: > 0 })
         {
-            var book = JsonSerializer.Deserialize<Book>(File.ReadAllText(bookPath));
-            if (book is null)
+            for (var index = 0; index < book.WatchIds.Count && watchIds.Count < 24; index++)
             {
-                return;
-            }
-
-            recents.Clear();
-            FillItems(recents, book.RecentIds);
-            watchIds.Clear();
-            if (book.WatchIds is { Count: > 0 })
-            {
-                for (var index = 0; index < book.WatchIds.Count && watchIds.Count < 24; index++)
+                var id = book.WatchIds[index];
+                if (id > 0 && !watchIds.Contains(id))
                 {
-                    var id = book.WatchIds[index];
-                    if (id > 0 && !watchIds.Contains(id))
-                    {
-                        watchIds.Add(id);
-                    }
+                    watchIds.Add(id);
                 }
             }
+        }
 
-            RebuildWatches();
-        }
-        catch (Exception)
-        {
-        }
+        RebuildWatches();
     }
 
     private void FillItems(List<GameMarketItem> dest, List<int>? ids)
@@ -672,18 +665,11 @@ public sealed class MarketApplet : IApplet
 
     private void SaveBook()
     {
-        try
+        AtomicJson.TrySave(bookPath, new Book
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(bookPath) ?? ".");
-            File.WriteAllText(bookPath, JsonSerializer.Serialize(new Book
-            {
-                RecentIds = recents.ConvertAll(row => row.Id),
-                WatchIds = [.. watchIds],
-            }));
-        }
-        catch (Exception)
-        {
-        }
+            RecentIds = recents.ConvertAll(row => row.Id),
+            WatchIds = [.. watchIds],
+        }, null, ref corrupt, log);
     }
 
     private static string GilAverage(double value) =>

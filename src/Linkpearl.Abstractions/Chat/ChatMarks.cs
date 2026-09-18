@@ -1,10 +1,12 @@
 using System.Text.Json;
 using Linkpearl.Applets;
+using Linkpearl.Diagnostics;
 using Linkpearl.Emoji;
 using Linkpearl.Geometry;
 using Linkpearl.Input;
 using Linkpearl.Modules;
 using Linkpearl.Painting;
+using Linkpearl.Persistence;
 
 namespace Linkpearl.Chat;
 
@@ -13,6 +15,7 @@ public sealed class ChatMarks
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
     private readonly HostPaths paths;
+    private readonly ILinkpearlLog log;
     private readonly EmojiPick faces = new();
     private readonly Dictionary<string, List<string>> board = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatCite> cites = new(StringComparer.Ordinal);
@@ -28,8 +31,14 @@ public sealed class ChatMarks
     private string menuWho = string.Empty;
     private string menuPreview = string.Empty;
     private Vector2 menuAt;
+    private JsonCorruptHold marksCorrupt;
+    private JsonCorruptHold citesCorrupt;
 
-    public ChatMarks(HostPaths paths) => this.paths = paths;
+    public ChatMarks(HostPaths paths, ILinkpearlLog log)
+    {
+        this.paths = paths;
+        this.log = log;
+    }
 
     public string ReplyThread { get; private set; } = string.Empty;
 
@@ -391,32 +400,20 @@ public sealed class ChatMarks
         loaded = true;
         LoadCites();
         var path = paths.State("chat-marks.json");
-        if (!File.Exists(path))
+        if (!AtomicJson.TryRead(path, Json, out Dictionary<string, string[]>? save, ref marksCorrupt, log) ||
+            save is null)
         {
             return;
         }
 
-        try
+        foreach (var pair in save)
         {
-            var save = JsonSerializer.Deserialize<Dictionary<string, string[]>>(File.ReadAllText(path), Json);
-            if (save is null)
+            if (pair.Key.Length == 0 || pair.Value is not { Length: > 0 })
             {
-                return;
+                continue;
             }
 
-            foreach (var pair in save)
-            {
-                if (pair.Key.Length == 0 || pair.Value is not { Length: > 0 })
-                {
-                    continue;
-                }
-
-                board[pair.Key] = new List<string>(pair.Value);
-            }
-        }
-        catch
-        {
-            // Keep an empty board if the sidecar is damaged.
+            board[pair.Key] = new List<string>(pair.Value);
         }
     }
 
@@ -432,7 +429,7 @@ public sealed class ChatMarks
             }
         }
 
-        File.WriteAllText(path, JsonSerializer.Serialize(save, Json));
+        AtomicJson.TrySave(path, save, Json, ref marksCorrupt, log);
     }
 
     private static string BodyKey(string thread, string body) => thread + "\nme\nbody\n" + (body ?? string.Empty);
@@ -440,53 +437,32 @@ public sealed class ChatMarks
     private void LoadCites()
     {
         var path = paths.State("chat-cites.json");
-        if (!File.Exists(path))
+        if (!AtomicJson.TryRead(path, Json, out Dictionary<string, string[]>? save, ref citesCorrupt, log) ||
+            save is null)
         {
             return;
         }
 
-        try
+        foreach (var pair in save)
         {
-            var save = JsonSerializer.Deserialize<Dictionary<string, string[]>>(File.ReadAllText(path), Json);
-            if (save is null)
+            if (pair.Key.Length == 0 || pair.Value is not { Length: >= 2 })
             {
-                return;
+                continue;
             }
 
-            foreach (var pair in save)
-            {
-                if (pair.Key.Length == 0 || pair.Value is not { Length: >= 2 })
-                {
-                    continue;
-                }
-
-                cites[pair.Key] = new ChatCite(pair.Value[0], pair.Value[1]);
-            }
-        }
-        catch
-        {
-            // Keep an empty cite board if the sidecar is damaged.
+            cites[pair.Key] = new ChatCite(pair.Value[0], pair.Value[1]);
         }
     }
 
     private void SaveCites()
     {
-        try
+        var path = paths.State("chat-cites.json");
+        var save = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        foreach (var pair in cites)
         {
-            var path = paths.State("chat-cites.json");
-            var save = new Dictionary<string, string[]>(StringComparer.Ordinal);
-            foreach (var pair in cites)
-            {
-                save[pair.Key] = [pair.Value.Who, pair.Value.Preview];
-            }
+            save[pair.Key] = [pair.Value.Who, pair.Value.Preview];
+        }
 
-            File.WriteAllText(path, JsonSerializer.Serialize(save, Json));
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        AtomicJson.TrySave(path, save, Json, ref citesCorrupt, log);
     }
 }
