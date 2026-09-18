@@ -307,11 +307,11 @@ public sealed class CalendarApplet : IApplet, IDisposable
             var detail = item.Kind == CalendarKind.Reminder ? when : "Starts " + when;
             if (TryVenueId(item.Id, out var venueId))
             {
-                notices.PostVenue(venueId, title, detail, clock);
+                notices.PostVenue(venueId, item.LastFired, title, detail, clock);
             }
             else
             {
-                notices.PostCalendar(item.Id, title, detail, clock);
+                notices.PostCalendar(item.Id, item.LastFired, title, detail, clock);
             }
 
             chime.Ring(title, detail);

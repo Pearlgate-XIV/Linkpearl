@@ -1,6 +1,7 @@
 using Linkpearl.Applets.Life.Calendar;
 using Linkpearl.Applets.Life.Market;
 using Linkpearl.Chat;
+using Linkpearl.Destinations;
 using Linkpearl.Destinations.Social;
 using Linkpearl.Pearls;
 using Linkpearl.Persistence;
@@ -19,13 +20,14 @@ internal sealed class CharacterStateDesk : IDisposable
     private readonly FriendBook friends;
     private readonly MarketApplet market;
     private readonly ChatMarks marks;
+    private readonly NoticeLedger notices;
     private readonly bool development;
     private ulong wanted;
     private bool reload;
 
     public CharacterStateDesk(IGameSession game, CharacterMigration migration, CalendarBook calendar,
         PearlLedger pearls, IHandsetLine line, FriendBook friends, MarketApplet market, ChatMarks marks,
-        bool development)
+        NoticeLedger notices, bool development)
     {
         this.game = game;
         this.migration = migration;
@@ -35,6 +37,7 @@ internal sealed class CharacterStateDesk : IDisposable
         this.friends = friends;
         this.market = market;
         this.marks = marks;
+        this.notices = notices;
         this.development = development;
         game.CharacterChanged += OnCharacterChanged;
         game.LoggedOut += OnLoggedOut;
@@ -46,7 +49,7 @@ internal sealed class CharacterStateDesk : IDisposable
     public void Tick()
     {
         if (reload || wanted != calendar.BoundId || wanted != pearls.BoundId || wanted != friends.BoundId ||
-            wanted != market.BoundId || wanted != marks.BoundId)
+            wanted != market.BoundId || wanted != marks.BoundId || wanted != notices.BoundId)
         {
             TryApply();
         }
@@ -64,6 +67,7 @@ internal sealed class CharacterStateDesk : IDisposable
         friends.Bind(0UL);
         market.Bind(0UL);
         marks.Bind(0UL);
+        notices.BindCharacter(0UL);
     }
 
     private void OnCharacterChanged(CharacterIdentity identity) => Apply(identity.ContentId);
@@ -98,6 +102,8 @@ internal sealed class CharacterStateDesk : IDisposable
 
     private void TryApply()
     {
+        notices.BindCharacter(wanted);
+
         if (wanted != 0UL && !migration.HasClaimant && !migration.Refused)
         {
             return;
@@ -106,7 +112,8 @@ internal sealed class CharacterStateDesk : IDisposable
         if (reload)
         {
             if (!calendar.Bind(0UL) || !pearls.Bind(0UL, false) || !line.BindCharacter(0UL) ||
-                !friends.Bind(0UL) || !market.Bind(0UL) || !marks.Bind(0UL))
+                !friends.Bind(0UL) || !market.Bind(0UL) || !marks.Bind(0UL) ||
+                !notices.BindCharacter(0UL))
             {
                 return;
             }
@@ -121,7 +128,8 @@ internal sealed class CharacterStateDesk : IDisposable
         }
 
         if (!calendar.Bind(wanted) || !pearls.Bind(wanted, development) || !line.BindCharacter(wanted) ||
-            !friends.Bind(wanted) || !market.Bind(wanted) || !marks.Bind(wanted))
+            !friends.Bind(wanted) || !market.Bind(wanted) || !marks.Bind(wanted) ||
+            !notices.BindCharacter(wanted))
         {
             return;
         }

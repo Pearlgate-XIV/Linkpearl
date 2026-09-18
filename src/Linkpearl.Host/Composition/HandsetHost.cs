@@ -208,7 +208,8 @@ public sealed class HandsetHost : IDisposable
         characterDesk = new CharacterStateDesk(session, provider.GetRequiredService<CharacterMigration>(),
             provider.GetRequiredService<CalendarBook>(), provider.GetRequiredService<PearlLedger>(),
             provider.GetRequiredService<IHandsetLine>(), provider.GetRequiredService<FriendBook>(),
-            provider.GetRequiredService<MarketApplet>(), provider.GetRequiredService<ChatMarks>(), isDevelopment);
+            provider.GetRequiredService<MarketApplet>(), provider.GetRequiredService<ChatMarks>(),
+            provider.GetRequiredService<NoticeLedger>(), isDevelopment);
 
         fonts = new HandsetFontService(pluginInterface);
         fonts.SetDisplayFace(FounderFaces.Active(preferences.DisplayFace,

@@ -1,6 +1,9 @@
 using System.Globalization;
+using Linkpearl.Diagnostics;
+using Linkpearl.Modules;
 using Linkpearl.Net;
 using Linkpearl.Notices;
+using Linkpearl.Persistence;
 using Linkpearl.Talk;
 using Linkpearl.Time;
 
@@ -39,7 +42,9 @@ public readonly record struct GlassNotice(
     string When,
     DestinationTab Tab,
     int Section,
-    string TargetId);
+    string TargetId,
+    NoticeDismissalScope Scope = NoticeDismissalScope.Device,
+    string OwnerKey = "");
 
 public sealed class NoticeLedger : INoticeTray
 {
@@ -47,8 +52,20 @@ public sealed class NoticeLedger : INoticeTray
     private readonly List<GlassNotice> tray = [];
     private readonly HashSet<string> seen = new(StringComparer.Ordinal);
     private readonly List<GlassNotice> arrived = [];
-    private bool seeded;
-    private int lastUnread;
+    private readonly NoticeDismissalBook book;
+    private bool quiet = true;
+    private ulong bound;
+    private string accountKey = string.Empty;
+    private long nowUnix;
+
+    public NoticeLedger(HostPaths paths, ILinkpearlLog log)
+    {
+        book = new NoticeDismissalBook(paths, log);
+    }
+
+    public ulong BoundId => bound;
+
+    public NoticeDismissalBook Dismissals => book;
 
     public IReadOnlyList<GlassNotice> Visible(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
@@ -102,73 +119,80 @@ public sealed class NoticeLedger : INoticeTray
         _ => null,
     };
 
+    public bool BindCharacter(ulong contentId)
+    {
+        if (contentId == bound)
+        {
+            return true;
+        }
+
+        DropScope(NoticeDismissalScope.Character);
+        bound = contentId;
+        quiet = true;
+        return true;
+    }
+
     public void Ingest(PearlSnapshot snapshot, ITalk talk, IClock clock)
     {
-        IngestStaff(snapshot, clock);
+        nowUnix = clock.UtcNow.ToUnixTimeSeconds();
+        BindAccount(snapshot);
         PruneSettled(snapshot, talk);
-        var unread = talk.UnreadTotal + snapshot.UnreadTotal;
-        if (!seeded)
+        OfferAnnouncements(snapshot, clock);
+        OfferStaff(snapshot, clock);
+        OfferChat(talk, clock);
+        quiet = false;
+    }
+
+    private void BindAccount(PearlSnapshot snapshot)
+    {
+        var next = snapshot.SignedIn && snapshot.MeId.Length > 0 ? snapshot.MeId.Trim() : string.Empty;
+        if (string.Equals(next, accountKey, StringComparison.Ordinal))
         {
-            var notices = snapshot.Announcements ?? [];
-            for (var index = 0; index < notices.Length; index++)
-            {
-                seen.Add("ann:" + notices[index].Id);
-            }
-
-            if (snapshot.People.Length > 0)
-            {
-                seen.Add("people:" + snapshot.People[0].Id);
-            }
-
-            lastUnread = unread;
-            seeded = true;
             return;
         }
 
-        var posted = snapshot.Announcements ?? [];
-        for (var index = 0; index < posted.Length; index++)
+        for (var index = tray.Count - 1; index >= 0; index--)
         {
-            var item = posted[index];
-            var id = "ann:" + item.Id;
-            if (!seen.Add(id))
+            if (tray[index].Scope != NoticeDismissalScope.Account)
             {
                 continue;
             }
 
-            Keep(new GlassNotice(id, NoticeKind.Announcement, item.Title, Snippet(item.Body),
-                Stamp(clock), DestinationTab.Home, HomePane.Announcements, item.Id));
+            seen.Remove(Track(tray[index]));
+            tray.RemoveAt(index);
         }
 
-        if (unread > lastUnread)
-        {
-            var title = "Messages";
-            var detail = "New message";
-            var target = string.Empty;
-            var inbox = talk.Inbox();
-            for (var index = 0; index < inbox.Count; index++)
-            {
-                if (inbox[index].Unread <= 0)
-                {
-                    continue;
-                }
-
-                title = inbox[index].Title.Length > 0 ? inbox[index].Title : title;
-                detail = inbox[index].Preview.Length > 0 ? inbox[index].Preview : detail;
-                target = inbox[index].Id;
-                break;
-            }
-
-            var id = "chat:" + target + ":" + unread + ":" + tray.Count.ToString(CultureInfo.InvariantCulture);
-            Keep(new GlassNotice(id, NoticeKind.Chat, title, detail, Stamp(clock),
-                DestinationTab.Social, SocialPane.Messages, target));
-        }
-
-        lastUnread = unread;
+        accountKey = next;
+        quiet = true;
     }
 
-    private void IngestStaff(PearlSnapshot snapshot, IClock clock)
+    private void OfferAnnouncements(PearlSnapshot snapshot, IClock clock)
+    {
+        var posted = snapshot.Announcements ?? [];
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < posted.Length; index++)
+        {
+            var item = posted[index];
+            if (item.Id.Length == 0)
+            {
+                continue;
+            }
+
+            var id = "ann:" + item.Id + ":" + item.CreatedAtUnix.ToString(CultureInfo.InvariantCulture);
+            live.Add(id);
+            Offer(new GlassNotice(id, NoticeKind.Announcement, item.Title, Snippet(item.Body),
+                Stamp(clock), DestinationTab.Home, HomePane.Announcements, item.Id,
+                NoticeDismissalScope.Device, string.Empty));
+        }
+
+        DropMissing(NoticeKind.Announcement, live);
+    }
+
+    private void OfferStaff(PearlSnapshot snapshot, IClock clock)
     {
         var notices = snapshot.StaffNotices ?? [];
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        var owner = accountKey;
         for (var index = 0; index < notices.Length; index++)
         {
             var item = notices[index];
@@ -177,39 +201,39 @@ public sealed class NoticeLedger : INoticeTray
                 continue;
             }
 
-            var id = "staff:" + item.Id;
-            if (!seen.Add(id))
-            {
-                continue;
-            }
-
-            Keep(new GlassNotice(id, NoticeKind.Staff, item.Title, Snippet(item.Body),
-                Stamp(clock), DestinationTab.Settings, 0, item.Id));
+            var id = "staff:" + item.Id + ":" + item.CreatedAtUnix.ToString(CultureInfo.InvariantCulture);
+            live.Add(id);
+            Offer(new GlassNotice(id, NoticeKind.Staff, item.Title, Snippet(item.Body),
+                Stamp(clock), DestinationTab.Settings, 0, item.Id, NoticeDismissalScope.Account, owner));
         }
 
-        for (var index = tray.Count - 1; index >= 0; index--)
+        DropMissing(NoticeKind.Staff, live);
+    }
+
+    private void OfferChat(ITalk talk, IClock clock)
+    {
+        var inbox = talk.Inbox();
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        var owner = CharacterStatePaths.Hex(bound);
+        for (var index = 0; index < inbox.Count; index++)
         {
-            if (tray[index].Kind != NoticeKind.Staff)
+            var thread = inbox[index];
+            if (thread.Unread <= 0 || thread.Id.Length == 0)
             {
                 continue;
             }
 
-            var staffId = tray[index].TargetId;
-            var stillOpen = false;
-            for (var row = 0; row < notices.Length; row++)
-            {
-                if (!notices[row].Read && string.Equals(notices[row].Id, staffId, StringComparison.Ordinal))
-                {
-                    stillOpen = true;
-                    break;
-                }
-            }
-
-            if (!stillOpen)
-            {
-                tray.RemoveAt(index);
-            }
+            var generation = thread.LastAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+            var id = "chat:" + thread.Id + ":" + generation;
+            live.Add(id);
+            var title = thread.Title.Length > 0 ? thread.Title : "Messages";
+            var detail = thread.Preview.Length > 0 ? thread.Preview : "New message";
+            Offer(new GlassNotice(id, NoticeKind.Chat, title, detail, Stamp(clock),
+                DestinationTab.Social, SocialPane.Messages, thread.Id,
+                NoticeDismissalScope.Character, owner));
         }
+
+        DropMissing(NoticeKind.Chat, live);
     }
 
     private void PruneSettled(PearlSnapshot snapshot, ITalk talk)
@@ -265,12 +289,19 @@ public sealed class NoticeLedger : INoticeTray
 
     public void ForgetArrivals() => arrived.Clear();
 
-    public void PostCalendar(string itemId, string title, string detail, IClock clock)
+    public void PostCalendar(string itemId, string occurrence, string title, string detail, IClock clock)
     {
-        var id = "cal:" + itemId + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
-        seen.Add(id);
-        Keep(new GlassNotice(id, NoticeKind.Calendar, title.Length > 0 ? title : "Calendar",
-            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, itemId));
+        var stamp = occurrence.Trim();
+        if (itemId.Length == 0 || stamp.Length == 0)
+        {
+            return;
+        }
+
+        var id = "cal:" + itemId + ":" + stamp;
+        var owner = CharacterStatePaths.Hex(bound);
+        Offer(new GlassNotice(id, NoticeKind.Calendar, title.Length > 0 ? title : "Calendar",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, itemId,
+            NoticeDismissalScope.Character, owner));
     }
 
     public void PostMusic(string stationId, string title, string detail, IClock clock)
@@ -281,24 +312,29 @@ public sealed class NoticeLedger : INoticeTray
             return;
         }
 
-        var id = "music:live:" + target + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
-        seen.Add(id);
-        Keep(new GlassNotice(id, NoticeKind.Music, title.Length > 0 ? title : "Live",
-            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
+        nowUnix = clock.UtcNow.ToUnixTimeSeconds();
+        var id = "music:" + target + ":" + nowUnix.ToString(CultureInfo.InvariantCulture);
+        var lifestream = string.Equals(target, "lifestream", StringComparison.Ordinal);
+        var scope = lifestream ? NoticeDismissalScope.Device : NoticeDismissalScope.Account;
+        var owner = lifestream ? string.Empty : accountKey;
+        Offer(new GlassNotice(id, NoticeKind.Music, title.Length > 0 ? title : "Live",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target, scope, owner));
     }
 
-    public void PostVenue(string venueId, string title, string detail, IClock clock)
+    public void PostVenue(string venueId, string occurrence, string title, string detail, IClock clock)
     {
         var target = venueId.Trim();
-        if (target.Length == 0)
+        var stamp = occurrence.Trim();
+        if (target.Length == 0 || stamp.Length == 0)
         {
             return;
         }
 
-        var id = "venue:" + target + ":" + clock.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
-        seen.Add(id);
-        Keep(new GlassNotice(id, NoticeKind.Venue, title.Length > 0 ? title : "Venue",
-            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target));
+        var id = "venue:" + target + ":" + stamp;
+        var owner = CharacterStatePaths.Hex(bound);
+        Offer(new GlassNotice(id, NoticeKind.Venue, title.Length > 0 ? title : "Venue",
+            Snippet(detail), Stamp(clock), DestinationTab.Home, HomePane.Dashboard, target,
+            NoticeDismissalScope.Character, owner));
     }
 
     public bool TryGet(string id, out GlassNotice item)
@@ -328,10 +364,15 @@ public sealed class NoticeLedger : INoticeTray
 
         for (var index = tray.Count - 1; index >= 0; index--)
         {
-            if (string.Equals(tray[index].Id, id, StringComparison.Ordinal))
+            if (!Matches(tray[index].Id, id))
             {
-                tray.RemoveAt(index);
+                continue;
             }
+
+            var item = tray[index];
+            tray.RemoveAt(index);
+            seen.Add(Track(item));
+            PersistDismiss(item);
         }
     }
 
@@ -340,14 +381,96 @@ public sealed class NoticeLedger : INoticeTray
         tray.Clear();
     }
 
-    private void Keep(in GlassNotice notice)
+    private void Offer(in GlassNotice notice)
+    {
+        if (book.Holds(notice.Id, notice.Scope, notice.OwnerKey))
+        {
+            seen.Add(Track(notice));
+            return;
+        }
+
+        if (!seen.Add(Track(notice)))
+        {
+            return;
+        }
+
+        Keep(notice, toast: !quiet);
+    }
+
+    private void Keep(in GlassNotice notice, bool toast)
     {
         tray.Insert(0, notice);
-        arrived.Add(notice);
+        if (toast)
+        {
+            arrived.Add(notice);
+        }
+
         while (tray.Count > Cap)
         {
             tray.RemoveAt(tray.Count - 1);
         }
+    }
+
+    private void DropMissing(NoticeKind kind, HashSet<string> live)
+    {
+        for (var index = tray.Count - 1; index >= 0; index--)
+        {
+            if (tray[index].Kind != kind)
+            {
+                continue;
+            }
+
+            if (live.Contains(tray[index].Id))
+            {
+                continue;
+            }
+
+            tray.RemoveAt(index);
+        }
+    }
+
+    private void DropScope(NoticeDismissalScope scope)
+    {
+        for (var index = tray.Count - 1; index >= 0; index--)
+        {
+            if (tray[index].Scope != scope)
+            {
+                continue;
+            }
+
+            seen.Remove(Track(tray[index]));
+            tray.RemoveAt(index);
+        }
+
+        arrived.Clear();
+    }
+
+    private void PersistDismiss(in GlassNotice item)
+    {
+        if (item.Kind is NoticeKind.People)
+        {
+            return;
+        }
+
+        if (!NoticeDismissalBook.TryOwner(item.Scope, item.OwnerKey, out _))
+        {
+            return;
+        }
+
+        book.Remember(item.Id, item.Scope, item.OwnerKey, nowUnix);
+    }
+
+    private static string Track(in GlassNotice notice) =>
+        ((int)notice.Scope).ToString(CultureInfo.InvariantCulture) + ":" + notice.OwnerKey + ":" + notice.Id;
+
+    private static bool Matches(string trayId, string asked)
+    {
+        if (string.Equals(trayId, asked, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return asked.Length > 0 && trayId.StartsWith(asked + ":", StringComparison.Ordinal);
     }
 
     private static string Snippet(string body)
