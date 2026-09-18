@@ -58,6 +58,7 @@ public sealed class PearlLedger
     private int shellsToday;
     private readonly Random rng = new();
     private JsonCorruptHold corrupt;
+    private bool writeThrough;
 
     private PearlLedger(HostPaths paths, IClock clock, ILinkpearlLog? log)
     {
@@ -144,12 +145,13 @@ public sealed class PearlLedger
         WipeMemory();
         bound = contentId;
         path = CharacterStatePaths.Pearls(paths, contentId);
+        writeThrough = path.Length > 0 && File.Exists(path);
         if (path.Length == 0)
         {
             return true;
         }
 
-        if (!File.Exists(path))
+        if (!writeThrough)
         {
             Credit(WelcomeAmount, "Welcome", "First lighting of the pearl purse.", PearlKind.Earned, "welcome");
             if (grantDevTest)
@@ -212,6 +214,7 @@ public sealed class PearlLedger
 
         lastCheckDay = today;
         checkIns++;
+        writeThrough = true;
         awarded = CheckInRewards[(streak - 1) % 7];
         Credit(awarded, "Daily check-in", "Day " + streak.ToString(CultureInfo.InvariantCulture) + " of the streak.",
             PearlKind.Earned, "daily-" + today);
@@ -233,8 +236,11 @@ public sealed class PearlLedger
         return true;
     }
 
-    public void Refund(int amount, string title, string detail) =>
+    public void Refund(int amount, string title, string detail)
+    {
+        writeThrough = true;
         Credit(amount, title, detail, PearlKind.Earned, null);
+    }
 
     public bool TrySpend(int amount, string title, string detail)
     {
@@ -252,6 +258,7 @@ public sealed class PearlLedger
             Title = title,
             Detail = detail,
         });
+        writeThrough = true;
         Persist();
         return true;
     }
@@ -268,6 +275,7 @@ public sealed class PearlLedger
             return false;
         }
 
+        writeThrough = true;
         return Credit(amount, title, detail, PearlKind.Gift, flag);
     }
 
@@ -278,6 +286,7 @@ public sealed class PearlLedger
             return false;
         }
 
+        writeThrough = true;
         return Credit(amount, title, detail, kind, flag);
     }
 
@@ -448,6 +457,7 @@ public sealed class PearlLedger
         spinWagered = 0;
         shellsToday = 0;
         corrupt = default;
+        writeThrough = false;
     }
 
     private void Apply(Save save)
@@ -497,6 +507,11 @@ public sealed class PearlLedger
     private bool Persist()
     {
         if (path.Length == 0)
+        {
+            return true;
+        }
+
+        if (!writeThrough)
         {
             return true;
         }

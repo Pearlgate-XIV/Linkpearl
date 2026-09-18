@@ -42,6 +42,8 @@ public sealed class HandsetLine : IHandsetLine
     private bool speakerMuted;
     private bool micMuted;
     private JsonCorruptHold corrupt;
+    private bool userDirty;
+    private bool writeThrough;
 
     public HandsetLine(IPearlHub pearl, IGameSession game, IClock clock, IBroadcastSense sense,
         DisplayPreferences display, HostPaths paths, ILinkpearlLog log)
@@ -472,8 +474,10 @@ public sealed class HandsetLine : IHandsetLine
             recents.Clear();
             ownNumber = string.Empty;
             corrupt = default;
+            userDirty = false;
             bound = contentId;
             path = CharacterStatePaths.HandsetLine(paths, contentId);
+            writeThrough = path.Length > 0 && File.Exists(path);
             if (path.Length > 0)
             {
                 Load();
@@ -481,6 +485,14 @@ public sealed class HandsetLine : IHandsetLine
             }
 
             return true;
+        }
+    }
+
+    public bool Flush()
+    {
+        lock (gate)
+        {
+            return FlushLocked();
         }
     }
 
@@ -530,11 +542,21 @@ public sealed class HandsetLine : IHandsetLine
         return Write();
     }
 
-    private void Save() => Write();
+    private void Save()
+    {
+        userDirty = true;
+        writeThrough = true;
+        Write();
+    }
 
     private bool Write()
     {
         if (path.Length == 0)
+        {
+            return true;
+        }
+
+        if (!userDirty && !writeThrough)
         {
             return true;
         }
@@ -564,7 +586,7 @@ public sealed class HandsetLine : IHandsetLine
             if (!string.Equals(ownNumber, gate, StringComparison.Ordinal))
             {
                 ownNumber = gate;
-                Save();
+                Write();
             }
 
             return;
@@ -576,7 +598,7 @@ public sealed class HandsetLine : IHandsetLine
             if (!string.Equals(ownNumber, shaped, StringComparison.Ordinal) && shaped.Length > 0)
             {
                 ownNumber = shaped;
-                Save();
+                Write();
             }
 
             return;
@@ -591,7 +613,7 @@ public sealed class HandsetLine : IHandsetLine
         }
 
         ownNumber = IssueNumber(seed, country);
-        Save();
+        Write();
     }
 
     private static string IssueNumber(string seed, int country)

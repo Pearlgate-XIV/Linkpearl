@@ -79,4 +79,6 @@ public interface IHandsetLine
     string TitleOf(string number);
 
     bool BindCharacter(ulong contentId);
+
+    bool Flush();
 }
