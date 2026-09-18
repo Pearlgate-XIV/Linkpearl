@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Linkpearl.Applets;
 using Linkpearl.Audio;
 using Linkpearl.Badges;
@@ -47,6 +48,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private readonly IAudioPorts audioPorts;
     private readonly IHandsetAudio audio;
     private readonly ProfileChrome profile;
+    private readonly BadgeBook badges;
     private readonly CharacterMigration migration;
     private Part part;
     private bool flipped;
@@ -80,6 +82,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         this.textures = textures;
         this.audioPorts = audioPorts;
         this.audio = audio;
+        this.badges = badges;
         this.migration = migration;
         profile = new ProfileChrome(badges, paths, textures, files, pearl, game, display, environment.IsDevelopment,
             profiles);
@@ -181,6 +184,9 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     public float Compose(in AppletFrame frame)
     {
         hoverHint = string.Empty;
+        var snapshot = pearl.Current;
+        badges.Sync(snapshot.SignedIn && snapshot.FounderSeat > 0 && snapshot.FounderSeat <= FounderFaces.SeatLimit,
+            game.JobName, environment.IsDevelopment, GlassName.IsPatron(badges, snapshot, display, environment.IsDevelopment));
         if (profile.OverlayOpen)
         {
             return profile.DrawOverlay(frame);
@@ -242,9 +248,12 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             searchPinned = string.Empty;
         }
         DrawPreviewCard(frame, stack.Take(frame.Units(108f)));
+        DrawTopic(frame, ref stack, "Profile", PhoneLanguages.T("set.profile.blurb"),
+            "profile face portrait name character calendar pearls phone notes main import",
+            ProfilePageHeight(frame), DrawProfilePage);
         DrawTopic(frame, ref stack, "General", PhoneLanguages.T("set.general.blurb"),
-            "lock pin combat portraits cutscenes motion behavior character calendar pearls phone notes",
-            OptionBand(frame, 11), DrawGeneralPage);
+            "lock pin combat portraits cutscenes motion behavior",
+            OptionBand(frame, 6), DrawGeneralPage);
         DrawTopic(frame, ref stack, "Appearance", PhoneLanguages.T("set.appearance.blurb"),
             "theme display wallpaper dim home status accent text default", AppearanceInnerHeight(frame),
             DrawAppearancePage);
@@ -286,9 +295,26 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
             "tuner touch preview", TunerInnerHeight(frame), DrawTouch);
     }
 
+    private void DrawProfilePage(AppletFrame frame, ref LayoutFlow stack)
+    {
+        var snapshot = pearl.Current;
+        var linked = ShownName.Linked(game.Character.Name, snapshot.MeName);
+        var name = GlassName.ProfileName(display, linked,
+            GlassName.IsPatron(badges, snapshot, display, environment.IsDevelopment));
+        if (name.Length == 0)
+        {
+            name = "Not logged in";
+        }
+
+        var job = game.JobName.Length > 0 ? TitleCase(game.JobName) : "Warrior of Light";
+        var world = snapshot.MeWorld.Length > 0 ? snapshot.MeWorld : game.Character.WorldName;
+        profile.DrawCard(frame, stack.Take(frame.Units(ProfileChrome.SheetHeightUnits)), name, job,
+            world.Length > 0 ? world : "Eorzea", game.MapPlace, game.JobIconId);
+        DrawCharacterClaim(frame, ref stack);
+    }
+
     private void DrawGeneralPage(AppletFrame frame, ref LayoutFlow stack)
     {
-        DrawCharacterClaim(frame, ref stack);
         DrawPinControls(frame, ref stack);
         ToggleRow(frame, stack.Take(OptionHeight(frame)), PhoneLanguages.T("set.motion"), display.ReduceMotion,
             value => display.ReduceMotion = value, PhoneLanguages.T("set.motion.hint"));
@@ -1538,6 +1564,7 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
     private static string TopicLabel(string title) => title switch
     {
         "General" => PhoneLanguages.T("set.general"),
+        "Profile" => PhoneLanguages.T("set.profile"),
         "Appearance" => PhoneLanguages.T("set.appearance"),
         "Sounds" => PhoneLanguages.T("set.sounds"),
         "Notifications" => PhoneLanguages.T("set.notifications"),
@@ -1554,6 +1581,9 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         "Interactive tuner" => PhoneLanguages.T("set.tuner"),
         _ => title,
     };
+
+    private static float ProfilePageHeight(in AppletFrame frame) =>
+        frame.Units(ProfileChrome.SheetHeightUnits) + frame.Units(8f) + OptionBand(frame, 4);
 
     private static float LanguagePageHeight(in AppletFrame frame) =>
         frame.Units(16f) + frame.Units(8f) + OptionHeight(frame) + frame.Units(8f) + frame.Units(32f) +
@@ -1937,5 +1967,15 @@ public sealed class SettingsDestination : IDestinationScreen, ISectionedDestinat
         {
             tap();
         }
+    }
+
+    private static string TitleCase(string value)
+    {
+        if (value.Length == 0)
+        {
+            return value;
+        }
+
+        return char.ToUpper(value[0], CultureInfo.InvariantCulture) + value[1..];
     }
 }

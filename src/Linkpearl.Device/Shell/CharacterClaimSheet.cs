@@ -26,7 +26,7 @@ internal static class CharacterClaimSheet
             new Vector2(inner.Min.X, inner.Min.Y + frame.Units(24f)),
             new Vector2(inner.Max.X, inner.Max.Y - frame.Units(108f)));
         frame.Text.DrawWrapped(body,
-            "Calendar, Pearls, and Phone notes belong to one main character. You can choose that character now (the one you just logged in as). You can change it later in Tune \u2192 General.",
+            "Calendar, Pearls, and Phone notes belong to one main character. You can choose that character now (the one you just logged in as). You can change it later in Settings \u2192 Profile.",
             new TextStyle(FontRole.Body, Vector4.One));
         var buttons = inner.BottomSlice(frame.Units(100f));
         var gap = frame.Units(8f);

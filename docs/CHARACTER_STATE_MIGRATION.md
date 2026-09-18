@@ -32,15 +32,16 @@ is chosen (Decide later does not import). Buttons:
 - **Use this character as main** — copy-forward each unclaimed legacy store onto that id.
 - **Decide later** — leave sources alone; show the same explanation on the next valid login.
 
-**Never import** is Tune → General only (not on this overlay).
+**Never import** is Settings → Profile only (not on this overlay).
 
 Copy on the overlay: those three stores belong to one **main character**. They can choose
-that character now (the one just logged in) or change it later in Tune → General.
+that character now (the one just logged in) or change it later in Settings → Profile.
 
-## Tune → General
+## Settings → Profile
 
-Always shows the current main: the logged-in character’s name when this character is main,
-otherwise a shortened content-id hex, or **Not set**.
+The Profile topic sits with the existing identity card (same portrait / name chrome as Home
+and the Settings top-left face). Always shows the current main: the logged-in character’s
+name when this character is main, otherwise a shortened content-id hex, or **Not set**.
 
 - **Make this character main** — first time (unclaimed, not refused): same copy-forward as
   the overlay. After a main exists: **move** (not copy) Calendar, Pearls, and Phone notes
@@ -72,7 +73,7 @@ from a reassign has been written and verified.
 
 ## Copy-forward (first main)
 
-Runs only when choosing the first main (overlay or Tune, install still unclaimed and not
+Runs only when choosing the first main (overlay or Settings → Profile, install still unclaimed and not
 refused). For each of the three stores:
 
 1. If the character file already exists, it **wins** (no overwrite).
@@ -99,7 +100,7 @@ auto-created alt files.
 
 ## Move on reassign
 
-When Tune makes a different logged-in character the main:
+When Settings → Profile makes a different logged-in character the main:
 
 1. Flush in-memory Calendar, Pearls, and Phone notes for the current bind (atomically;
    skip creating files that do not exist yet).
