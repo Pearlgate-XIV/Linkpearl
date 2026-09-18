@@ -1,7 +1,9 @@
 # Character state migration (v13)
 
 LinkpearlDev **0.1.1.13** copies device-wide calendar, pearls, and phone notes onto **one**
-XIV character the player picks. Nothing is claimed automatically on first login.
+XIV character the player picks as **main**. Nothing is claimed automatically on first login.
+The main character can be changed later. Pearls from that import live on only one character
+at a time.
 
 ## Paths
 
@@ -21,25 +23,41 @@ Content id `0` (logged out / unknown) has **no** character folder, **no** copy, 
 
 Linux Debug ConfigDirectory is typically `~/.xlcore/pluginConfigs/LinkpearlDev`.
 
-## Chooser
+## First login overlay
 
-Shown when a valid content id is present and this install has no claimant and has not
-chosen Never. Buttons:
+Shown when a valid content id is present, this install has no main character, and Never
+import has not been chosen. Calendar, Pearls, and Phone notes stay unbound until a main
+is chosen (Decide later does not import). Buttons:
 
-- **This character** — copy-forward each unclaimed legacy store onto that id.
-- **Later** — leave sources alone; ask again on the next valid login.
-- **Never for this install** — no character imports; every character uses its own empty defaults.
+- **Use this character as main** — copy-forward each unclaimed legacy store onto that id.
+- **Decide later** — leave sources alone; show the same explanation on the next valid login.
 
-Tune → General offers the same three actions while the install is still unclaimed (Later,
-login screen, or Never not yet locked in as claimant). After a claimant is recorded, Tune
-only shows that files follow the character.
+**Never import** is Tune → General only (not on this overlay).
+
+Copy on the overlay: those three stores belong to one **main character**. They can choose
+that character now (the one just logged in) or change it later in Tune → General.
+
+## Tune → General
+
+Always shows the current main: the logged-in character’s name when this character is main,
+otherwise a shortened content-id hex, or **Not set**.
+
+- **Make this character main** — first time (unclaimed, not refused): same copy-forward as
+  the overlay. After a main exists: **move** (not copy) Calendar, Pearls, and Phone notes
+  from the old main onto this character. If this character already has any of those files,
+  the move is blocked and the phone says that character already has data.
+- **Never import** — only while the install is still unclaimed. No character import; each
+  character uses its own empty defaults until someone is made main without a legacy copy
+  (after Never).
+
+Caption: the main can be changed later; only one character holds imported Pearls.
 
 ## Manifest (`migration-v13.json`)
 
 Atomic JSON. Fields (no balances, messages, or event bodies):
 
 - `Schema` — `1`
-- `Claimant` — 16-char hex, or empty
+- `Claimant` — 16-char hex of the current main, or empty
 - `Refused` / `Deferred` / `Complete`
 - `Calendar`, `Pearls`, `HandsetLine` — `unclaimed` / `copied` / `exists` / `missing` / `malformed` / `failed`
 - `Backup` — optional path string
@@ -49,9 +67,13 @@ Atomic JSON. Fields (no balances, messages, or event bodies):
 `Complete` is true only after durable character writes (or terminal skips) for this claim.
 A failed store leaves `Complete` false so the next login of the **claimant** can resume.
 
-## Copy-forward
+Claimant is updated atomically after a successful copy-forward or after every dest file
+from a reassign has been written and verified.
 
-Runs only for the chosen claimant. For each of the three stores:
+## Copy-forward (first main)
+
+Runs only when choosing the first main (overlay or Tune, install still unclaimed and not
+refused). For each of the three stores:
 
 1. If the character file already exists, it **wins** (no overwrite).
 2. If the legacy file is missing, status `missing`.
@@ -62,15 +84,35 @@ Runs only for the chosen claimant. For each of the three stores:
 New character-folder writes never update the legacy files. One store failing does not block
 the others. Logs are filename + exception type only.
 
-Pearls (play currency, not gil) copy only to the claimant. Other characters get a normal
-new purse (welcome / dev grant **once per character file**). Switching A→B→A reloads disk;
-it does not import twice.
+Pearls (play currency, not gil) copy only to the main character. Other characters do not
+get a copy of that ledger. Switching A→B→A reloads disk; it does not import twice.
 
 Calendar keeps titles, times, offsets, sources, and `LastFired` so old reminders are not
 all fired on migrate. Venue puts go to the **active** character calendar.
 
 Phone notes, recents, and contacts follow the active character. Own number still comes from
 Pearlgate when signed in. No PearlChat merge.
+
+A missing character file does not get a welcome/dev pearls file or an empty phone file until
+the player actually saves on that character. That keeps Make-main from being blocked by
+auto-created alt files.
+
+## Move on reassign
+
+When Tune makes a different logged-in character the main:
+
+1. Flush in-memory Calendar, Pearls, and Phone notes for the current bind (atomically;
+   skip creating files that do not exist yet).
+2. If the new main already has any of the three character files, **stop**. Old main and
+   Claimant stay. Message: that character already has data.
+3. For each store: `AtomicJson` write dest from the old main’s file, verify a JSON read,
+   then delete (or empty) the old file only after dest verifies. Missing source is a skip.
+   Malformed source fails the whole move; dests written in this attempt are removed; old
+   files stay.
+4. Update `Claimant` atomically to the new main. Legacy unscoped files are not touched.
+
+Never two live Pearls ledgers from the same import: after a successful move the old main’s
+`pearls.json` is gone.
 
 ## Backup (operators)
 
