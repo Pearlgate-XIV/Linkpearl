@@ -8,6 +8,7 @@ namespace Linkpearl.Host.Composition;
 
 public sealed class HandsetConfig : IPluginConfiguration
 {
+    // Schema floor only. Raising this must never delete state or reset layout/theme/audio.
     public const int FreshBootMark = 3;
 
     public int Version { get; set; } = 1;

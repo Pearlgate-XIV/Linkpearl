@@ -99,8 +99,8 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<ILinkpearlLog>(log);
         services.AddSingleton(paths);
         services.AddSingleton(environment);
-        services.AddSingleton<ISettings<NotesScratch>>(_ => FileSettings.Load<NotesScratch>(paths));
-        services.AddSingleton<ISettings<SearchScratch>>(_ => FileSettings.Load<SearchScratch>(paths));
+        services.AddSingleton<ISettings<NotesScratch>>(_ => FileSettings.Load<NotesScratch>(paths, log));
+        services.AddSingleton<ISettings<SearchScratch>>(_ => FileSettings.Load<SearchScratch>(paths, log));
 
         clock = new FrameworkClock(framework);
         services.AddSingleton<IClock>(clock);
@@ -115,11 +115,11 @@ public sealed class HandsetHost : IDisposable
         services.AddSingleton<ILifestream>(new FfxivLifestream(pluginInterface, dataManager, aetherytes));
         services.AddSingleton<IWeatherOracle>(new FfxivWeatherOracle(dataManager, clock));
         services.AddSingleton<ISkyDesk>(new FfxivSkyDesk(pluginInterface, dataManager, session, clock, clock));
-        services.AddSingleton(new ChatMarks(paths));
+        services.AddSingleton(new ChatMarks(paths, log));
 
         config = pluginInterface.GetPluginConfig() as HandsetConfig ?? new HandsetConfig();
         config.Sanitize();
-        ApplyFreshBoot(paths);
+        ApplyFreshBoot();
 
         pearl = new PearlHub(string.Empty, config.SessionToken, session, clock, log,
             token => clock.Post(() => RememberToken(token)), paths.State("media-cache"),
@@ -139,10 +139,10 @@ public sealed class HandsetHost : IDisposable
         display = preferences;
         services.AddSingleton(preferences);
         services.AddSingleton<HandsetProfileDesk>();
-        services.AddSingleton(_ => BadgeBook.Load(paths, clock));
+        services.AddSingleton(_ => BadgeBook.Load(paths, clock, log));
         services.AddSingleton(_ =>
         {
-            var book = PearlLedger.Load(paths, clock);
+            var book = PearlLedger.Load(paths, clock, log);
             if (isDevelopment)
             {
                 book.GrantDevTestPurse();
@@ -220,7 +220,7 @@ public sealed class HandsetHost : IDisposable
         // stays a destination. RouteTrail is the back-stack for those applets.
         var social = new SocialDestination(pearl, clock, talk, session, preferences, popouts, chat, paths, files,
             provider.GetRequiredService<IGifDesk>(), provider.GetRequiredService<ChatMarks>(),
-            provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>(), hub);
+            provider.GetRequiredService<IFeedbackDesk>(), provider.GetRequiredService<ILifestream>(), hub, log);
         var apps = provider.GetServices<IApplet>().ToList();
         apps.Add(new SocialAppApplet(social, talk, "pearlchat", "PearlChat", "💬", 2, SocialPane.Messages, true));
         apps.Add(new SocialAppApplet(social, talk, "friends", "Friends", "👥", 3, SocialPane.People, false));
@@ -646,119 +646,17 @@ public sealed class HandsetHost : IDisposable
         pluginInterface.SavePluginConfig(config);
     }
 
-    private void ApplyFreshBoot(HostPaths paths)
+    private void ApplyFreshBoot()
     {
+        // FreshBootMark is a schema floor, not a wipe. Older configs keep every value
+        // (layout, theme, audio, session, PhotosFolder). Cache is never deleted here.
         if (config.FreshBoot >= HandsetConfig.FreshBootMark)
         {
             return;
         }
 
-        var stock = new HandsetConfig();
-        config.SessionToken = stock.SessionToken;
-        config.Use24HourClock = stock.Use24HourClock;
-        config.LanguageId = stock.LanguageId;
-        config.Appearance = stock.Appearance;
-        config.WallpaperId = stock.WallpaperId;
-        config.CustomPlateFile = stock.CustomPlateFile;
-        config.CustomPlateFiles = [];
-        config.CustomBannerFile = stock.CustomBannerFile;
-        config.BannerZoom = stock.BannerZoom;
-        config.BannerFocusX = stock.BannerFocusX;
-        config.BannerFocusY = stock.BannerFocusY;
-        config.Colorway = stock.Colorway;
-        config.Core = stock.Core;
-        config.Shade = stock.Shade;
-        config.ClockFace = stock.ClockFace;
-        config.Lettering = stock.Lettering;
-        config.NameStyle = stock.NameStyle;
-        config.TestingAccount = stock.TestingAccount;
-        config.OwnName = stock.OwnName;
-        config.OwnTitle = stock.OwnTitle;
-        config.OwnTimeZoneId = stock.OwnTimeZoneId;
-        config.TitleMotion = stock.TitleMotion;
-        config.TitleGlow = stock.TitleGlow;
-        config.TitleGlowWeight = stock.TitleGlowWeight;
-        config.TitleInkR = stock.TitleInkR;
-        config.TitleInkG = stock.TitleInkG;
-        config.TitleInkB = stock.TitleInkB;
-        config.TitleGlowR = stock.TitleGlowR;
-        config.TitleGlowG = stock.TitleGlowG;
-        config.TitleGlowB = stock.TitleGlowB;
-        config.NameMotion = stock.NameMotion;
-        config.NameGlow = stock.NameGlow;
-        config.NameGlowR = stock.NameGlowR;
-        config.NameGlowG = stock.NameGlowG;
-        config.NameGlowB = stock.NameGlowB;
-        config.NameGlowWeight = stock.NameGlowWeight;
-        config.NameInkCustom = stock.NameInkCustom;
-        config.NameInkR = stock.NameInkR;
-        config.NameInkG = stock.NameInkG;
-        config.NameInkB = stock.NameInkB;
-        config.DisplayFace = stock.DisplayFace;
-        config.FounderFacesGranted = stock.FounderFacesGranted;
-        config.ShowWorld = stock.ShowWorld;
-        config.ShowMarks = stock.ShowMarks;
-        config.FeedShowSay = stock.FeedShowSay;
-        config.FeedShowShout = stock.FeedShowShout;
-        config.FeedShowYell = stock.FeedShowYell;
-        config.FeedShowParty = stock.FeedShowParty;
-        config.ExtraHomeScreens = stock.ExtraHomeScreens;
-        config.ReduceMotion = stock.ReduceMotion;
-        config.PhotosFolder = stock.PhotosFolder;
-        config.Quiet = stock.Quiet;
-        config.QuietWhenBusy = stock.QuietWhenBusy;
-        config.ChatE2E = stock.ChatE2E;
-        config.WakeInPocket = stock.WakeInPocket;
-        config.StayInPortraits = stock.StayInPortraits;
-        config.TuckForCutscenes = stock.TuckForCutscenes;
-        config.Fight = stock.Fight;
-        config.TuneLayout = stock.TuneLayout;
-        config.Brightness = stock.Brightness;
-        config.Volume = stock.Volume;
-        config.MusicVolume = stock.MusicVolume;
-        config.MicVolume = stock.MicVolume;
-        config.SpeakerDeviceId = stock.SpeakerDeviceId;
-        config.MicrophoneDeviceId = stock.MicrophoneDeviceId;
-        config.CallSpeakerDeviceId = stock.CallSpeakerDeviceId;
-        config.CallMicrophoneDeviceId = stock.CallMicrophoneDeviceId;
-        config.AutoRotate = stock.AutoRotate;
-        config.Replies = [];
-        config.InstalledApps = null;
-        config.AppScreens = null;
-        config.OwnedApps = [];
-        config.FavoriteApps = [];
-        config.AppFolders = [];
-        config.QuickApps = [];
-        config.StudioWidgets = string.Empty;
-        config.StudioApps = string.Empty;
-        config.RecentAppIds = [];
-        config.RecentAppPlaces = [];
-        config.SeenShelfApps = [];
-        config.PopoutTalkIds = [];
-        config.PopoutTalkPlaces = [];
         config.FreshBoot = HandsetConfig.FreshBootMark;
-        WipeTree(paths.StateDirectory);
-        WipeTree(paths.CacheDirectory);
         pluginInterface.SavePluginConfig(config);
-    }
-
-    private static void WipeTree(string root)
-    {
-        if (!Directory.Exists(root))
-        {
-            return;
-        }
-
-        try
-        {
-            Directory.Delete(root, true);
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
     }
 
 }
